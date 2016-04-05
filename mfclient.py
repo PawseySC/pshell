@@ -470,8 +470,10 @@ class mf_client:
 		try:
 			result = self.run("actor.self.describe")
 			return True
-		except:
+		except Exception as e:
 			self.session = ""
+# NB: max licence error can occur here
+			self.log("DEBUG", str(e))
 
 		return False
 
