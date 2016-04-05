@@ -1,0 +1,826 @@
+#!/usr/bin/python
+
+import os
+import re
+import cmd
+import sys
+import time
+import datetime
+import getpass
+import random
+import string
+import socket
+import signal
+import inspect
+import urllib2
+import httplib
+import functools
+import mimetypes
+import posixpath
+import multiprocessing
+import xml.etree.ElementTree as xml_processor
+
+
+# Python standard lib implementation of a mediaflux client
+# Author: Sean Fleming
+
+
+#------------------------------------------------------------
+"""
+Globals ... multiprocess IO monitoring is hard
+"""
+manage_lock = multiprocessing.Lock()
+bytes_sent = multiprocessing.Value('d', 0, lock=True)
+bytes_recv = multiprocessing.Value('d', 0, lock=True)
+
+#------------------------------------------------------------
+def put_jump(mfclient, data):
+	"""
+	global multiprocessing function for concurrent uploading
+	Input:
+		data: ARRAY of 2 STRINGS which are the arguments for the put() method: (remote namespace, local filepath)
+
+	Output:
+		triplet of STRINGS (asset_ID/status, 2 input arguments) which will be concatenated on the mf_manager's summary list
+	"""
+
+	try:
+		mfclient.log("DEBUG", "[pid=%d] put_jump(%s,%s)" % (os.getpid(), data[0], data[1]))
+		asset_id = mfclient.put(data[0], data[1])
+	except Exception as e:
+		mfclient.log("ERROR", "[pid=%d] put_jump(): %s" % (os.getpid(), str(e)))
+# TODO - parse Exception and return condensed error message instead of fail
+# NB: return form should be suitable for retry of this transfer primitive
+		return ("Fail", data[0], data[1])
+
+	return (int(asset_id), data[0], data[1])
+
+#------------------------------------------------------------
+def get_jump(mfclient, data):
+	"""
+	global (multiprocessing) function for concurrent downloading
+
+	Input:
+		data: ARRAY of 2 STRINGS which are the arguments for the get() method: (asset_ID, local filepath)
+
+	Output:
+		triplet of STRINGS (status, 2 input arguments) which will be concatenated on the mf_manager's summary list
+	"""
+
+	try:
+		mfclient.log("DEBUG", "[pid=%d] get_jump(%s,%s)" % (os.getpid(), data[0], data[1]))
+		mfclient.get(data[0], data[1])
+	except Exception as e:
+		mfclient.log("ERROR", "[pid=%d] get_jump(): %s" % (os.getpid(), str(e)))
+# NB: return form should be suitable for retry of this transfer primitive
+		return ("Fail", data[0], data[1])
+
+	return (0, data[0], data[1])
+
+#########################################################
+class mf_client:
+	"""
+	Base Mediaflux authentication and communication client
+	Parallel transfers should be handled with multiprocessing (urllib2 and httplib are not thread-safe)
+	All unexpected failures are handled by raising exceptions
+	"""
+	def __init__(self, protocol, port, server, session="", timeout=5, enforce_encrypted_login=True, debug=False):
+		"""
+		Create a Mediaflux server connection instance. Raises an exception on failure.
+
+		Input:
+			               protocol: a STRING which should be either "http" or "https"
+			                   port: a STRING which is usually "80" or "443"
+			                 server: a STRING giving the FQDN of the server
+			                session: a STRING supplying the session ID which, if it exists, enables re-use of an existing authenticated session 
+			                timeout: an INTEGER specifying the connection timeout
+			enforce_encrypted_login: a BOOLEAN that should only be False on a safe internal dev/test network
+		                          debug: a BOOLEAN which controls output of troubleshooting information 
+
+		Output:
+			A reachable mediaflux server object that has not been tested for its authentication status
+
+		Raises:
+			Error if server appears to be unreachable
+		"""
+# configure interfaces
+		self.protocol = protocol
+		self.port = int(port)
+		self.server = server
+		self.timeout = timeout
+		self.session = session
+		self.debug = debug
+		self.base_url="{0}://{1}".format(protocol, server)
+		self.post_url= self.base_url + "/__mflux_svc__"
+		self.data_url = self.base_url + "/mflux/content.mfjp"
+		self.http_lib="{0}:{1}".format(server, self.port)
+		self.enforce_encrypted_login = bool(enforce_encrypted_login)
+# download/upload buffers
+		self.get_buffer=8192
+		self.put_buffer=8192
+# XML pretty print hack
+		self.indent = 0
+# check is server is reachable
+		s = socket.socket()
+		s.settimeout(self.timeout)
+		s.connect((self.server, self.port))
+		s.close()
+
+		if self.debug:
+			print "protocol: %s" % self.protocol
+			print "    port: %s" % self.port
+			print "  server: %s" % self.server
+			print " timeout: %s" % self.timeout
+			print " session: %s" % self.session
+			print "base url: %s" % self.base_url
+			print "post url: %s" % self.post_url
+			print "data url: %s" % self.data_url
+			print "http lib: %s" % self.http_lib
+			print " encrypt: %s" % self.enforce_encrypted_login
+			print "   debug: %s" % self.debug
+
+#------------------------------------------------------------
+	def _post(self, xml_string):
+		"""
+		Primitive for sending an XML message to the Mediaflux server
+		"""
+# NB: timeout exception if server is unreachable
+		request = urllib2.Request(self.post_url, data=xml_string, headers={'Content-Type': 'text/xml'})
+		response = urllib2.urlopen(request, timeout=self.timeout)
+
+		xml = response.read()
+		tree = xml_processor.fromstring(xml)
+		if tree.tag != "response":
+			raise Exception("No response from server")
+
+# TODO - skip this step to avoid double parse of the XML?
+		error = self.xml_error(tree)
+		if error:
+			raise Exception("Error from server: %s" % error)
+
+		return tree
+
+#------------------------------------------------------------
+	def _post_multipart(self, xml, filepath):
+		"""
+		Primitive file upload method - NOTE - please use post_multipart_buffered instead
+		Sends a multipart POST to the server; consisting of the initial XML and a single attached file
+		"""
+
+# helper
+		def escape_quote(s):
+			return s.replace('"', '\\"')
+
+		boundary = ''.join(random.choice(string.digits + string.ascii_letters) for i in range(30))
+		lines = []
+
+# service call part (is the name meaningfull to mediaflux?)
+       		lines.extend(( '--{0}'.format(boundary), 'Content-Disposition: form-data; name="request"', '', str(xml),))
+
+		filename = os.path.basename(filepath)
+		mimetype = mimetypes.guess_type(filepath) or 'application/octet-stream'
+
+		f = open(filepath,'rb')
+		content = f.read()
+
+# file data part (are the name, filename values meaningful to mediaflux?)
+# actual filename will be the relevant part in the xml string representing the asset.create service call
+		lines.extend(( '--{0}'.format(boundary), 'Content-Disposition: form-data; name="request"; filename="{0}"'.format(escape_quote(filename)), 'Content-Type: {0}'.format(mimetype), '', content, ))
+		lines.extend(( '--{0}--'.format(boundary), '',))
+
+		body = '\r\n'.join(lines)
+		headers = { 'Content-Type': 'multipart/form-data; boundary={0}'.format(boundary), 'Content-Length': str(len(body)), } 
+
+		request = urllib2.Request(self.post_url, data=body, headers=headers)
+		r = urllib2.urlopen(request, timeout=self.timeout)
+		return r.read()
+
+#------------------------------------------------------------
+	def _post_multipart_buffered(self, xml, filepath):
+		"""
+		Primitive for doing buffered upload on a single file. Used by the put() method
+		Sends a multipart POST to the server; consisting of the initial XML, followed by a streamed, buffered read of the file contents
+		"""
+		global bytes_sent
+
+		def escape_quote(s):
+			return s.replace('"', '\\"')
+
+# mediaflux seems to have random periods of unresponsiveness - particularly around final ACK of transfer
+		retry_count = 9
+
+# setup
+		pid = os.getpid()
+		boundary = ''.join(random.choice(string.digits + string.ascii_letters) for i in range(30))
+		filename = os.path.basename(filepath)
+		mimetype = mimetypes.guess_type(filepath) or 'application/octet-stream'
+		lines = []
+
+# multipart - request xml and file
+       		lines.extend(( '--{0}'.format(boundary), 'Content-Disposition: form-data; name="request"', '', str(xml),))
+		lines.extend(( '--{0}'.format(boundary), 'Content-Disposition: form-data; name="filename"; filename="{0}"'.format(escape_quote(filename)), 'Content-Type: {0}'.format(mimetype), '', '' ))
+
+		body = '\r\n'.join(lines)
+# NB - should include everything AFTER the first /r/n after the headers
+		total_size = len(body) + os.path.getsize(filepath) + len(boundary) + 6
+		infile = open(filepath, 'rb')
+
+# different connection object for HTTPS vs HTTP
+		if self.protocol == 'https':
+			conn = httplib.HTTPSConnection(self.http_lib, timeout=self.timeout)
+		else:
+			conn = httplib.HTTPConnection(self.http_lib, timeout=self.timeout)
+
+# kickoff
+		self.log("DEBUG", "[pid=%d] File send starting: %s" % (pid, filepath))
+		conn.putrequest('POST', "/__mflux_svc__")
+# headers
+		conn.putheader('User-Agent', 'python')
+		conn.putheader('Connection', 'keep-alive')
+		conn.putheader('Cache-Control', 'no-cache')
+		conn.putheader('Content-Length', str(total_size))
+		conn.putheader('Content-Type', 'multipart/form-data; boundary={0}'.format(boundary))
+		conn.endheaders()
+
+# data start
+		conn.send(body)
+
+# data stream of file contents
+		try:
+			can_recover = True
+			while can_recover:
+				chunk = infile.read(self.put_buffer)
+				if not chunk:
+					break
+# retry...
+				i = 0
+				while True:
+					try:
+						conn.send(chunk)
+						break
+					except Exception as e:
+						i = i+1
+						if i == retry_count:
+							self.log("WARNING", "[pid=%d] Chunk send error [count=%d] : %s" % (pid, i, str(e)))
+							can_recover = False
+							break
+						else:
+							self.log("ERROR", "[pid=%d] Chunk retry limit reached [count=%d], giving up : %s" % (pid, i, str(e)))
+# multiprocessing-safe byte counter
+				with bytes_sent.get_lock():
+					bytes_sent.value += len(chunk)
+		except Exception as e:
+			self.log("ERROR", "[pid=%d] Fatal send error : %s" % (pid, str(e)))
+			raise
+
+# terminating line (len(boundary) + 6)
+		chunk = '--{0}--\r\n'.format(boundary)
+		chunk = conn.send(chunk)
+		self.log("DEBUG", "[pid=%d] File send complete, waiting for server..." % pid)
+
+# server response
+# NOTE - here is where the timeouts frequently (on large unknown files) seem to occur
+		mf_ack = False
+		for i in range(0,retry_count):
+			try:
+				resp = conn.getresponse()
+				mf_ack = True
+				break
+			except:
+				self.log("WARNING", "[pid=%d] No response from server, trying again..." % pid)
+
+		if mf_ack is False:
+			raise Exception("Timeout on final server ACK")
+
+# connection status overview 
+		self.log("DEBUG", "[pid=%d] Final connection status: %s" % (pid, resp.reason))
+#		self.log("DEBUG", "[pid=%d] final connection message: \n%s\n" % (pid, resp.msg))
+
+# get the mediaflux XML response
+		reply = resp.read()
+		conn.close()
+		tree = xml_processor.fromstring(reply)
+
+# FIXME - not catching errors properly here ... eg asset exists
+		error = self.xml_error(tree)
+		if error:
+			raise Exception("Error from server: %s" % error)
+
+		self.log("DEBUG", "[pid=%d] Completed" % pid)
+
+# return uploaded asset id
+		for elem in tree.iter():
+			if elem.tag == 'id':
+				return int(elem.text)
+
+		return "Failed"
+
+#------------------------------------------------------------
+	def _xml_request(self, service_call, arguments):
+		""" 
+		Helper method for constructing the XML request to send to the Mediaflux server
+
+		Input:
+			service_call: a STRING representing the Mediaflux service call to run on the server
+			   arguments: a LIST of STRING pairs (name, value) representing the service call's arguments
+			              Note that attributes should currently be embedded in the name string
+
+		Output:
+			A STRING containing the XML, suitable for sending via post() to the Mediaflux server
+		"""
+# special case for logon
+		if service_call == "system.logon":
+			xml = '<request><service name="%s"><args>' % service_call
+			tail = '</args></service></request>'
+			logon = True
+		else:
+			xml = '<request><service name="service.execute" session="%s"><args><service name="%s">' % (self.session, service_call)
+			tail = '</service></args></service></request>'
+			logon = False
+
+# add argument dictionary items
+		for key, value in arguments:
+# I hate the use of attributes ... why? WHY???
+# HACK - rip out the element from key but (hopefully) leave attributes in place
+			key_element = key.split(" ")[0]
+			xml += "<{0}>{1}</{2}>".format(key, value, key_element)
+# complete the xml
+		xml += tail
+
+# FIXME - very noisy - make it debug level 2?
+# don't print a logon XML post -> it might contain a password
+#		if not logon:
+#			self.log("DEBUG", "Request XML: %s" % xml)
+
+		return xml
+
+#------------------------------------------------------------
+	def _xml_recurse(self, elem):
+		"""
+		Helper method for traversing XML and generating formatted output
+		"""
+		attrib_text = ""
+		for key,value in elem.attrib.iteritems():
+			attrib_text += "%s=%s " % (key,value)
+
+		if len(attrib_text) > 0:
+			print ' '*self.indent + '%s = %s    { %s}' % (elem.tag, elem.text, attrib_text)
+		else:
+			print ' '*self.indent + '%s = %s' % (elem.tag, elem.text)
+
+		self.indent += 4
+		for child in elem.getchildren():
+			self._xml_recurse(child)
+		self.indent -= 4
+
+#------------------------------------------------------------
+	def xml_print(self, xml_tree):
+		"""
+		Helper method for displaying XML nicely, as much as is possible
+		"""
+		self._xml_recurse(xml_tree)
+
+#------------------------------------------------------------
+	def xml_error(self, xml_tree):
+		"""
+		Helper method for extracting the error message (if any) from a Mediaflux XML server response
+		"""
+		error=False
+		message=None
+		for elem in xml_tree.iter():
+			if elem.tag == 'error':
+				error=True
+			if elem.tag == 'message' and error:
+				message = elem.text
+		return message
+
+#------------------------------------------------------------
+	def xml_find(self, xml_tree, tag):
+		"""
+		XML navigation helper as I couldn't get the built in XML method root.find() to work properly
+		"""
+		for elem in xml_tree.iter():
+			if elem.tag == tag:
+				return elem
+		return None
+
+#------------------------------------------------------------
+	def log(self, prefix, message):
+		"""
+		Timestamp based message logging. Intended for developer debugging, not end-user information
+		Useful error message reporting to the user should be returned via exceptions and handled by the client (eg pshell)
+		"""
+		if "DEBUG" in prefix:
+			if not self.debug:
+				return
+		ts = time.time()
+		st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+		message = st + " >>> " + message
+		print "%8s: %s" % (prefix, message)
+
+#------------------------------------------------------------
+	def logout(self):
+		"""
+		NB - system.logoff is currently bugged (mediaflux version 4.3.067) and doesn't actually destroy the session
+		"""
+		self.run("system.logoff")
+		self.session=""
+
+#------------------------------------------------------------
+	def login(self, domain=None, user=None, password=None, token=None):
+		"""
+		Perform authentication to the current Mediaflux server.
+		Can be done in one of two ways:
+						domain, user, password
+						token
+		On success, stores the session ID internally - which is then used for susbsequent Mediaflux service calls
+		"""
+# security check
+		if self.protocol != "https":
+			if self.enforce_encrypted_login:
+				raise Exception("Forbidding unencrypted password post")
+			else:
+				self.log("WARNING", "Permitting unencrypted login; I hope you know what you're doing.")
+
+# attempt token authentication first (if supplied)
+		if token is not None:
+			xml = self._xml_request("system.logon", [("token", token)])
+		else:
+			xml = self._xml_request("system.logon", [("domain", domain), ("user", user), ("password", password)])
+
+		reply = self._post(xml)
+		for elem in reply.iter():
+			if elem.tag == 'session':
+				self.session=elem.text
+				return
+
+		raise Exception("Login failed")
+
+#------------------------------------------------------------
+	def authenticated(self):
+		"""
+		Return a BOOLEAN value depending on the current authentication status of the Mediaflux connection
+		"""
+		try:
+			result = self.run("actor.self.describe")
+			return True
+		except:
+			self.session = ""
+
+		return False
+
+#------------------------------------------------------------
+	def delegate(self, lifetime_days=None, token_length=16):
+		"""
+		Create a secure token that can be used in place of interactive authentication
+		"""
+
+# query current authenticated identity
+		try:
+			result = self.run("actor.self.describe")
+			for elem in result.iter():
+				if elem.tag == 'actor':
+					actor = elem.attrib.get('name', elem.text)
+					i = actor.find(":")
+					domain = actor[0:i]
+					user = actor[i+1:]
+		except:
+			raise Exception("Failed to get valid identity")
+# expiry date (if any)
+		if lifetime_days is None:
+			self.log("DEBUG", "Delegating forever")
+			args = [ ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("min-token-length", 16) ]
+		else:
+			d = datetime.datetime.now() + datetime.timedelta(days=lifetime_days)
+			expiry = d.strftime("%d-%b-%Y %H:%M:%S")
+			self.log("DEBUG", "Delegating until: %s" % expiry)
+			args = [ ("to", expiry), ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("min-token-length", 16) ]
+
+# create secure token (delegate) and assign current authenticated identity to the token
+		result = self.run("secure.identity.token.create", args)
+		for elem in result.iter():
+			if elem.tag == 'token':
+				return elem.text
+
+		raise Exception("Failed to create secure token for current identity")
+
+#------------------------------------------------------------
+	def namespace_exists(self, namespace):
+		"""
+		Wrapper around the generic service call mechanism (for testing namespace existence) that parses the result XML and returns a BOOLEAN
+		"""
+# NB: this service call requires different escaping compared to an asset.query
+		namespace = namespace.replace("'", "\'")
+		xml = self._xml_request("asset.namespace.exists", [("namespace", namespace)])
+		reply = self._post(xml)
+
+		for elem in reply.iter():
+			if elem.tag == "exists":
+				if elem.text == "true":
+					return True
+		return False
+
+#------------------------------------------------------------
+	def get_url(self, asset_id):
+		"""
+		return wget'able url from server for asset
+		"""
+
+		app = "wget"
+		tag = "token-ro"
+		namespace = None
+
+# find root project namespace
+		result = self.run("asset.get", [("id", "%r" % asset_id), ("xpath", "namespace") ])
+		elem = self.xml_find(result, "value")
+		if elem is not None:
+			tmp = elem.text
+			match = re.search(r"/projects/.+/", tmp)
+			if match:
+				namespace = match.group(0)
+		if namespace is None:
+			raise Exception("Failed to find project namespace for asset [%r]" % asset_id)
+
+#		print "namespace: %s" % namespace
+
+# get project token
+		result = self.run("asset.namespace.application.settings.get", [("namespace", namespace), ("app", app)])
+		elem = self.xml_find(result, tag)
+		if elem is not None:
+			token = elem.text
+		else:
+			raise Exception("Failed to retrieve token for project [%s]" % namespace)
+
+# build URL
+		url = self.data_url + "?_token=%s&id=%r" % (token, asset_id)
+
+		return url
+
+#------------------------------------------------------------
+	def get_checksum(self, asset_id):
+		"""
+		return base16 checksum stored on server
+		"""
+		result = self.run("asset.get", [("id", "%r" % asset_id), ("xpath", "content/csum") ])
+		elem = self.xml_find(result, "value")
+		if elem is not None:
+			return elem.text
+
+		raise Exception("Failed to retrieve checksum for asset: %r" % asset_id)
+
+#------------------------------------------------------------
+	def run(self, service_call, argument_tuple_list=[]):
+		"""
+		Generic mechanism for executing a service call on the current Mediaflux server
+
+		Input:
+			       service_call: a STRING representing the named service call
+			argument_tuple_list: a LIST of STRING pairs (name, value) supplying the service call arguments
+			                     If attributes are required, they must be embedded in the name string
+
+		Output:
+			The XML document response from the Mediaflux server
+		"""
+		xml = self._xml_request(service_call, argument_tuple_list)
+		reply = self._post(xml)
+		return reply
+
+#------------------------------------------------------------
+	def get(self, asset_id, filepath, overwrite=False):
+		"""
+		Download an asset to a local filepath
+
+		Input:
+			asset_id: a STRING representing the Mediaflux asset ID on the server
+			filepath: a STRING representing the full path and filename to download the asset content to
+		"""
+# TODO - also get crc? size? 
+		self.log("DEBUG", "Downloading asset [%s] to [%s]" % (asset_id, filepath))
+
+# CURRENT - server returns data as disposition attachment regardless of the argument disposition=attachment
+#		url = self.data_url + "?_skey={0}&id={1}&disposition=attachment".format(self.session, asset_id)
+		url = self.data_url + "?_skey={0}&id={1}".format(self.session, asset_id)
+		req = urllib2.urlopen(url)
+
+# distinguish between file data and mediaflux error message
+		info = req.info()
+# DEBUG
+#		print "get info: %s" % info
+#		print "encoding: " , info.getencoding()
+#		print "type: " , info.gettype()
+
+# TODO - auto overwrite if different? (CRC)
+		if os.path.isfile(filepath) and not overwrite:
+			print "Local file of that name (%s) already exists, skipping." % filepath
+# FIXME - this should lower the expected total_bytes by the size of the file ...
+			req.close()
+			return
+
+# buffered write to open file
+		with open(filepath, 'wb') as output:
+			while True:
+				data = req.read(self.get_buffer)
+				if data:
+					output.write(data)
+# multiprocessing safe byte counter
+					with bytes_recv.get_lock():
+						bytes_recv.value += len(data)
+				else:
+					break
+		output.close()
+
+#------------------------------------------------------------
+	def get_managed(self, list_asset_filepath, total_bytes, processes=2, overwrite=False):
+		"""
+		Managed multiprocessing download of a list of assets from the Mediaflux server. Uses get() as the file transfer primitive
+
+		Input:
+			list_asset_filepath: a LIST of STRING pairs representing the asset ID and local filepath destination
+			        total_bytes: the total bytes to download
+			          processes: the number of processes the multiprocessing manager should use
+			          overwrite: a BOOLEAN indicating what to do if the local filepath exists
+
+		Output:
+			A queryable mf_manager object
+		"""
+
+# shenanigans to enable mfclient method to be called from the global process pool (python can't serialize instance methods)
+		get_alias = functools.partial(get_jump, self)
+
+# CURRENT - default # processes???
+		return mf_manager(function=get_alias, arguments=list_asset_filepath, processes=processes, total_bytes=total_bytes)
+
+#------------------------------------------------------------
+	def put(self, namespace, filepath, overwrite=True):
+		"""
+		Creates a new asset on the Mediaflux server and uploads from a local filepath to supply its content
+
+		Input:
+			namespace: a STRING representing the remote destination in which to create the asset
+			 filepath: a STRING giving the absolute path and name of the local file
+
+		Output:
+			asset_id: an INTEGER representing the mediaflux asset ID
+
+		Raises:
+			An error message if unsuccessful
+		"""
+# construct destination argument
+		filename = os.path.basename(filepath)
+		remotepath = posixpath.join(namespace, filename)
+# NB: CAN'T encase name or namespace with " -> interpreted literally by mediaflux
+		if overwrite is True:
+			xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.set">' % self.session
+			xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
+		else:
+# TODO - test this
+			xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.create">' % self.session
+			xml_string += '<namespace>%s</id></service></args></service></request>' % namespace
+
+# post streaming file content
+		asset_id = self._post_multipart_buffered(xml_string, filepath)
+
+		return asset_id
+
+#------------------------------------------------------------
+	def put_managed(self, list_namespace_filepath, total_bytes=None, processes=4):
+		"""
+		Managed multiprocessing upload of a list of files to the Mediaflux server. Uses put() as the file transfer primitive
+
+		Input:
+			list_namespace_filepath: a LIST of STRING pairs representing the remote namespace destination and the local filepath source
+			            total_bytes: the total bytes to upload
+			              processes: the number of processes the multiprocessing manager should use
+
+		Output:
+			A queryable mf_manager object
+		"""
+
+# CURRENT - require total_bytes to be pre-computed
+# if not supplied - count (potentially a lot slower)
+		if total_bytes is None:
+			total_bytes = 0
+			self.log("DEBUG", "Total upload bytes not supplied, counting...")
+			for namespace, filepath in list_namespace_filepath:
+				try:
+					total_bytes += os.path.getsize(filepath)
+				except:
+# FIXME - this should lower the expected total_bytes by the size of the file ...
+					self.log("WARNING", "Can't read %s, skipping." % filepath)
+
+		self.log("DEBUG", "Total upload bytes: %d" % total_bytes)
+		if total_bytes == 0:
+			raise Exception("Nothing to do")
+
+# shenanigans to enable mfclient method to be called from the global process pool (python can't serialize instance methods)
+		put_alias = functools.partial(put_jump, self)
+
+		return mf_manager(function=put_alias, arguments=list_namespace_filepath, processes=processes, total_bytes=total_bytes)
+
+
+#############################################################
+class mf_manager:
+	"""
+	Multiprocessing file transfer management object. 
+	"""
+
+# a list which is appended to as individual transfers are completed
+	summary = None
+	task = None
+	pool = None
+
+	def __init__(self, function, arguments, processes=1, total_bytes=0):
+		"""
+		Input:
+			   function: the primitive transfer METHOD put() or get() to invoke in transfering a single file
+			  arguments: a LIST of STRING pairs to be supplied to the transfer function primitive
+			  processes: INTEGER number of processes to spawn to deal with the input list 
+			total_bytes: INTEGER size of the transfer, for progress reporting
+
+		Output:
+			manager object which can be queried for progress (see methods below) and final status
+		"""
+		global bytes_sent
+
+# fail if there is already a managed transfer (there can only be one!)
+		if not manage_lock.acquire(block=False):
+			raise TypeError
+# init monitoring
+		self.start_time = time.time()
+
+		bytes_sent.value = 0
+		bytes_recv.value = 0
+		self.summary = []
+		self.bytes_total = total_bytes
+
+# CURRENT - ref:http://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python 
+# force control-C to be ignored by process pool
+		handler = signal.signal(signal.SIGINT, signal.SIG_IGN)	
+# NB: urllib2 and httplib are not thread safe -> use process pool instead of threads
+		self.pool = multiprocessing.Pool(processes)
+# restore control-C 
+		signal.signal(signal.SIGINT, handler)
+
+		self.task = self.pool.map_async(function, arguments, callback=self.summary.extend)
+
+		self.pool.close()
+
+# use this if exception occurred (eg control-C) during transfer to cleanup process pool
+	def cleanup(self):
+		"""
+		Invoke to properly terminate the process pool (eg if user cancels via control-C)
+		"""
+		print "\nCleaning up..."
+		self.pool.terminate()
+		self.pool.join()
+		manage_lock.release()
+
+	def remaining(self):
+		"""
+		Returns the number of transfers still remaining
+		"""
+		return(self.task._number_left)
+
+	def byte_sent_rate(self):
+		"""
+		Returns the upload put() transfer rate
+		"""
+		global bytes_sent
+		elapsed = time.time() - self.start_time
+		rate = bytes_sent.value / elapsed
+		rate /= 1024.0*1024.0
+		return rate
+
+	def byte_recv_rate(self):
+		"""
+		Returns the download get() transfer rate
+		"""
+		global bytes_recv
+		elapsed = time.time() - self.start_time
+		rate = bytes_recv.value / elapsed
+		rate /= 1024.0*1024.0
+		return rate
+
+	def bytes_sent(self):
+		"""
+		Returns the total bytes sent - accumulated across all processes
+		"""
+		global bytes_sent
+		return bytes_sent.value
+
+	def bytes_recv(self):
+		"""
+		Returns the total bytes recieved - accumulated across all processes
+		"""
+		global bytes_recv
+		return bytes_recv.value
+
+	def is_done(self):
+		"""
+		BOOLEAN test for transfer completion
+		"""
+		if self.task.ready():
+			self.pool.join()
+			manage_lock.release()
+			return True
+		return False
