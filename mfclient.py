@@ -36,11 +36,12 @@ bytes_recv = multiprocessing.Value('d', 0, lock=True)
 #------------------------------------------------------------
 def put_jump(mfclient, data):
 	"""
-	global multiprocessing function for concurrent uploading
-	Input:
+	Global multiprocessing function for concurrent uploading
+
+	Args:
 		data: ARRAY of 2 STRINGS which are the arguments for the put() method: (remote namespace, local filepath)
 
-	Output:
+	Returns:
 		triplet of STRINGS (asset_ID/status, 2 input arguments) which will be concatenated on the mf_manager's summary list
 	"""
 
@@ -58,13 +59,13 @@ def put_jump(mfclient, data):
 #------------------------------------------------------------
 def get_jump(mfclient, data):
 	"""
-	global (multiprocessing) function for concurrent downloading
+	Global (multiprocessing) function for concurrent downloading
 
-	Input:
+	Args:
 		data: ARRAY of 2 STRINGS which are the arguments for the get() method: (asset_ID, local filepath)
 
-	Output:
-		triplet of STRINGS (status, 2 input arguments) which will be concatenated on the mf_manager's summary list
+	Returns:
+		A triplet of STRINGS (status, 2 input arguments) which will be concatenated on the mf_manager's summary list
 	"""
 
 	try:
@@ -84,11 +85,12 @@ class mf_client:
 	Parallel transfers should be handled with multiprocessing (urllib2 and httplib are not thread-safe)
 	All unexpected failures are handled by raising exceptions
 	"""
+
 	def __init__(self, protocol, port, server, session="", timeout=5, enforce_encrypted_login=True, debug=False):
 		"""
 		Create a Mediaflux server connection instance. Raises an exception on failure.
 
-		Input:
+		Args:
 			               protocol: a STRING which should be either "http" or "https"
 			                   port: a STRING which is usually "80" or "443"
 			                 server: a STRING giving the FQDN of the server
@@ -97,7 +99,7 @@ class mf_client:
 			enforce_encrypted_login: a BOOLEAN that should only be False on a safe internal dev/test network
 		                          debug: a BOOLEAN which controls output of troubleshooting information 
 
-		Output:
+		Returns:
 			A reachable mediaflux server object that has not been tested for its authentication status
 
 		Raises:
@@ -166,7 +168,6 @@ class mf_client:
 		Primitive file upload method - NOTE - please use post_multipart_buffered instead
 		Sends a multipart POST to the server; consisting of the initial XML and a single attached file
 		"""
-
 # helper
 		def escape_quote(s):
 			return s.replace('"', '\\"')
@@ -320,12 +321,12 @@ class mf_client:
 		""" 
 		Helper method for constructing the XML request to send to the Mediaflux server
 
-		Input:
+		Args:
 			service_call: a STRING representing the Mediaflux service call to run on the server
 			   arguments: a LIST of STRING pairs (name, value) representing the service call's arguments
 			              Note that attributes should currently be embedded in the name string
 
-		Output:
+		Returns:
 			A STRING containing the XML, suitable for sending via post() to the Mediaflux server
 		"""
 # special case for logon
@@ -429,11 +430,14 @@ class mf_client:
 #------------------------------------------------------------
 	def login(self, domain=None, user=None, password=None, token=None):
 		"""
-		Perform authentication to the current Mediaflux server.
-		Can be done in one of two ways:
-						domain, user, password
-						token
-		On success, stores the session ID internally - which is then used for susbsequent Mediaflux service calls
+		Perform authentication to the current Mediaflux server
+
+		Input:
+			domain, user, password: STRINGS specifying user login details
+			token: STRING specifying a delegate credential
+
+		Raises:
+			An error if authentication fails
 		"""
 # security check
 		if self.protocol != "https":
@@ -459,7 +463,10 @@ class mf_client:
 #------------------------------------------------------------
 	def authenticated(self):
 		"""
-		Return a BOOLEAN value depending on the current authentication status of the Mediaflux connection
+		Check client authentication state
+
+		Returns:
+			 A BOOLEAN value depending on the current authentication status of the Mediaflux connection
 		"""
 		try:
 			result = self.run("actor.self.describe")
@@ -473,6 +480,16 @@ class mf_client:
 	def delegate(self, lifetime_days=None, token_length=16):
 		"""
 		Create a secure token that can be used in place of interactive authentication
+
+		Input:
+			lifetime_days: an INTEGER specifying lifetime, or None
+			token_length: the length of the delegate token to create
+
+		Returns:
+			A STRING representing the token
+
+		Raises:
+			An error on failure
 		"""
 
 # query current authenticated identity
@@ -523,7 +540,16 @@ class mf_client:
 #------------------------------------------------------------
 	def get_url(self, asset_id):
 		"""
-		return wget'able url from server for asset
+		Retrieve a wget'able URL from the server
+
+		Input:
+			asset_id: and INTEGER specifying the remote asset
+
+		Returns:
+			A STRING representing a URL which contains an authorizing token 
+
+		Raises:
+			An error on failure
 		"""
 
 		app = "wget"
@@ -559,7 +585,14 @@ class mf_client:
 #------------------------------------------------------------
 	def get_checksum(self, asset_id):
 		"""
-		return base16 checksum stored on server
+		Input:
+			asset_id: an INTEGER specifying the remote asset
+
+		Returns:
+			 The base 16 checksum of the asset on the server
+
+		Raises:
+			An error on failure
 		"""
 		result = self.run("asset.get", [("id", "%r" % asset_id), ("xpath", "content/csum") ])
 		elem = self.xml_find(result, "value")
@@ -573,13 +606,16 @@ class mf_client:
 		"""
 		Generic mechanism for executing a service call on the current Mediaflux server
 
-		Input:
+		Args:
 			       service_call: a STRING representing the named service call
 			argument_tuple_list: a LIST of STRING pairs (name, value) supplying the service call arguments
 			                     If attributes are required, they must be embedded in the name string
 
-		Output:
+		Returns:
 			The XML document response from the Mediaflux server
+
+		Raises:
+			An error on failure
 		"""
 		xml = self._xml_request(service_call, argument_tuple_list)
 		reply = self._post(xml)
@@ -590,11 +626,11 @@ class mf_client:
 		"""
 		Download an asset to a local filepath
 
-		Input:
+		Args:
 			asset_id: a STRING representing the Mediaflux asset ID on the server
 			filepath: a STRING representing the full path and filename to download the asset content to
+			overwrite: a BOOLEAN indicating action if local copy exists
 		"""
-# TODO - also get crc? size? 
 		self.log("DEBUG", "Downloading asset [%s] to [%s]" % (asset_id, filepath))
 
 # CURRENT - server returns data as disposition attachment regardless of the argument disposition=attachment
@@ -611,7 +647,7 @@ class mf_client:
 
 # TODO - auto overwrite if different? (CRC)
 		if os.path.isfile(filepath) and not overwrite:
-			print "Local file of that name (%s) already exists, skipping." % filepath
+			self.log("DEBUG", "Local file of that name (%s) already exists, skipping." % filepath)
 # FIXME - this should lower the expected total_bytes by the size of the file ...
 			req.close()
 			return
@@ -630,24 +666,22 @@ class mf_client:
 		output.close()
 
 #------------------------------------------------------------
-	def get_managed(self, list_asset_filepath, total_bytes, processes=2, overwrite=False):
+	def get_managed(self, list_asset_filepath, total_bytes, processes=2):
 		"""
 		Managed multiprocessing download of a list of assets from the Mediaflux server. Uses get() as the file transfer primitive
 
-		Input:
+		Args:
 			list_asset_filepath: a LIST of STRING pairs representing the asset ID and local filepath destination
 			        total_bytes: the total bytes to download
 			          processes: the number of processes the multiprocessing manager should use
-			          overwrite: a BOOLEAN indicating what to do if the local filepath exists
 
-		Output:
+		Returns:
 			A queryable mf_manager object
 		"""
 
 # shenanigans to enable mfclient method to be called from the global process pool (python can't serialize instance methods)
 		get_alias = functools.partial(get_jump, self)
 
-# CURRENT - default # processes???
 		return mf_manager(function=get_alias, arguments=list_asset_filepath, processes=processes, total_bytes=total_bytes)
 
 #------------------------------------------------------------
@@ -655,11 +689,12 @@ class mf_client:
 		"""
 		Creates a new asset on the Mediaflux server and uploads from a local filepath to supply its content
 
-		Input:
+		Args:
 			namespace: a STRING representing the remote destination in which to create the asset
 			 filepath: a STRING giving the absolute path and name of the local file
+			overwrite: a BOOLEAN indicating action if remote copy exists
 
-		Output:
+		Returns:
 			asset_id: an INTEGER representing the mediaflux asset ID
 
 		Raises:
@@ -672,13 +707,18 @@ class mf_client:
 		if overwrite is True:
 			xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.set">' % self.session
 			xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
+			asset_id = self._post_multipart_buffered(xml_string, filepath)
 		else:
-# TODO - test this
-			xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.create">' % self.session
-			xml_string += '<namespace>%s</id></service></args></service></request>' % namespace
-
-# post streaming file content
-		asset_id = self._post_multipart_buffered(xml_string, filepath)
+# TODO - test this 
+# FIXME - redo to distinguish between failure due to no permission and failure due to file existing (eg parse returned XML)
+			try:
+				xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.create">' % self.session
+				xml_string += '<namespace>%s</id></service></args></service></request>' % namespace
+				asset_id = self._post_multipart_buffered(xml_string, filepath)
+			except:
+				self.log("DEBUG", "File exists? Skipping...")
+# FIXME - should return the existing asset?
+				return None
 
 		return asset_id
 
@@ -687,12 +727,12 @@ class mf_client:
 		"""
 		Managed multiprocessing upload of a list of files to the Mediaflux server. Uses put() as the file transfer primitive
 
-		Input:
+		Args:
 			list_namespace_filepath: a LIST of STRING pairs representing the remote namespace destination and the local filepath source
 			            total_bytes: the total bytes to upload
 			              processes: the number of processes the multiprocessing manager should use
 
-		Output:
+		Returns:
 			A queryable mf_manager object
 		"""
 
@@ -731,13 +771,13 @@ class mf_manager:
 
 	def __init__(self, function, arguments, processes=1, total_bytes=0):
 		"""
-		Input:
+		Args:
 			   function: the primitive transfer METHOD put() or get() to invoke in transfering a single file
 			  arguments: a LIST of STRING pairs to be supplied to the transfer function primitive
 			  processes: INTEGER number of processes to spawn to deal with the input list 
 			total_bytes: INTEGER size of the transfer, for progress reporting
 
-		Output:
+		Returns:
 			manager object which can be queried for progress (see methods below) and final status
 		"""
 		global bytes_sent
