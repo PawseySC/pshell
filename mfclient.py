@@ -408,8 +408,7 @@ class mf_client:
 #------------------------------------------------------------
 	def log(self, prefix, message):
 		"""
-		Timestamp based message logging. Intended for developer debugging, not end-user information
-		Useful error message reporting to the user should be returned via exceptions and handled by the client (eg pshell)
+		Timestamp based message logging.
 		"""
 		if "DEBUG" in prefix:
 			if not self.debug:
@@ -422,7 +421,7 @@ class mf_client:
 #------------------------------------------------------------
 	def logout(self):
 		"""
-		NB - system.logoff is currently bugged (mediaflux version 4.3.067) and doesn't actually destroy the session
+		NOTE: system.logoff is currently bugged (mediaflux version 4.3.067) and doesn't actually destroy the session
 		"""
 		self.run("system.logoff")
 		self.session=""
@@ -430,7 +429,7 @@ class mf_client:
 #------------------------------------------------------------
 	def login(self, domain=None, user=None, password=None, token=None):
 		"""
-		Perform authentication to the current Mediaflux server
+		Authenticate to the current Mediaflux server and record the session ID on success
 
 		Input:
 			domain, user, password: STRINGS specifying user login details
@@ -561,7 +560,7 @@ class mf_client:
 		elem = self.xml_find(result, "value")
 		if elem is not None:
 			tmp = elem.text
-			match = re.search(r"/projects/.+/", tmp)
+			match = re.search(r"/projects/[^/]+", tmp)
 			if match:
 				namespace = match.group(0)
 		if namespace is None:
@@ -627,12 +626,10 @@ class mf_client:
 		Download an asset to a local filepath
 
 		Args:
-			asset_id: a STRING representing the Mediaflux asset ID on the server
+			asset_id: an INTEGER representing the Mediaflux asset ID on the server
 			filepath: a STRING representing the full path and filename to download the asset content to
 			overwrite: a BOOLEAN indicating action if local copy exists
 		"""
-		self.log("DEBUG", "Downloading asset [%s] to [%s]" % (asset_id, filepath))
-
 # CURRENT - server returns data as disposition attachment regardless of the argument disposition=attachment
 #		url = self.data_url + "?_skey={0}&id={1}&disposition=attachment".format(self.session, asset_id)
 		url = self.data_url + "?_skey={0}&id={1}".format(self.session, asset_id)
@@ -671,7 +668,7 @@ class mf_client:
 		Managed multiprocessing download of a list of assets from the Mediaflux server. Uses get() as the file transfer primitive
 
 		Args:
-			list_asset_filepath: a LIST of STRING pairs representing the asset ID and local filepath destination
+			list_asset_filepath: a LIST of pairs representing the asset ID and local filepath destination
 			        total_bytes: the total bytes to download
 			          processes: the number of processes the multiprocessing manager should use
 
