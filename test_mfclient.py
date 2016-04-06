@@ -64,9 +64,8 @@ class mfclient_test(unittest.TestCase):
 # TEST - retrieve wget'able URL from the server for a single asset
 #	@unittest.skip("skip")
 	def test_wget_url(self):
+		global namespace
 		print "\n--upload and obtain a retrievable URL"
-
-		namespace = "/projects/Data Team"
 
 		local_filepath = os.path.realpath(__file__) 
 		remote_namespace = namespace + "/myfiles"
@@ -76,6 +75,7 @@ class mfclient_test(unittest.TestCase):
 
 		url = self.mf_client.get_url(asset_id)
 		self.mf_client.log("TEST", "Generated URL: \"%s\"" % url)
+# NB: this is not a proper test I think as if access is insufficient - it will still return data (eg a mediaflux error message saying permission denied)
 		req = urllib2.urlopen(url)
 		code = req.getcode()
 		self.assertEqual(code, 200, "Did not receive OK from server")
@@ -85,9 +85,10 @@ class mfclient_test(unittest.TestCase):
 # TEST - upload this script (we know it exists) then download and compare
 #	@unittest.skip("skip")
 	def test_transfers(self):
+		global namespace
 		print "\n--upload/download with checksum test"
 		tmp_local = "/tmp"
-		tmp_remote = "/projects/Data Team/tmp"
+		tmp_remote = namespace + "/tmp"
 # remote setup
 		self.assertFalse(self.mf_client.namespace_exists(tmp_remote), "Temporary namespace already exists on server")
 		self.mf_client.run("asset.namespace.create", [("namespace", tmp_remote)])
@@ -119,9 +120,10 @@ class mfclient_test(unittest.TestCase):
 # TEST -  managed transfers
 	@unittest.skip("skip")
 	def test_mp_transfers(self):
+		global namespace
 		print "\n--managed upload/download"
 		tmp_local = "/tmp"
-		tmp_remote = "/projects/Data Team/tmp"
+		tmp_remote = namespace + "/tmp"
 		file_count = 100
 
 # setup - NB: we want to FAIL if /tmp exists on mediaflux, so we don't hose it on the off chance it's used
@@ -195,8 +197,9 @@ class mfclient_test(unittest.TestCase):
 if __name__ == '__main__':
 # server config (option heading) to use
 #	current = 'dev'
-	current = 'test'
-#	current = 'pawsey'
+#	current = 'test'
+	current = 'pawsey'
+	namespace = "/projects/GLEAM"
 
 # use config if exists, else create a dummy one
 	config = ConfigParser.ConfigParser()

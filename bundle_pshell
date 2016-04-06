@@ -1,0 +1,7 @@
+cp pshell.py __main__.py
+zip pshell.zip __main__.py mfclient.py
+echo "#!/usr/bin/env python2.7" > pshell
+cat pshell.zip >> pshell
+chmod u+x pshell
+rm pshell.zip
+rm __main__.py
