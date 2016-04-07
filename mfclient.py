@@ -302,10 +302,10 @@ class mf_client:
 		conn.close()
 		tree = xml_processor.fromstring(reply)
 
-# FIXME - not catching errors properly here ... eg asset exists
+# pass through server errors
 		error = self.xml_error(tree)
 		if error:
-			raise Exception("Error from server: %s" % error)
+			raise Exception(error)
 
 		self.log("DEBUG", "[pid=%d] Completed" % pid)
 
@@ -314,7 +314,7 @@ class mf_client:
 			if elem.tag == 'id':
 				return int(elem.text)
 
-		return "Failed"
+		raise Exception("Server response did not contain an asset ID")
 
 #------------------------------------------------------------
 	def _xml_request(self, service_call, arguments):
@@ -706,18 +706,11 @@ class mf_client:
 		if overwrite is True:
 			xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.set">' % self.session
 			xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
-			asset_id = self._post_multipart_buffered(xml_string, filepath)
 		else:
-# TODO - test this 
-# FIXME - redo to distinguish between failure due to no permission and failure due to file existing (eg parse returned XML)
-			try:
-				xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.create">' % self.session
-				xml_string += '<namespace>%s</id></service></args></service></request>' % namespace
-				asset_id = self._post_multipart_buffered(xml_string, filepath)
-			except:
-				self.log("DEBUG", "File exists? Skipping...")
-# FIXME - should return the existing asset?
-				return None
+			xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.create">' % self.session
+			xml_string += '<namespace>%s</namespace><name>%s</name></service></args></service></request>' % (namespace, filename)
+
+		asset_id = self._post_multipart_buffered(xml_string, filepath)
 
 		return asset_id
 

@@ -29,12 +29,12 @@ class mfclient_test(unittest.TestCase):
 	def test_service_call(self):
 		print "\n--service call"
 		result = self.mf_client.run("actor.self.describe")
-#		self.mf_client.xml_print(result)
 		found = False
 		for elem in result.iter():
 			if elem.tag == "actor":
 				found = True
 		self.assertTrue(found, "Expected to get <actor> element back from actor.self.describe")
+		self.mf_client.log("PASS", "%s" % elem.text)
 
 
 # TEST: basic execution of a mediaflux service call with argument 
@@ -45,20 +45,39 @@ class mfclient_test(unittest.TestCase):
 		for elem in result.iter():
 			if elem.tag == "exists":
 				self.assertEqual(elem.text, "true", "Expected directory /mflux to exist on server")
+		self.mf_client.log("PASS", "%s" % elem.text)
 
 
 # TEST - service call with arguments and attribute
 #	@unittest.skip("skip")
 	def test_service_call_complex(self):
 		print "\n--service call with arguments, attribute and special character (ampersand)"
-# aterm equivalent = asset.query :where "namespace>='/'" :size 1 :action get-values :xpath "id" -ename "code"
 		result = self.mf_client.run("asset.query", [ ("where", "namespace&gt;='/'"), ("size", "1"), ("action", "get-values"), ("xpath ename=\"code\"", "id") ])
-#		self.mf_client.xml_print(result)
 		found = False
 		for elem in result.iter():
 			if elem.tag == "code":
 				found = True
 		self.assertTrue(found, "Expected to get <code> element back from asset.query results")
+		self.mf_client.log("PASS", "%s" % elem.text)
+
+
+# TEST - login failure with manual login
+	def test_manual_login_failure(self):
+		print "\n--manual login failure--"
+		try:
+			result = self.mf_client.login("ivec", "sean", "badpassword")
+			raise Exception("FAIL: login command should not succeed")
+		except Exception as e:
+			self.mf_client.log("PASS", str(e))
+
+# TEST - login failure with token
+	def test_token_login_failure(self):
+		print "\n--token login failure--"
+		try:
+			result = self.mf_client.login(token="abadtoken")
+			raise Exception("FAIL: token login should not succeed")
+		except Exception as e:
+			self.mf_client.log("PASS", str(e))
 
 
 # TEST - retrieve wget'able URL from the server for a single asset
@@ -79,7 +98,7 @@ class mfclient_test(unittest.TestCase):
 		req = urllib2.urlopen(url)
 		code = req.getcode()
 		self.assertEqual(code, 200, "Did not receive OK from server")
-		self.mf_client.log("TEST", "Open URL status code: %r (OK)" % code)
+		self.mf_client.log("PASS", "Open URL status code: %r (OK)" % code)
 
 
 # TEST - upload this script (we know it exists) then download and compare
@@ -107,17 +126,56 @@ class mfclient_test(unittest.TestCase):
 		buff = open(__file__,'rb').read()
 		local_csum = (binascii.crc32(buff) & 0xFFFFFFFF)
 		remote_csum = self.mf_client.get_checksum(asset_id)
-		self.mf_client.log("TEST", " Local checksum: %0x" % int(local_csum))
+		self.mf_client.log("TEST", " Local checksum: %0X" % int(local_csum))
 		self.mf_client.log("TEST", "Remote checksum: %r" % remote_csum)
 # assert checksums are identical
 		self.assertEqual(int(local_csum), int(remote_csum, 16), "Source file crc32 (%r) does not match after transfers (%r)" % (local_csum, remote_csum))
+		self.mf_client.log("PASS", "Match")
 # cleanup
 		self.mf_client.run("asset.destroy", [("id", asset_id)])
 		self.mf_client.run("asset.namespace.destroy", [("namespace", tmp_remote)])
 		os.remove(dest_filepath)
 
 
+	def test_no_overwrite_put(self):
+		global namespace
+		print "\n--upload with no overwrite allowed"
+		tmp_remote = namespace + "/tmp"
+# remote setup
+		self.assertFalse(self.mf_client.namespace_exists(tmp_remote), "Temporary namespace already exists on server")
+		self.mf_client.run("asset.namespace.create", [("namespace", tmp_remote)])
+# local upload
+		src_filepath = os.path.realpath(__file__) 
+		self.mf_client.log("TEST", "1 Uploading file [%s] to namespace [%s]" % (src_filepath, tmp_remote))
+		asset_id = self.mf_client.put(tmp_remote, src_filepath, overwrite=False)
+		self.mf_client.log("TEST", "2 Uploading file [%s] to namespace [%s]" % (src_filepath, tmp_remote))
+# failure test
+		try:
+			asset_id = self.mf_client.put(tmp_remote, src_filepath, overwrite=False)
+			raise Exception("FAIL: put() should not overwrite!")
+		except Exception as e:
+			self.mf_client.log("PASS", str(e))
+# cleanup
+		self.mf_client.run("asset.destroy", [("id", asset_id)])
+		self.mf_client.run("asset.namespace.destroy", [("namespace", tmp_remote)])
+
+
+# NOTE: this test will fail if you auth as system manager - which has root permissions
+	def test_no_permission_put(self):
+		print "\n--upload with permission fail"
+		tmp_remote = "/www"
+# local upload
+		src_filepath = os.path.realpath(__file__) 
+		self.mf_client.log("TEST", "Uploading file [%s] to namespace [%s]" % (src_filepath, tmp_remote))
+		try:
+			asset_id = self.mf_client.put(tmp_remote, src_filepath)
+			raise Exception("Expected no permission put() to fail!")
+		except Exception as e:
+			self.mf_client.log("PASS", str(e))
+
+
 # TEST -  managed transfers
+# FIXME - is this interfering with the other tests??? multiprocess issues???
 	@unittest.skip("skip")
 	def test_mp_transfers(self):
 		global namespace
@@ -128,7 +186,6 @@ class mfclient_test(unittest.TestCase):
 
 # setup - NB: we want to FAIL if /tmp exists on mediaflux, so we don't hose it on the off chance it's used
 		self.mf_client.run("asset.namespace.create", [("namespace", tmp_remote)])
-
 		self.mf_client.log("TEST", "Uploading %s files to remote namespace [%s]\n" % (file_count, tmp_remote))
 
 # create some files
@@ -137,7 +194,7 @@ class mfclient_test(unittest.TestCase):
 		for i in range(1, file_count):
 			filepath = os.path.join(tmp_local, "dummy_%02d" % i)
 			shutil.copyfile(os.path.realpath(__file__), filepath)
-			list_namespace_filepath.append([tmp_local, filepath])
+			list_namespace_filepath.append([tmp_remote, filepath])
 			total_bytes += os.path.getsize(filepath)
 
 # NB: upload - this will typically happen too fast for progress monitoring
@@ -197,9 +254,10 @@ class mfclient_test(unittest.TestCase):
 if __name__ == '__main__':
 # server config (option heading) to use
 #	current = 'dev'
-#	current = 'test'
-	current = 'pawsey'
-	namespace = "/projects/GLEAM"
+	current = 'test'
+#	current = 'pawsey'
+#	namespace = "/projects/GLEAM"
+	namespace = "/projects/Data Team"
 
 # use config if exists, else create a dummy one
 	config = ConfigParser.ConfigParser()
@@ -232,6 +290,7 @@ if __name__ == '__main__':
 	mf_client = mfclient.mf_client(config.get(current, 'protocol'), config.get(current, 'port'), config.get(current, 'server'), debug=False, enforce_encrypted_login=False)
 
 # re-use existing delegate 
+	print "\n--mfclient config setup"
 	if config.has_option(current, 'token'):
 
 		mf_client.log("TEST", "Re-using delegate")

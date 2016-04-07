@@ -13,7 +13,12 @@ import datetime
 import ConfigParser
 import mfclient
 import posixpath
-import readline
+
+# no readline on windows
+try:
+	import readline
+except:
+	pass
 
 
 # standard lib python command line client for mediaflux
@@ -1064,10 +1069,11 @@ def main():
 # CURRENT - TAB completion
 # this works for OS-X
 # NOTE - no readline in Windows ...
-	readline.parse_and_bind("bind ^I rl_complete")
-# bugged on OS-X (needed for linux/windows?)
-	readline.parse_and_bind("tab: complete")
-
+	try:
+		readline.parse_and_bind("bind ^I rl_complete")
+		readline.parse_and_bind("tab: complete")
+	except:
+		mf_client.log("WARNING", "No readline module available")
 
 # CURRENT
 	if http_available:
