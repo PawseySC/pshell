@@ -502,17 +502,21 @@ class mf_client:
 					i = actor.find(":")
 					domain = actor[0:i]
 					user = actor[i+1:]
-		except:
+		except Exception as e:
+# NB: on test server -> max license error will fail here on 1st time setup
+			self.log("ERROR", str(e))
 			raise Exception("Failed to get valid identity")
+
+# FIXME - mediaflux seems to be ignoring the max-token-length value
 # expiry date (if any)
 		if lifetime_days is None:
 			self.log("DEBUG", "Delegating forever")
-			args = [ ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("min-token-length", 16) ]
+			args = [ ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("max-token-length", token_length) ]
 		else:
 			d = datetime.datetime.now() + datetime.timedelta(days=lifetime_days)
 			expiry = d.strftime("%d-%b-%Y %H:%M:%S")
 			self.log("DEBUG", "Delegating until: %s" % expiry)
-			args = [ ("to", expiry), ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("min-token-length", 16) ]
+			args = [ ("to", expiry), ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("max-token-length", token_length) ]
 
 # create secure token (delegate) and assign current authenticated identity to the token
 		result = self.run("secure.identity.token.create", args)
@@ -631,6 +635,9 @@ class mf_client:
 			asset_id: an INTEGER representing the Mediaflux asset ID on the server
 			filepath: a STRING representing the full path and filename to download the asset content to
 			overwrite: a BOOLEAN indicating action if local copy exists
+
+		Raises:
+			An error on failure
 		"""
 # CURRENT - server returns data as disposition attachment regardless of the argument disposition=attachment
 #		url = self.data_url + "?_skey={0}&id={1}&disposition=attachment".format(self.session, asset_id)

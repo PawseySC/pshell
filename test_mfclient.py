@@ -252,64 +252,65 @@ class mfclient_test(unittest.TestCase):
 
 
 if __name__ == '__main__':
-# server config (option heading) to use
-#	current = 'dev'
-	current = 'test'
-#	current = 'pawsey'
-#	namespace = "/projects/GLEAM"
-	namespace = "/projects/Data Team"
 
 # use config if exists, else create a dummy one
 	config = ConfigParser.ConfigParser()
-	config_home = os.path.expanduser("~")
-	config_filepath = os.path.join(config_home, ".mf_config")
+	config_filepath = os.path.join(os.path.expanduser("~"), ".mf_config")
 	config_table = config.read(config_filepath)
 
+# default config values
+	current = 'test'
+	server = 'mediaflux.org.au'
+	protocol = 'https'
+	port = '443'
+	domain = 'home'
+# NB: this should be a mediaflux namespace where you're allowed to read/write
+	namespace = "/remote/namespace"
+	session = ""
+
+# parse config
 	if not config.has_section(current):
-		print "Creating config file: %s" % config_filepath
+		print "Creating section [%s] in config file: %s" % (current, config_filepath)
 		config.add_section(current)
-		if 'pawsey' in current:
-			config.set(current, 'server', 'data.pawsey.org.au')
-			config.set(current, 'protocol', 'https')
-			config.set(current, 'port', '443')
-		elif 'test' in current:
-			config.set(current, 'server', '146.118.74.12')
-			config.set(current, 'protocol', 'http')
-			config.set(current, 'port', '80')
-		else:
-			print "No information on server: %s" % current
-			exit(-1)
-# common
-		config.set(current, 'domain', 'ivec')
-		config.set(current, 'session', '')
+		config.set(current, 'server', server)
+		config.set(current, 'protocol', protocol)
+		config.set(current, 'port', port)
+		config.set(current, 'domain', domain)
+		config.set(current, 'namespace', namespace)
 		f = open(config_filepath, "w")
 		config.write(f)
 		f.close()
+		print "Please edit config file, then re-run this file"
+		exit(0)
+	else:
+# these must be present and configured
+		server = config.get(current, 'server')
+		protocol = config.get(current, 'protocol')
+		port = config.get(current, 'port')
+		domain = config.get(current, 'domain')
+		namespace = config.get(current, 'namespace')
+# generated again (below) if required
+		try:
+			session = config.get(current, 'session')
+		except:
+			pass
 
 # acquire a reusable authenticated mediaflux connection
-	mf_client = mfclient.mf_client(config.get(current, 'protocol'), config.get(current, 'port'), config.get(current, 'server'), debug=False, enforce_encrypted_login=False)
+	mf_client = mfclient.mf_client(config.get(current, 'protocol'), config.get(current, 'port'), config.get(current, 'server'), debug=True, enforce_encrypted_login=False)
 
-# re-use existing delegate 
-	print "\n--mfclient config setup"
-	if config.has_option(current, 'token'):
-
-		mf_client.log("TEST", "Re-using delegate")
-		token = config.get(current, 'token')
-		try:
-			mf_client.login(token=config.get(current, 'token'))
-		except:
-			print "Error, bad token: %r" % token
-			exit(-1)
-	else:
-		mf_client.log("TEST", "First time setup")
-		print "Domain: %s" % config.get(current, 'domain')
+# re-use existing session 
+	if not mf_client.authenticated():
+		mf_client.log("TEST", "Logging in to %s:%s" % (server, port))
+		print "Domain: %s" % domain
 		user = raw_input("Username: ")
 		password = getpass.getpass("Password: ")
-		mf_client.login(domain=config.get(current, 'domain'), user=user, password=password)
-# create delegate and save
-		mf_client.log("TEST", "Creating re-usable delegate")
-		token = mf_client.delegate()
-		config.set(current, 'token', token)
+		try:
+			mf_client.login(domain=domain, user=user, password=password)
+		except Exception as e:
+			print str(e)
+			exit(-1)
+# save session
+		config.set(current, 'session', mf_client.session)
 		f = open(config_filepath, "w")
 		config.write(f)
 		f.close()

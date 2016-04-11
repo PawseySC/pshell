@@ -1,24 +1,31 @@
 # README #
 
-mfclient.py a basic mediaflux client library
+mfclient.py a basic Mediaflux client library
 
 owner: Sean Fleming (sean.fleming@pawsey.org.au)
 
-* Thin client for interacting with a MediaFlux server
-* Requires only python 2.7 and standard libs
+* Thin client library for interacting with a Mediaflux server
+* Requires Python 2.7
+
 
 ### How do I get set up? ###
 
-* Summary of set up
-* Configuration
-* Dependencies
-* Database configuration
-* How to run tests
-* Deployment instructions
+Simply import the mfclient module in your code to start developing a client that can communicate with a Mediaflux server.
+
+
+### How do I run the tests? ###
+
+The test_mfclient.py code serves as a basic example of how to use the mfclient module.
+
+Run it once to generate a template file ~/.mf_config which you will need to edit to suit your Mediaflux server.
+
+Run it again to execute the basic test suite.
 
 
 ### Command line clients - under development ###
 
-ashell2.py - python only version of ashell.py + aterm.jar
-pshell.py - python only command line client with SFTP syntax
+pshell.py - python only command line client 
+
+* Tab completion
+* SFTP-like syntax
 
