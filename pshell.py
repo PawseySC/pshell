@@ -234,7 +234,7 @@ class parser(cmd.Cmd):
 			try:
 				ns_list = self.complete_asset(line[3:end_index], start_index-3)
 			except Exception as e:
-				print "Error: %s" % str(e)
+				print str(e)
 		self.mf_client.debug = save_state
 		return ns_list
 
@@ -249,19 +249,11 @@ class parser(cmd.Cmd):
 
 # ---
 	def complete_rmdir(self, text, line, start_index, end_index):
+# FIXME - this is currently not working ... strange as complete_cd is working ... and it's the same code
 # turn off DEBUG -> gets in the way of commandline completion
 		save_state = self.mf_client.debug
 		self.mf_client.debug = False
-
-#		result = self.mf_client.run("asset.namespace.list", [("namespace", self.cwd)])
-#		ns_list = []
-#		for elem in result.iter('namespace'):
-#			if elem.text is not None:
-#				if elem.text.startswith(text):
-#					ns_list.append(elem.text)
-
-		ns_list = self.complete_namespace(line[3:end_index], start_index-3)
-
+		ns_list = self.complete_namespace(line[6:end_index], start_index-6)
 		self.mf_client.debug = save_state
 		return ns_list
 
@@ -496,7 +488,7 @@ class parser(cmd.Cmd):
 # this requires different escaping to an asset.query
 #		if self.mf_client.namespace_exists(candidate):
 		if self.mf_client.namespace_exists(line):
-			print "is Namespace = True"
+#			print "is Namespace = True"
 
 # NB: for some reason this query won't allow a get-value on path, which is exactly what we want => construct manually
 			result = self.mf_client.run("asset.query", [("where", "namespace &gt;='%s'" % candidate), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"namespace\"", "namespace"), ("xpath ename=\"filename\"", "name"), ("xpath ename=\"size\"", "content/size") ])
@@ -921,7 +913,6 @@ class parser(cmd.Cmd):
 				self.config.write(f)
 				f.close()
 
-
 # --
 	def help_quit(self):
 		print "Exit without terminating the session\n"
@@ -943,8 +934,7 @@ class parser(cmd.Cmd):
 				print "Interrupted, cleaning up     "
 				continue
 			except Exception as e:
-				print "Error: %s" % str(e)
-
+				print str(e)
 
 def main():
 
@@ -1089,7 +1079,7 @@ def main():
 					print "input> %s" % line
 					my_parser.onecmd(line)
 				except Exception as e:
-					print "Error: %s" % str(e)
+					print str(e)
 					exit(-1)
 	else:
 		print("Welcome to pshell, type 'help' for a list of commands")
