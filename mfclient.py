@@ -49,7 +49,7 @@ def put_jump(mfclient, data):
 		mfclient.log("DEBUG", "[pid=%d] put_jump(%s,%s)" % (os.getpid(), data[0], data[1]))
 		asset_id = mfclient.put(data[0], data[1])
 	except Exception as e:
-		mfclient.log("ERROR", "[pid=%d] put_jump(): %s" % (os.getpid(), str(e)))
+		mfclient.log("ERROR", "[pid=%d] put_jump(%s): %s" % (os.getpid(), data[1], str(e)))
 # TODO - parse Exception and return condensed error message instead of fail
 # NB: return form should be suitable for retry of this transfer primitive
 		return ("Fail", data[0], data[1])
@@ -204,9 +204,6 @@ class mf_client:
 		"""
 		global bytes_sent
 
-		def escape_quote(s):
-			return s.replace('"', '\\"')
-
 # mediaflux seems to have random periods of unresponsiveness - particularly around final ACK of transfer
 		retry_count = 9
 
@@ -214,17 +211,33 @@ class mf_client:
 		pid = os.getpid()
 		boundary = ''.join(random.choice(string.digits + string.ascii_letters) for i in range(30))
 		filename = os.path.basename(filepath)
-		mimetype = mimetypes.guess_type(filepath) or 'application/octet-stream'
-		lines = []
+
+# FIXME - this is not always correctly falling back
+# CURRENT - interestingly, the file for which this fails is the one getting the internal server error (multipart for error: unexpected end)
+#		mimetype = mimetypes.guess_type(filepath) or 'application/octet-stream'
+		mimetype = mimetypes.guess_type(filepath)
+		if None in mimetype:
+			mimetype = 'application/octet-stream'
 
 # multipart - request xml and file
-       		lines.extend(( '--{0}'.format(boundary), 'Content-Disposition: form-data; name="request"', '', str(xml),))
-		lines.extend(( '--{0}'.format(boundary), 'Content-Disposition: form-data; name="filename"; filename="{0}"'.format(escape_quote(filename)), 'Content-Type: {0}'.format(mimetype), '', '' ))
-
+		lines = []
+       		lines.extend(( '--%s' % boundary, 'Content-Disposition: form-data; name="request"', '', str(xml),))
+		lines.extend(( '--%s' % boundary, 'Content-Disposition: form-data; name="filename"; filename="%s"' % filename, 'Content-Type: %s' % mimetype, '', '' ))
 		body = '\r\n'.join(lines)
+
 # NB - should include everything AFTER the first /r/n after the headers
-		total_size = len(body) + os.path.getsize(filepath) + len(boundary) + 6
+#		total_size = len(body) + os.path.getsize(filepath) + len(boundary) + 6
+		total_size = len(body) + os.path.getsize(filepath) + len(boundary) + 8
+
 		infile = open(filepath, 'rb')
+
+# DEBUG
+#		print "body size = %r" % len(body)
+#		print "file size = %r" % os.path.getsize(filepath)
+#		print "term size = %r" % (len(boundary) + 6)
+#		print "================="
+#		print "Total size = %r" % total_size
+#		print "================="
 
 # different connection object for HTTPS vs HTTP
 		if self.protocol == 'https':
@@ -236,11 +249,14 @@ class mf_client:
 		self.log("DEBUG", "[pid=%d] File send starting: %s" % (pid, filepath))
 		conn.putrequest('POST', "/__mflux_svc__")
 # headers
-		conn.putheader('User-Agent', 'python')
+		conn.putheader('User-Agent', 'Python/2.7')
 		conn.putheader('Connection', 'keep-alive')
 		conn.putheader('Cache-Control', 'no-cache')
 		conn.putheader('Content-Length', str(total_size))
-		conn.putheader('Content-Type', 'multipart/form-data; boundary={0}'.format(boundary))
+		conn.putheader('Content-Type', 'multipart/form-data; boundary=%s' % boundary)
+# CURRENT - is this needed?
+		conn.putheader('Content-Transfer-Encoding', 'binary')
+
 		conn.endheaders()
 
 # data start
@@ -261,7 +277,7 @@ class mf_client:
 						break
 					except Exception as e:
 						i = i+1
-						if i == retry_count:
+						if i < retry_count:
 							self.log("WARNING", "[pid=%d] Chunk send error [count=%d] : %s" % (pid, i, str(e)))
 							can_recover = False
 							break
@@ -274,12 +290,15 @@ class mf_client:
 			self.log("ERROR", "[pid=%d] Fatal send error : %s" % (pid, str(e)))
 			raise
 
+# CURRENT - the extra \r\n is what seemed to fix the funky binary file upload ...
 # terminating line (len(boundary) + 6)
-		chunk = '--{0}--\r\n'.format(boundary)
+#		chunk = "--%s--\r\n" % boundary
+		chunk = "\r\n--%s--\r\n" % boundary
+
 		chunk = conn.send(chunk)
+
 		self.log("DEBUG", "[pid=%d] File send complete, waiting for server..." % pid)
 
-# server response
 # NOTE - here is where the timeouts frequently (on large unknown files) seem to occur
 		mf_ack = False
 		for i in range(0,retry_count):
@@ -288,21 +307,27 @@ class mf_client:
 				mf_ack = True
 				break
 			except:
-				self.log("WARNING", "[pid=%d] No response from server, trying again..." % pid)
+				self.log("WARNING", "[pid=%d] No response from server [count=%d] trying again..." % (pid, i))
+# NEW - give the server some time...
+				time.sleep(self.timeout)
 
 		if mf_ack is False:
 			raise Exception("Timeout on final server ACK")
 
 # connection status overview 
+		reply = resp.read()
+		conn.close()
+
+# check for bad connection close (unexpected end of stream etc)
+		if "OK" not in resp.reason:
+			self.log("ERROR", "[pid=%d] Full server reply: %s" % (pid, reply))
+			raise Exception(resp.reason)
+
 		self.log("DEBUG", "[pid=%d] Final connection status: %s" % (pid, resp.reason))
 #		self.log("DEBUG", "[pid=%d] final connection message: \n%s\n" % (pid, resp.msg))
 
-# get the mediaflux XML response
-		reply = resp.read()
-		conn.close()
+# check for mediaflux errors (eg no permission/quota exceeded)
 		tree = xml_processor.fromstring(reply)
-
-# pass through server errors
 		error = self.xml_error(tree)
 		if error:
 			raise Exception(error)
@@ -315,6 +340,18 @@ class mf_client:
 				return int(elem.text)
 
 		raise Exception("Server response did not contain an asset ID")
+
+#------------------------------------------------------------
+	def _xml_sanitise(self, text):
+		"""
+		Helper method to sanitise text for the server XML parsing routines
+		"""
+		if isinstance(text, str):
+			text = text.replace('&', "&amp;")
+			text = text.replace('<', "&lt;")
+			text = text.replace('>', "&gt;")
+			text = text.replace('"', "&quot;")
+		return text
 
 #------------------------------------------------------------
 	def _xml_request(self, service_call, arguments):
@@ -344,14 +381,18 @@ class mf_client:
 # I hate the use of attributes ... why? WHY???
 # HACK - rip out the element from key but (hopefully) leave attributes in place
 			key_element = key.split(" ")[0]
+
+			value = self._xml_sanitise(value)
+
 			xml += "<{0}>{1}</{2}>".format(key, value, key_element)
+
 # complete the xml
 		xml += tail
 
 # FIXME - very noisy - make it debug level 2?
 # don't print a logon XML post -> it might contain a password
-#		if not logon:
-#			self.log("DEBUG", "Request XML: %s" % xml)
+		if not logon:
+			self.log("DEBUG", "Request XML: %s" % xml)
 
 		return xml
 
@@ -708,6 +749,7 @@ class mf_client:
 		"""
 # construct destination argument
 		filename = os.path.basename(filepath)
+		filename = self._xml_sanitise(filename)
 		remotepath = posixpath.join(namespace, filename)
 # NB: CAN'T encase name or namespace with " -> interpreted literally by mediaflux
 		if overwrite is True:

@@ -622,8 +622,15 @@ class parser(cmd.Cmd):
 #		for dest,src in upload_list:
 #			print "put: %s -> %s" % (src, dest)
 #		return
+#		manager = self.mf_client.put_managed(upload_list)
 
-		manager = self.mf_client.put_managed(upload_list)
+		if self.mf_fast:
+			print "Switching to HTTP"
+			self.mf_fast.session = self.mf_client.session
+			manager = self.mf_fast.put_managed(upload_list)
+		else:
+			manager = self.mf_client.put_managed(upload_list)
+
 
 		try:
 			while True:
@@ -945,7 +952,14 @@ def main():
 
 # use config if exists, else create a dummy one
 	config = ConfigParser.ConfigParser()
+
+# hydrographic NAS box gives a dud path for this
+# NEW - test readwrite and if fail -> use CWD
 	config_filepath = os.path.expanduser("~/.mf_config")
+	if not os.access(config_filepath, os.W_OK):
+		print "Funky environment - fallback to current directory for config"
+		config_filepath = os.path.join(os.getcwd(), ".mf_config")
+
 	config.read(config_filepath)
 
 	encrypt = True
@@ -997,18 +1011,18 @@ def main():
 # test http connection (data only) and don't send any session info
 	http_available = False
 	if protocol == "https":
-		try:
+		print "trying"
+		try:	
 			mf_fast = mfclient.mf_client(protocol="http", port=80, server=server, session="", enforce_encrypted_login=encrypt, debug=debug)
-			if mf_fast.can_connect:
-				try:	
-					result = mf_fast.run("actor.self.describe")
+# FIXME - do a public login to check instead?
+			result = mf_fast.run("actor.self.describe")
 # TODO - strictly, should look at result
-					http_available = True
-				except Exception as e:
-					if "session is not valid" in str(e):
-						http_available = True
-		except:
-			pass
+			http_available = True
+		except Exception as e:
+			print str(e)
+			if "session is not valid" in str(e):
+				print "Looks good"
+				http_available = True
 
 
 # FIXME - need to deal with config parse inconsistency here

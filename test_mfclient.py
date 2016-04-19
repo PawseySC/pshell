@@ -52,7 +52,8 @@ class mfclient_test(unittest.TestCase):
 #	@unittest.skip("skip")
 	def test_service_call_complex(self):
 		print "\n--service call with arguments, attribute and special character (ampersand)"
-		result = self.mf_client.run("asset.query", [ ("where", "namespace&gt;='/'"), ("size", "1"), ("action", "get-values"), ("xpath ename=\"code\"", "id") ])
+#		result = self.mf_client.run("asset.query", [ ("where", "namespace&gt;='/'"), ("size", "1"), ("action", "get-values"), ("xpath ename=\"code\"", "id") ])
+		result = self.mf_client.run("asset.query", [ ("where", "namespace>='/'"), ("size", "1"), ("action", "get-values"), ("xpath ename=\"code\"", "id") ])
 		found = False
 		for elem in result.iter():
 			if elem.tag == "code":
