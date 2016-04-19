@@ -481,120 +481,116 @@ class parser(cmd.Cmd):
 
 		self.mf_client.log("DEBUG", "do_get(): namespace=[%s] , asset_query=[%s] , candidate_namespace=[%s]" % (namespace, basename, candidate))
 
-# FIXME - get "Data Team" ... misses sub-dir Data Team/1000 -> could be because asset.query only returns the first 100 results ...
-
-# set if exists on remote server
+# CURRENT - redo to cope with 100 size limit ...
 
 # this requires different escaping to an asset.query
-#		if self.mf_client.namespace_exists(candidate):
 		if self.mf_client.namespace_exists(line):
-#			print "is Namespace = True"
-
-# NB: for some reason this query won't allow a get-value on path, which is exactly what we want => construct manually
-			result = self.mf_client.run("asset.query", [("where", "namespace &gt;='%s'" % candidate), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"namespace\"", "namespace"), ("xpath ename=\"filename\"", "name"), ("xpath ename=\"size\"", "content/size") ])
-#			self.mf_client.xml_print(result)
-
-# for each asset, pull out id and construct download destination filepath from the query results
-			for elem in result.iter("asset"):
-				asset_id = None
-				filename = None
-				path = None
-				size = 0
-				for child in elem:
-					if child.tag == "id":
-						asset_id = child.text
-					if child.tag == "filename":
-						filename = child.text
-					if child.tag == "namespace":
-						namespace = child.text
-						relpath = posixpath.relpath(namespace, self.cwd)
-						path = os.path.join(os.getcwd(), relpath)
-					if child.tag == "size":
-						size = int(child.text)
-# add valid download entry
-				if asset_id is not None and path is not None and filename is not None:
-					filepath = os.path.join(path, filename)
-					list_asset_filepath.extend([(asset_id, filepath)])
-					list_local_path[path] = 1
-					total_bytes += size
-
-# ensure we have the local directories necessary for the download
-			for local_path in list_local_path:
-				try:
-					self.mf_client.log("DEBUG", "Creating local directory: %s" % local_path)
-					os.makedirs(local_path)
-				except Exception as e:
-# this will happen if dirs already exist - which is ok, but log just in case...
-					self.mf_client.log("DEBUG", "%s" % str(e))
-					pass
-
-# not a namespace -> assume asset(s)
+			args_setup = [("where", "namespace &gt;='%s'" % candidate), ("count", "true"), ("action", "sum") , ("xpath", "content/size") ]
+			args_main = [("where", "namespace &gt;='%s'" % candidate), ("as", "iterator"), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"namespace\"", "namespace"), ("xpath ename=\"filename\"", "name") ]
 		else:
-# NB: this accepts * wildcard characters
-			result = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s'" % (namespace, basename)), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"filename\"", "name"), ("xpath ename=\"size\"", "content/size") ])
-#			self.mf_client.xml_print(result)
+			args_init = [("where", "namespace='%s' and name='%s'" % (namespace, basename)), ("count", "true"), ("action", "sum") , ("xpath", "content/size") ]
+			args_main = [("where", "namespace='%s' and name='%s'" % (namespace, basename)), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"filename\"", "name"), ("xpath ename=\"size\"", "content/size") ]
 
-# output id, name, size -> so we can construct a managed download
-			for elem in result.iter("asset"):
-				asset_id = None
-				name = None
-				for child in elem:
-					if child.tag == "id":
-						asset_id = child.text
-					if child.tag == "filename":
-						filename = child.text
-					if child.tag == "size":
-						total_bytes += int(child.text)
+		result = self.mf_client.run("asset.query", args_setup)
 
-				if asset_id is not None and filename is not None:
-# broken and complex to do right - due to namespace escaping of ' (ie get some'dir/*.zip -> donwloads to cwd/some'dir/*.zip
-#					relpath = posixpath.relpath(start=self.cwd, path=namespace)
-#					path = os.path.normpath(os.path.join(os.getcwd(), relpath))
-#					filepath = os.path.join(path, filename)
-#					list_local_path[path] = 1
+		elem = self.mf_client.xml_find(result, "value")
+		total_bytes = int(elem.text)
+		total_assets = int(elem.attrib['nbe'])
 
-# the easy way out - doesnload to current local directory
-					filepath = os.path.join(os.getcwd(), filename)
-#					print "get [%s] -> [%s]" % (asset_id, filepath)
-					list_asset_filepath.extend([(asset_id, filepath)])
+		print "total assets = %d" % total_assets
+		print "total bytes = %d" % total_bytes
 
-# not needed - see above - broken and complex 
-# ensure we have the local directories necessary for the download
-#			for local_path in list_local_path:
-#				try:
-#					self.mf_client.log("DEBUG", "Creating local directory: %s" % local_path)
-#					os.makedirs(local_path)
-#				except Exception as e:
-# this will happen if dirs already exist - which is ok, but log just in case...
-#					self.mf_client.log("DEBUG", "%s" % str(e))
-#					pass
+		result = self.mf_client.run("asset.query", args_main)
+		elem = self.mf_client.xml_find(result, "iterator")
+		iterator = elem.text
 
+# TODO - adaptable size choice based on asset_count
+		iterate_size = 100
 
-# if nothing matches - done, otherwise download
-#		if False:
-		if len(list_asset_filepath) > 0:
-			if self.mf_fast:
-				self.mf_client.log("DEBUG", "Switching to HTTP")
-# gulp...
-				self.mf_fast.session = self.mf_client.session
-				manager = self.mf_fast.get_managed(list_asset_filepath, total_bytes=total_bytes)
-			else:
-				manager = self.mf_client.get_managed(list_asset_filepath, total_bytes=total_bytes)
+# CURRENT - iterator based download
+		total_bytes_sent = 0
+
+# FIXME - turn noise on/off
+		self.mf_client.debug = False
+
+		while True:
 
 			try:
-				while True:
-					progress = 100.0 * manager.bytes_recv() / float(manager.bytes_total)
-					sys.stdout.write("Progress: %3.0f%% at %.1f MB/s    \r" % (progress, manager.byte_recv_rate()))
+# clean
+				self.mf_client.log("DEBUG", "Iterator chunk start")
+				list_asset_filepath = []
 
-					sys.stdout.flush()
-					if manager.is_done():
-						break
-					time.sleep(1)
-			except KeyboardInterrupt:
-				manager.cleanup()
-			print "\n"
-		else:
-			print "No match"
+# get file list for this sub-set
+				result = self.mf_client.run("asset.query.iterate", [("id", iterator), ("size", iterate_size)])
+				for elem in result.iter("asset"):
+					asset_id = None
+					filename = None
+					path = None
+					for child in elem:
+						if child.tag == "id":
+							asset_id = child.text
+						if child.tag == "filename":
+							filename = child.text
+						if child.tag == "namespace":
+							namespace = child.text
+							relpath = posixpath.relpath(namespace, self.cwd)
+							path = os.path.join(os.getcwd(), relpath)
+# add valid download entry
+					if asset_id is not None and filename is not None:
+						if path is None:
+							filepath = os.path.join(os.getcwd(), filename)
+						else:
+							filepath = os.path.join(path, filename)
+							list_local_path[path] = 1
+						list_asset_filepath.extend([(asset_id, filepath)])
+
+# create any required local dirs (NB: may get exception if they exist)
+# FIXME - permission denied exception left to actual download ... better way to handle?
+				for local_path in list_local_path:
+					try:
+						self.mf_client.log("DEBUG", "Creating local directory: %s" % local_path)
+						os.makedirs(local_path)
+					except Exception as e:
+						self.mf_client.log("DEBUG", "%s" % str(e))
+						pass
+
+# TODO - upload iterate sub-set of files
+#				for asset_id, filepath in list_asset_filepath:
+#					print "get [id=%r] => %r" % (asset_id, filepath)
+
+				if self.mf_fast:
+					self.mf_fast.session = self.mf_client.session
+					manager = self.mf_fast.get_managed(list_asset_filepath, total_bytes=total_bytes)
+				else:
+					manager = self.mf_client.get_managed(list_asset_filepath, total_bytes=total_bytes)
+
+
+				try:
+					while True:
+
+						progress = 100.0 * (total_bytes_sent + manager.bytes_recv()) / float(total_bytes)
+
+# FIXME - rate will be wrong - now that we've batched up files
+						sys.stdout.write("Progress: %3.0f%%    \r" % progress)
+						sys.stdout.flush()
+
+						if manager.is_done():
+							total_bytes_sent = total_bytes_sent + manager.bytes_recv()
+							break
+						time.sleep(1)
+				except KeyboardInterrupt:
+					manager.cleanup()
+					break
+
+			except:
+				print "\n"
+				self.mf_client.log("DEBUG", "Last iterator completed")
+				break
+
+
+		return
+
+
 
 # --
 	def help_put(self):
@@ -605,6 +601,7 @@ class parser(cmd.Cmd):
 
 
 	def do_put(self, line):
+# TODO - args for overwrite/crc checks?
 # build upload list pairs
 		upload_list = []
 		total_bytes = 0
