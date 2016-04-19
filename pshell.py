@@ -1011,7 +1011,6 @@ def main():
 # test http connection (data only) and don't send any session info
 	http_available = False
 	if protocol == "https":
-		print "trying"
 		try:	
 			mf_fast = mfclient.mf_client(protocol="http", port=80, server=server, session="", enforce_encrypted_login=encrypt, debug=debug)
 # FIXME - do a public login to check instead?
@@ -1019,9 +1018,7 @@ def main():
 # TODO - strictly, should look at result
 			http_available = True
 		except Exception as e:
-			print str(e)
 			if "session is not valid" in str(e):
-				print "Looks good"
 				http_available = True
 
 
