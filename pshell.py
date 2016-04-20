@@ -488,14 +488,23 @@ class parser(cmd.Cmd):
 			args_init = [("where", "namespace >='%s'" % candidate), ("count", "true"), ("action", "sum") , ("xpath", "content/size") ]
 			args_main = [("where", "namespace >='%s'" % candidate), ("as", "iterator"), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"namespace\"", "namespace"), ("xpath ename=\"filename\"", "name") ]
 		else:
+# FIXME - this will fail on picking up namespaces (ie it only returns assets found)
 			args_init = [("where", "namespace='%s' and name='%s'" % (namespace, basename)), ("count", "true"), ("action", "sum") , ("xpath", "content/size") ]
 			args_main = [("where", "namespace='%s' and name='%s'" % (namespace, basename)), ("as", "iterator"), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"filename\"", "name"), ("xpath ename=\"size\"", "content/size") ]
 
 		result = self.mf_client.run("asset.query", args_init)
 
+#		self.mf_client.xml_print(result)
+
 		elem = self.mf_client.xml_find(result, "value")
-		total_bytes = int(elem.text)
-		total_assets = int(elem.attrib['nbe'])
+
+# sometimes None gets returned instead of 0 ... gg
+		try:
+			total_bytes = int(elem.text)
+			total_assets = int(elem.attrib['nbe'])
+		except:
+			print "No matching files"
+			return
 
 #		print "total assets = %d" % total_assets
 #		print "total bytes = %d" % total_bytes
