@@ -485,22 +485,25 @@ class parser(cmd.Cmd):
 
 # this requires different escaping to an asset.query
 		if self.mf_client.namespace_exists(line):
-			args_setup = [("where", "namespace &gt;='%s'" % candidate), ("count", "true"), ("action", "sum") , ("xpath", "content/size") ]
-			args_main = [("where", "namespace &gt;='%s'" % candidate), ("as", "iterator"), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"namespace\"", "namespace"), ("xpath ename=\"filename\"", "name") ]
+			args_init = [("where", "namespace >='%s'" % candidate), ("count", "true"), ("action", "sum") , ("xpath", "content/size") ]
+			args_main = [("where", "namespace >='%s'" % candidate), ("as", "iterator"), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"namespace\"", "namespace"), ("xpath ename=\"filename\"", "name") ]
 		else:
 			args_init = [("where", "namespace='%s' and name='%s'" % (namespace, basename)), ("count", "true"), ("action", "sum") , ("xpath", "content/size") ]
-			args_main = [("where", "namespace='%s' and name='%s'" % (namespace, basename)), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"filename\"", "name"), ("xpath ename=\"size\"", "content/size") ]
+			args_main = [("where", "namespace='%s' and name='%s'" % (namespace, basename)), ("as", "iterator"), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"filename\"", "name"), ("xpath ename=\"size\"", "content/size") ]
 
-		result = self.mf_client.run("asset.query", args_setup)
+		result = self.mf_client.run("asset.query", args_init)
 
 		elem = self.mf_client.xml_find(result, "value")
 		total_bytes = int(elem.text)
 		total_assets = int(elem.attrib['nbe'])
 
-		print "total assets = %d" % total_assets
-		print "total bytes = %d" % total_bytes
+#		print "total assets = %d" % total_assets
+#		print "total bytes = %d" % total_bytes
 
 		result = self.mf_client.run("asset.query", args_main)
+
+#		self.mf_client.xml_print(result)
+
 		elem = self.mf_client.xml_find(result, "iterator")
 		iterator = elem.text
 
@@ -514,7 +517,6 @@ class parser(cmd.Cmd):
 		self.mf_client.debug = False
 
 		while True:
-
 			try:
 # clean
 				self.mf_client.log("DEBUG", "Iterator chunk start")
@@ -564,7 +566,6 @@ class parser(cmd.Cmd):
 				else:
 					manager = self.mf_client.get_managed(list_asset_filepath, total_bytes=total_bytes)
 
-
 				try:
 					while True:
 
@@ -587,10 +588,7 @@ class parser(cmd.Cmd):
 				self.mf_client.log("DEBUG", "Last iterator completed")
 				break
 
-
 		return
-
-
 
 # --
 	def help_put(self):
