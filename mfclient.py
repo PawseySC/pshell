@@ -163,6 +163,8 @@ class mf_client:
 		return tree
 
 #------------------------------------------------------------
+# TODO - revisit this - can use a file descriptor as input (rather than data from memory) so can cope with large files
+# TODO - can you control the buffer/chunked file reading?
 	def _post_multipart(self, xml, filepath):
 		"""
 		Primitive file upload method - NOTE - please use post_multipart_buffered instead
@@ -222,11 +224,16 @@ class mf_client:
 # multipart - request xml and file
 		lines = []
        		lines.extend(( '--%s' % boundary, 'Content-Disposition: form-data; name="request"', '', str(xml),))
+
+# CURRENT - adding Jason's suggested form field (1 data file attachment?)
+# tested on dev box and does seem to 1) have no mfp created in volatile/tmp ... 2) be a lot faster
+       		lines.extend(( '--%s' % boundary, 'Content-Disposition: form-data; name="nb-data-attachments"', '', "1",))
+
+# file
 		lines.extend(( '--%s' % boundary, 'Content-Disposition: form-data; name="filename"; filename="%s"' % filename, 'Content-Type: %s' % mimetype, '', '' ))
 		body = '\r\n'.join(lines)
 
 # NB - should include everything AFTER the first /r/n after the headers
-#		total_size = len(body) + os.path.getsize(filepath) + len(boundary) + 6
 		total_size = len(body) + os.path.getsize(filepath) + len(boundary) + 8
 
 		infile = open(filepath, 'rb')
@@ -238,6 +245,7 @@ class mf_client:
 #		print "================="
 #		print "Total size = %r" % total_size
 #		print "================="
+#		print "\n===BODY\n%s\n===END\n" % body
 
 # different connection object for HTTPS vs HTTP
 		if self.protocol == 'https':
@@ -290,9 +298,7 @@ class mf_client:
 			self.log("ERROR", "[pid=%d] Fatal send error : %s" % (pid, str(e)))
 			raise
 
-# CURRENT - the extra \r\n is what seemed to fix the funky binary file upload ...
-# terminating line (len(boundary) + 6)
-#		chunk = "--%s--\r\n" % boundary
+# terminating line (len(boundary) + 8)
 		chunk = "\r\n--%s--\r\n" % boundary
 
 		chunk = conn.send(chunk)
