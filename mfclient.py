@@ -86,7 +86,7 @@ class mf_client:
 	All unexpected failures are handled by raising exceptions
 	"""
 
-	def __init__(self, protocol, port, server, session="", timeout=5, enforce_encrypted_login=True, debug=False):
+	def __init__(self, protocol, port, server, session="", timeout=120, enforce_encrypted_login=True, debug=False):
 		"""
 		Create a Mediaflux server connection instance. Raises an exception on failure.
 
