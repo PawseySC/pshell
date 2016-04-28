@@ -756,6 +756,7 @@ class mf_client:
 # construct destination argument
 		filename = os.path.basename(filepath)
 		filename = self._xml_sanitise(filename)
+		namespace = self._xml_sanitise(namespace)
 		remotepath = posixpath.join(namespace, filename)
 # NB: CAN'T encase name or namespace with " -> interpreted literally by mediaflux
 		if overwrite is True:
