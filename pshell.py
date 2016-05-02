@@ -1076,12 +1076,15 @@ def main():
 	my_parser.config_filepath = config_filepath
 	my_parser.config = config
 
-# CURRENT - TAB completion
-# this works for OS-X
-# NOTE - no readline in Windows ...
+# TAB completion
+# FIXME - no readline in Windows ...
 	try:
-		readline.parse_and_bind("bind ^I rl_complete")
-		readline.parse_and_bind("tab: complete")
+# strange hackery required to get tab completion working under OS-X and also still be able to use the b key
+#REF - http://stackoverflow.com/questions/7124035/in-python-shell-b-letter-does-not-work-what-the
+		if 'libedit' in readline.__doc__:
+			readline.parse_and_bind("bind ^I rl_complete")
+		else:
+			readline.parse_and_bind("tab: complete")
 	except:
 		mf_client.log("WARNING", "No readline module available")
 
