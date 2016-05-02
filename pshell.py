@@ -960,11 +960,15 @@ def main():
 # use config if exists, else create a dummy one
 	config = ConfigParser.ConfigParser()
 
-# hydrographic NAS box gives a dud path for this
+# hydrographic NAS box gives a dud path for ~
 # NEW - test readwrite and if fail -> use CWD
 	config_filepath = os.path.expanduser("~/.mf_config")
-	if not os.access(config_filepath, os.W_OK):
-		print "Funky environment - fallback to current directory for config"
+
+#	if not os.access(config_filepath, os.W_OK):
+	try:
+		open(config_filepath, 'a').close()
+	except:
+		print "Bad home directory [%s] ... falling back to current directory" % os.path.expanduser("~")
 		config_filepath = os.path.join(os.getcwd(), ".mf_config")
 
 	config.read(config_filepath)
@@ -976,7 +980,7 @@ def main():
 	config_changed = False
 
 	if config.has_section(current):
-		print "Reading config..."
+		print "Reading config [%s]" % config_filepath
 		try:
 			server = config.get(current, 'server')
 			protocol = config.get(current, 'protocol')
@@ -998,7 +1002,7 @@ def main():
 			print "Server configuration for %s not found in %s" % (current, config_filepath)
 			exit(-1)
 
-		print "Creating default pawsey config..."
+		print "Creating default config [%s]" % config_filepath
 		config.add_section(current)
 		server = "data.pawsey.org.au"
 		protocol = "https"
