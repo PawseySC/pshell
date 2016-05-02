@@ -506,8 +506,8 @@ class parser(cmd.Cmd):
 			print "No matching files"
 			return
 
-#		print "total assets = %d" % total_assets
-#		print "total bytes = %d" % total_bytes
+		self.mf_client.log("DEBUG", "Total assets to get: %d" % total_assets)
+		self.mf_client.log("DEBUG", "Total bytes to get: %d" % total_bytes)
 
 		result = self.mf_client.run("asset.query", args_main)
 
@@ -577,17 +577,13 @@ class parser(cmd.Cmd):
 
 				try:
 					while True:
-
-						progress = 100.0 * (total_bytes_sent + manager.bytes_recv()) / float(total_bytes)
-
-# FIXME - rate will be wrong - now that we've batched up files
-						sys.stdout.write("Progress: %3.0f%%    \r" % progress)
+						progress = 100.0 * manager.bytes_recv() / float(total_bytes)
+						sys.stdout.write("Progress: %3.0f%% at %.1f MB/s    \r" % (progress, manager.byte_recv_rate()))
 						sys.stdout.flush()
-
 						if manager.is_done():
-							total_bytes_sent = total_bytes_sent + manager.bytes_recv()
 							break
 						time.sleep(1)
+
 				except KeyboardInterrupt:
 					manager.cleanup()
 					break
