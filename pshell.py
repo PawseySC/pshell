@@ -940,7 +940,12 @@ class parser(cmd.Cmd):
 			except KeyboardInterrupt:
 				print "Interrupted, cleaning up     "
 				continue
+
 			except Exception as e:
+# NEW - handle EOF case where stdin is force fed via command line
+				if "EOF" in str(e):
+					return
+
 				print str(e)
 
 def main():
