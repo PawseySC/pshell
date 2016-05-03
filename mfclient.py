@@ -286,7 +286,7 @@ class mf_client:
 					except Exception as e:
 						i = i+1
 						if i < retry_count:
-							self.log("WARNING", "[pid=%d] Chunk send error [count=%d] : %s" % (pid, i, str(e)))
+							self.log("DEBUG", "[pid=%d] Chunk send error [count=%d] : %s" % (pid, i, str(e)))
 							can_recover = False
 							break
 						else:
@@ -313,7 +313,7 @@ class mf_client:
 				mf_ack = True
 				break
 			except:
-				self.log("WARNING", "[pid=%d] No response from server [count=%d] trying again..." % (pid, i))
+				self.log("DEBUG", "[pid=%d] No response from server [count=%d] trying again..." % (pid, i))
 # NEW - give the server some time...
 				time.sleep(self.timeout)
 
@@ -490,7 +490,7 @@ class mf_client:
 			if self.enforce_encrypted_login:
 				raise Exception("Forbidding unencrypted password post")
 			else:
-				self.log("WARNING", "Permitting unencrypted login; I hope you know what you're doing.")
+				self.log("DEBUG", "Permitting unencrypted login; I hope you know what you're doing.")
 
 # attempt token authentication first (if supplied)
 		if token is not None:
@@ -794,7 +794,7 @@ class mf_client:
 					total_bytes += os.path.getsize(filepath)
 				except:
 # FIXME - this should lower the expected total_bytes by the size of the file ...
-					self.log("WARNING", "Can't read %s, skipping." % filepath)
+					self.log("DEBUG", "Can't read %s, skipping." % filepath)
 
 		self.log("DEBUG", "Total upload bytes: %d" % total_bytes)
 		if total_bytes == 0:
