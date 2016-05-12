@@ -271,17 +271,20 @@ class parser(cmd.Cmd):
 			print "Nothing to process"
 			return
 
+		print "passthru"
+
 # pull element name list
-# TODO - do attributes as well ... when I feel strong enough
-		pattern = re.compile(r'(\s:\w+)\s(\S+)')
+# CURRENT - should now work with more complete asset.query commands
+		pattern = re.compile(r'(:\w+)\s([^:]+)')
 
 # TODO - cope with quoted strings/spaces in argument data eg asset.store.describe :name "Data Team" -> use -i script
 #		pattern = re.compile(r'(\s:\w+)\s("?)(\S+)(\1)')
 #		pattern = re.compile(r'(\s:\w+)\s(["])(?:\\?+.)*?\1')
+#		pattern = re.compile(r'(\s:\w+)\s(\S+)')
 
 		list_args = []
 		for elem,value in re.findall(pattern, line):
-			list_args.append((elem[2:],value))
+			list_args.append((elem[1:].strip(),value.strip()))
 
 # DEBUG
 #		print list_args
