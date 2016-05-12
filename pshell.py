@@ -271,8 +271,6 @@ class parser(cmd.Cmd):
 			print "Nothing to process"
 			return
 
-		print "passthru"
-
 # pull element name list
 # CURRENT - should now work with more complete asset.query commands
 		pattern = re.compile(r'(:\w+)\s([^:]+)')
