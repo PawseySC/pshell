@@ -196,6 +196,36 @@ class mfclient_transfers(unittest.TestCase):
 		code = req.getcode()
 		self.assertEqual(code, 200, "Did not receive OK from server")
 
+############
+# fixed bugs
+############
+class mfclient_fixes(unittest.TestCase):
+
+	def setUp(self):
+		global mf_client
+		self.mf_client = mf_client
+
+	def test_mimetype_guess(self):
+		global namespace
+		local_filepath = os.path.realpath(__file__) 
+# make a copy of this script and give it an extension that will result in more than one tuple returned for mimetype guess
+		local_gzip = os.path.join(os.path.dirname(local_filepath), "test.jpg.gz")
+		shutil.copyfile(local_filepath, local_gzip)
+# trigger exception if mimetype guess fails
+		asset_id = self.mf_client.put(namespace, local_gzip)
+# cleanup
+		self.mf_client.run("asset.destroy", [("id", asset_id)])
+		os.remove(local_gzip)
+
+# make a copy of this script and give it an extension that will result in None for mimetype guess
+		local_none = os.path.join(os.path.dirname(local_filepath), "test.x1")
+		shutil.copyfile(local_filepath, local_none)
+# trigger exception if mimetype guess fails
+		asset_id = self.mf_client.put(namespace, local_none)
+# cleanup
+		self.mf_client.run("asset.destroy", [("id", asset_id)])
+		os.remove(local_none)
+
 
 ######
 # main
@@ -207,7 +237,7 @@ if __name__ == '__main__':
 	config_filepath = os.path.join(os.path.expanduser("~"), ".mf_config")
 	config_table = config.read(config_filepath)
 
-# IMPORTANT - name of the section to use for server connection details
+# NB: name of the section to use for server connection details
 	current = 'test'
 
 # default config values
@@ -266,7 +296,9 @@ if __name__ == '__main__':
 		f.close()
 
 # classes to test
-	test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_transfers]
+	test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_transfers, mfclient_fixes]
+#	test_class_list = [mfclient_fixes]
+
 
 # build suite
 	suite_list = []

@@ -214,11 +214,9 @@ class mf_client:
 		boundary = ''.join(random.choice(string.digits + string.ascii_letters) for i in range(30))
 		filename = os.path.basename(filepath)
 
-# FIXME - this is not always correctly falling back
-# CURRENT - interestingly, the file for which this fails is the one getting the internal server error (multipart for error: unexpected end)
-#		mimetype = mimetypes.guess_type(filepath) or 'application/octet-stream'
-		mimetype = mimetypes.guess_type(filepath)
-		if None in mimetype:
+# if we get anything other than a single clear mimetype to use - default to generic
+		mimetype = mimetypes.guess_type(filepath, strict=True)
+		if len(mimetype) != 1:
 			mimetype = 'application/octet-stream'
 
 # multipart - request xml and file
