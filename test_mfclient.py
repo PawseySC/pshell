@@ -307,6 +307,8 @@ if __name__ == '__main__':
 	suite = unittest.TestSuite(suite_list)
 
 # run suite
-	print "\n----------------------------------------------------------------------\n"
+	print "\n----------------------------------------------------------------------"
+	print "Testing against: protocol=%r server=%r port=%r" % (mf_client.protocol, mf_client.server, mf_client.port)
+	print "----------------------------------------------------------------------\n"
 	unittest.TextTestRunner(verbosity=2).run(suite)
 
