@@ -37,6 +37,7 @@ class parser(cmd.Cmd):
 	config_filepath = None
 	mf_client = None
 	mf_fast = None
+	use_mf_fast = True
 	cwd = '/projects'
 
 # --- init global
@@ -570,10 +571,12 @@ class parser(cmd.Cmd):
 #				for asset_id, filepath in list_asset_filepath:
 #					print "get [id=%r] => %r" % (asset_id, filepath)
 
-				if self.mf_fast:
+				if self.mf_fast and self.use_mf_fast:
+					print "Using mf_fast"
 					self.mf_fast.session = self.mf_client.session
 					manager = self.mf_fast.get_managed(list_asset_filepath, total_bytes=total_bytes)
 				else:
+					print "Not using mf_fast"
 					manager = self.mf_client.get_managed(list_asset_filepath, total_bytes=total_bytes)
 
 				try:
@@ -753,6 +756,15 @@ class parser(cmd.Cmd):
 		else:
 			print "Turning DEBUG off"
 			self.mf_client.debug = False
+# --
+
+	def do_fast(self, line):
+		if "true" in line or "on" in line:
+			print "Turning HTTP for data on"
+			self.use_mf_fast = True
+		else:
+			print "Turning HTTP for data off"
+			self.use_mf_fast = False
 
 # --
 	def help_lpwd(self):
@@ -1033,7 +1045,6 @@ def main():
 		except Exception as e:
 			if "session is not valid" in str(e):
 				http_available = True
-
 
 # FIXME - need to deal with config parse inconsistency here
 # ie session = None gets spat out and read back in as a pure text string 
