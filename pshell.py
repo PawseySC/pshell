@@ -753,9 +753,13 @@ class parser(cmd.Cmd):
 		if "true" in line or "on" in line:
 			print "Turning DEBUG on"
 			self.mf_client.debug = True
+			if self.mf_fast:
+				self.mf_fast.debug = True
 		else:
 			print "Turning DEBUG off"
 			self.mf_client.debug = False
+			if self.mf_fast:
+				self.mf_fast.debug = False
 # --
 
 	def do_fast(self, line):
