@@ -572,11 +572,11 @@ class parser(cmd.Cmd):
 #					print "get [id=%r] => %r" % (asset_id, filepath)
 
 				if self.mf_fast and self.use_mf_fast:
-					print "Using mf_fast"
+					self.mf_client.log("DEBUG", "Using mf_fast")
 					self.mf_fast.session = self.mf_client.session
 					manager = self.mf_fast.get_managed(list_asset_filepath, total_bytes=total_bytes)
 				else:
-					print "Not using mf_fast"
+					self.mf_client.log("DEBUG", "Not using mf_fast")
 					manager = self.mf_client.get_managed(list_asset_filepath, total_bytes=total_bytes)
 
 				try:
