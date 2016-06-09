@@ -1037,7 +1037,8 @@ def main():
 	http_available = False
 	if protocol == "https":
 		try:	
-			mf_fast = mfclient.mf_client(protocol="http", port=80, server=server, session="", enforce_encrypted_login=encrypt, debug=debug)
+# internal network -> should be fast
+			mf_fast = mfclient.mf_client(protocol="http", port=80, server=server, timeout=1, session="", enforce_encrypted_login=encrypt, debug=debug)
 # FIXME - do a public login to check instead?
 			result = mf_fast.run("actor.self.describe")
 # TODO - strictly, should look at result
