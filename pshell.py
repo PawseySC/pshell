@@ -762,13 +762,14 @@ class parser(cmd.Cmd):
 				self.mf_fast.debug = False
 # --
 
-	def do_fast(self, line):
-		if "true" in line or "on" in line:
-			print "Turning HTTP for data on"
-			self.use_mf_fast = True
-		else:
-			print "Turning HTTP for data off"
-			self.use_mf_fast = False
+# debugging mechanism
+#	def do_fast(self, line):
+#		if "true" in line or "on" in line:
+#			print "Turning HTTP for data on"
+#			self.use_mf_fast = True
+#		else:
+#			print "Turning HTTP for data off"
+#			self.use_mf_fast = False
 
 # --
 	def help_lpwd(self):
