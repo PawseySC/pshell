@@ -710,6 +710,7 @@ class mf_client:
 				if data:
 					output.write(data)
 # multiprocessing safe byte counter
+# NOTE - tried decreasing frequency of locks -> had no impact on transfer speed
 					with bytes_recv.get_lock():
 						bytes_recv.value += len(data)
 				else:
