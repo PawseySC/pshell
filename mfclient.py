@@ -4,6 +4,7 @@ import os
 import re
 import cmd
 import sys
+import ssl
 import time
 import datetime
 import getpass
@@ -24,6 +25,8 @@ import xml.etree.ElementTree as xml_processor
 # Python standard lib implementation of a mediaflux client
 # Author: Sean Fleming
 
+# no poodles allowed
+ssl.PROTOCOL_SSLv23 = ssl.PROTOCOL_TLSv1
 
 #------------------------------------------------------------
 """
@@ -687,7 +690,14 @@ class mf_client:
 # CURRENT - server returns data as disposition attachment regardless of the argument disposition=attachment
 #		url = self.data_url + "?_skey={0}&id={1}&disposition=attachment".format(self.session, asset_id)
 		url = self.data_url + "?_skey={0}&id={1}".format(self.session, asset_id)
+
+
+
 		req = urllib2.urlopen(url)
+
+
+
+
 
 # distinguish between file data and mediaflux error message
 		info = req.info()

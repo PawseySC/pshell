@@ -522,7 +522,7 @@ class parser(cmd.Cmd):
 		total_bytes_sent = 0
 
 # FIXME - turn noise on/off
-		self.mf_client.debug = False
+#		self.mf_client.debug = False
 
 		iterate = True
 		while iterate:
@@ -636,16 +636,14 @@ class parser(cmd.Cmd):
 # DEBUG
 #		for dest,src in upload_list:
 #			print "put: %s -> %s" % (src, dest)
-#		return
-#		manager = self.mf_client.put_managed(upload_list)
 
-		if self.mf_fast:
-			print "Switching to HTTP"
+		if self.mf_fast and self.use_mf_fast:
+			self.mf_client.log("DEBUG", "Using mf_fast")
 			self.mf_fast.session = self.mf_client.session
 			manager = self.mf_fast.put_managed(upload_list)
 		else:
+			self.mf_client.log("DEBUG", "Not using mf_fast")
 			manager = self.mf_client.put_managed(upload_list)
-
 
 		try:
 			while True:
