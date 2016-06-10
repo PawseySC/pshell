@@ -512,9 +512,6 @@ class parser(cmd.Cmd):
 		self.mf_client.log("DEBUG", "Total bytes to get: %d" % total_bytes)
 
 		result = self.mf_client.run("asset.query", args_main)
-
-#		self.mf_client.xml_print(result)
-
 		elem = self.mf_client.xml_find(result, "iterator")
 		iterator = elem.text
 
@@ -527,7 +524,8 @@ class parser(cmd.Cmd):
 # FIXME - turn noise on/off
 		self.mf_client.debug = False
 
-		while True:
+		iterate = True
+		while iterate:
 			try:
 # clean
 				self.mf_client.log("DEBUG", "Iterator chunk start")
@@ -557,6 +555,13 @@ class parser(cmd.Cmd):
 							list_local_path[path] = 1
 						list_asset_filepath.extend([(asset_id, filepath)])
 
+# NEW - check for completion - to avoid triggering a mediaflux exception on invalid iterator
+				for elem in result.iter("iterated"):
+					state = elem.get('complete')
+					if "true" in state:
+						self.mf_client.log("DEBUG", "Asset iteration completed")
+						iterate = False
+
 # create any required local dirs (NB: may get exception if they exist)
 # FIXME - permission denied exception left to actual download ... better way to handle?
 				for local_path in list_local_path:
@@ -585,6 +590,8 @@ class parser(cmd.Cmd):
 						sys.stdout.write("Progress: %3.0f%% at %.1f MB/s    \r" % (progress, manager.byte_recv_rate()))
 						sys.stdout.flush()
 						if manager.is_done():
+							if iterate is False:
+								print "\n"
 							break
 						time.sleep(1)
 
@@ -592,9 +599,10 @@ class parser(cmd.Cmd):
 					manager.cleanup()
 					break
 
-			except:
+
+			except Exception as e:
 				print "\n"
-				self.mf_client.log("DEBUG", "Last iterator completed")
+				self.mf_client.log("DEBUG", "Last iterator completed: %s" % str(e))
 				break
 
 		return
