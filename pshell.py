@@ -377,6 +377,11 @@ class parser(cmd.Cmd):
 			if arg.startswith("-s "):
 				size = int(arg[2:])
 
+# NEW - clamp
+		page = max(1, page)
+		size = max(1, size)
+
+
 # strip out flags - look for directory/filename patterns
 		line = re.sub(r'-\S+\s+\S+', '', line)
 		line = line.strip()
@@ -402,7 +407,24 @@ class parser(cmd.Cmd):
 		pagination_footer = None
 		try:
 			if asset_query:
-				reply = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s'" % (cwd, basename)), ("action", "get-values"), ("xpath ename=\"name\"", "name"), ("xpath ename=\"size\"", "content/size") ])
+# NEW - support for pagination
+# FIXME - a page number that is out of bounds will result in index = 0 being returned with no results ... handle better?
+				index = (page-1) * size + 1
+
+				reply = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s'" % (cwd, basename)), ("action", "get-values"), ("xpath ename=\"name\"", "name"), ("xpath ename=\"size\"", "content/size"), ("idx", index), ("size", size), ("count", "true") ])
+
+				start = self.mf_client.xml_find(reply, "from")
+				total = self.mf_client.xml_find(reply, "total")
+
+				if start is not None and total is not None:
+					canonical_asset_index = int(start.text)
+					canonical_asset_count = int(total.text)
+					canonical_size = size
+					canonical_page = int(canonical_asset_index / size) + (canonical_asset_index % size > 0)
+					canonical_last = int(canonical_asset_count / size) + (canonical_asset_count % size > 0)
+
+#				self.mf_client.xml_print(reply)
+
 			else:
 				reply = self.mf_client.run("www.list", [("namespace", cwd), ("page", page), ("size", size)])
 
@@ -415,8 +437,9 @@ class parser(cmd.Cmd):
 							canonical_last = int(child.text)
 						if child.tag == "size":
 							canonical_size = int(child.text)
-				if canonical_last > 1:
-					pagination_footer = "Displaying %r files per page; page %r of %r" % (canonical_size, canonical_page, canonical_last)
+
+			if canonical_last > 1:
+				pagination_footer = "Displaying %r files per page; page %r of %r" % (canonical_size, canonical_page, canonical_last)
 
 # display results
 			for elem in reply.iter('namespace'):
