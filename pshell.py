@@ -13,13 +13,11 @@ import datetime
 import ConfigParser
 import mfclient
 import posixpath
-
 # no readline on windows
 try:
 	import readline
 except:
 	pass
-
 
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
@@ -27,7 +25,6 @@ except:
 delegate_default = 7
 delegate_min = 1
 delegate_max = 365
-
 
 # NB: handle exceptions at this level
 class parser(cmd.Cmd):
@@ -164,94 +161,80 @@ class parser(cmd.Cmd):
 #		print "ca: target_ns: [%s] : isabs = %r : pattern = %r : prefix = %r" % (target_ns, isabs, pattern, prefix)
 
 		if pattern is not None:
-			result = self.mf_client.run("asset.query", [("where", "namespace='%s' and name like '%s'" % (target_ns, pattern)), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
+			result = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s*'" % (target_ns, pattern)), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
 		else:
 			result = self.mf_client.run("asset.query", [("where", "namespace='%s'" % target_ns), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
 
 #		self.mf_client.xml_print(result)
 
-		ns_list = []
+		asset_list = []
 		for elem in result.iter('name'):
 			if elem.text is not None:
-				ns_list.append(posixpath.join(prefix,elem.text))
+				asset_list.append(posixpath.join(prefix,elem.text))
 
-#		print "B", ns_list
+#		print "ca: ", asset_list
 
-		return ns_list
-
+		return asset_list
 
 # NB: if the return result is ambigious (>1 option) it'll require 2 presses to get the list
-# TODO - can we query matching mediaflux commands for completion???
-#	def completedefault(self, text, line, start_index, end_index):
-#		list = ["stuff", "things"]
-#		return list
+# turn off DEBUG -> gets in the way of commandline completion
+# NEW - use helpers... 
+# NB: index offsets are 1 greater than the command under completion
+
 # ---
 	def complete_get(self, text, line, start_index, end_index):
-
 		save_state = self.mf_client.debug
 		self.mf_client.debug = False
-# FIXME - only the 1st 50 results returned...
-		result = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s*'" % (self.safe_cwd(), text)), ("action", "get-values"), ("xpath", "name") ])
+		candidate_list = self.complete_asset(line[4:end_index], start_index-4)
+# currently, get on a namespace downloads individually - TODO - download as ZIP?
+		candidate_list += self.complete_namespace(line[4:end_index], start_index-4)
 		self.mf_client.debug = save_state
-		asset_list = []
-		for elem in result.iter('value'):
-			if elem.text is not None:
-				asset_list.append(elem.text)
-		return asset_list
+		return candidate_list
 
 # ---
+# NB: currently taking the approach that rm is for files (assets) only and rmdir is for folders (namespaces)
 	def complete_rm(self, text, line, start_index, end_index):
-
 		save_state = self.mf_client.debug
 		self.mf_client.debug = False
-# FIXME - only the 1st 50 results returned...
-		result = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s*'" % (self.safe_cwd(), text)), ("action", "get-values"), ("xpath", "name") ])
-		self.mf_client.debug = save_state
-		asset_list = []
-		for elem in result.iter('value'):
-			if elem.text is not None:
-				asset_list.append(elem.text)
-		return asset_list
+		candidate_list = self.complete_asset(line[3:end_index], start_index-3)
+		return candidate_list
 
 # ---
 	def complete_file(self, text, line, start_index, end_index):
-# turn off DEBUG -> gets in the way of commandline completion
 		save_state = self.mf_client.debug
 		self.mf_client.debug = False
-		ns_list = self.complete_asset(line[5:end_index], start_index)
+		candidate_list = self.complete_asset(line[5:end_index], start_index-5)
+		candidate_list += self.complete_namespace(line[5:end_index], start_index-5)
 		self.mf_client.debug = save_state
-		return ns_list
+		return candidate_list
 
 # ---
 	def complete_ls(self, text, line, start_index, end_index):
-# turn off DEBUG -> gets in the way of commandline completion
-# directory
-#		print "text=[%s] : line=[%s] : start = %d : end = %d" % (text, line, start_index, end_index)
+		save_state = self.mf_client.debug
+		self.mf_client.debug = False
+		candidate_list = self.complete_namespace(line[3:end_index], start_index-3)
+		candidate_list += self.complete_asset(line[3:end_index], start_index-3)
+		self.mf_client.debug = save_state
+		return candidate_list
+
+# ---
+	def complete_cd(self, text, line, start_index, end_index):
 		save_state = self.mf_client.debug
 		self.mf_client.debug = False
 		ns_list = self.complete_namespace(line[3:end_index], start_index-3)
-# if nothing - see if we can complete an asset instead
-		if len(ns_list) == 0:
-			try:
-				ns_list = self.complete_asset(line[3:end_index], start_index-3)
-			except Exception as e:
-				print str(e)
 		self.mf_client.debug = save_state
 		return ns_list
 
 # ---
-	def complete_cd(self, text, line, start_index, end_index):
-# turn off DEBUG -> gets in the way of commandline completion
+	def complete_mkdir(self, text, line, start_index, end_index):
 		save_state = self.mf_client.debug
 		self.mf_client.debug = False
-		ns_list = self.complete_namespace(line[3:end_index], start_index-3)
+		ns_list = self.complete_namespace(line[6:end_index], start_index-6)
 		self.mf_client.debug = save_state
 		return ns_list
 
 # ---
 	def complete_rmdir(self, text, line, start_index, end_index):
-# FIXME - this is currently not working ... strange as complete_cd is working ... and it's the same code
-# turn off DEBUG -> gets in the way of commandline completion
 		save_state = self.mf_client.debug
 		self.mf_client.debug = False
 		ns_list = self.complete_namespace(line[6:end_index], start_index-6)
@@ -330,7 +313,7 @@ class parser(cmd.Cmd):
 			return True
 		return False
 
-# --- helper - I think this is only required if passing self.cwd through an asset.query
+# --- helper: I think this is only required if passing self.cwd through an asset.query
 	def safe_cwd(self):
 		return(self.cwd.replace("'", "\\'"))
 
@@ -339,8 +322,12 @@ class parser(cmd.Cmd):
 	def safe_namespace_query(self, namespace):
 		return(namespace.replace("'", "\\'"))
 
+# --- helper: convert a relative/absolute mediaflux namespace/asset reference to minimal absolute form
+	def absolute_remote_filepath(self, line):
+		if not posixpath.isabs(line):
+			line = posixpath.join(self.cwd, line)
+		return posixpath.normpath(line)
 
-# -- remote commands
 
 # CURRENT - return asset.get info
 	def help_file(self):
@@ -348,11 +335,7 @@ class parser(cmd.Cmd):
 		print "Usage: file <filename>\n"
 
 	def do_file(self, line):
-		if not posixpath.isabs(line):
-			line = posixpath.join(self.cwd, line)
-# this works - but encasing the whole thing or line in single or double quotes generates a server error
-# TODO - test how this handles spaces
-		result = self.mf_client.run("asset.get", [("id", "path=%s" % line)]) 
+		result = self.mf_client.run("asset.get", [("id", "path=%s" % self.absolute_remote_filepath(line))]) 
 		self.mf_client.xml_print(result)
 
 # ---
@@ -376,11 +359,9 @@ class parser(cmd.Cmd):
 				page = int(arg[2:])
 			if arg.startswith("-s "):
 				size = int(arg[2:])
-
 # NEW - clamp
 		page = max(1, page)
 		size = max(1, size)
-
 
 # strip out flags - look for directory/filename patterns
 		line = re.sub(r'-\S+\s+\S+', '', line)
@@ -477,12 +458,9 @@ class parser(cmd.Cmd):
 # --
 	def help_get(self):
 		print "Download remote files to the current local working directory\n"
-# TODO
-#		print "If a folder is selected then an archive (zip) will be downloaded."
 		print "Usage: get <remote files or folders>\n"
 		print "Examples: get /projects/My Project/images"
 		print "          get *.txt\n"
-
 
 	def do_get(self, line):
 		list_asset_filepath = []
@@ -637,7 +615,6 @@ class parser(cmd.Cmd):
 		print "Examples: put /home/sean/*.jpg"
 		print "          put /home/sean/mydirectory/\n"
 
-
 	def do_put(self, line):
 # TODO - args for overwrite/crc checks?
 # build upload list pairs
@@ -719,17 +696,15 @@ class parser(cmd.Cmd):
 		print "Usage: mkdir <directory>\n"
 
 	def do_mkdir(self, line):
-		if posixpath.isabs(line):
-			ns_target = line
-		else:
-			ns_target = posixpath.normpath(self.cwd + "/" + line)
-
+		ns_target = self.absolute_remote_filepath(line)
 		self.mf_client.run("asset.namespace.create", [("namespace", ns_target)])
 
 # --
 	def help_rm(self):
 		print "Delete remote file(s)\n"
-		print "Usage: rm <file/pattern>\n"
+		print "Usage: rm <file or pattern>\n"
+		print "Examples: rm *.jpg"
+		print "          rm /projects/myproject/somefile\n"
 
 	def do_rm(self, line):
 # TODO - cope with absolute path
@@ -827,17 +802,17 @@ class parser(cmd.Cmd):
 # TODO - process flags, but for now strip out so (eg) "ls -al" doesn't trigger an exception
 # TODO - sort out other cases eg "ls *.pdf"
 		line = re.sub(r'-\S+', '', line)
-
-		if not len(line):
-			cwd = os.getcwd()
+		if not os.path.isabs(line):
+			path = os.path.normpath(os.path.join(os.getcwd(), line))
 		else:
-			cwd = line
+			path = line
 
-		print "Local: %s" % cwd
-		for filename in os.listdir(cwd):
+# FIXME - currently not listing for anything not in the local cwd 
+		print "Local: %s" % path
+		for filename in os.listdir(path):
 			if os.path.isdir(filename):
 				print "[directory] " + filename
-		for filename in os.listdir(cwd):
+		for filename in os.listdir(path):
 			if os.path.isfile(filename):
 #				print "bytes=%-15d | %-s" % (os.path.getsize(filename), filename)
 				print "%s | %-s" % (self.human_size(os.path.getsize(filename)), filename)
@@ -848,11 +823,10 @@ class parser(cmd.Cmd):
 		print "Usage: whoami\n"
 
 	def do_whoami(self, line):
-		result = self.mf_client.run("actor.self.describe")
 		try:
+			result = self.mf_client.run("actor.self.describe")
 			for elem in result.iter('actor'):
 				name = elem.attrib['name']
-
 				if ":" in name:
 					print "actor = %s" % name
 				else:
@@ -860,7 +834,7 @@ class parser(cmd.Cmd):
 			for elem in result.iter('role'):
 				print "  role = %s" % elem.text
 		except:
-			print "I'm not sure who you are"
+			print "I'm not sure who you are!"
 
 
 # -- connection commands
@@ -877,26 +851,22 @@ class parser(cmd.Cmd):
 		print "Usage: login\n"
 
 	def do_login(self, line):
-
 		user = raw_input("Username: ")
-
+# NB: special cases
 		if user == "manager":
 			domain = 'system'
 		elif user == "public":
 			domain = 'public'
 		else:
 			domain = 'ivec'
-
 		password = getpass.getpass("Password: ")
 
 		try:
 			self.mf_client.login(domain, user, password)
 			self.need_auth = False
 # save the authentication token
-			print "Writing session to config file: %s" % self.config_filepath
-
+#			print "Writing session to config file: %s" % self.config_filepath
 			self.config.set(self.config_name, 'session', self.mf_client.session)
-
 			f = open(self.config_filepath, "w")
 			self.config.write(f)
 			f.close()
@@ -1007,11 +977,9 @@ def main():
 
 # use config if exists, else create a dummy one
 	config = ConfigParser.ConfigParser()
-
 # hydrographic NAS box gives a dud path for ~
 # NEW - test readwrite and if fail -> use CWD
 	config_filepath = os.path.expanduser("~/.mf_config")
-
 #	if not os.access(config_filepath, os.W_OK):
 	try:
 		open(config_filepath, 'a').close()
