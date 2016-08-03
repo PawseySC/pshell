@@ -606,7 +606,7 @@ class mf_client:
 		"""
 
 		app = "wget"
-		tag = "token-ro"
+		tag = "token"
 		namespace = None
 
 # find root project namespace

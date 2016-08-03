@@ -279,6 +279,10 @@ if __name__ == '__main__':
 # acquire a reusable authenticated mediaflux connection
 	mf_client = mfclient.mf_client(config.get(current, 'protocol'), config.get(current, 'port'), config.get(current, 'server'), session=session, enforce_encrypted_login=False)
 
+	print "\n----------------------------------------------------------------------"
+	print "Testing against: protocol=%r server=%r port=%r" % (mf_client.protocol, mf_client.server, mf_client.port)
+	print "----------------------------------------------------------------------\n"
+
 # re-use existing session 
 	if not mf_client.authenticated():
 		print "Domain: %s" % domain
@@ -307,8 +311,5 @@ if __name__ == '__main__':
 	suite = unittest.TestSuite(suite_list)
 
 # run suite
-	print "\n----------------------------------------------------------------------"
-	print "Testing against: protocol=%r server=%r port=%r" % (mf_client.protocol, mf_client.server, mf_client.port)
-	print "----------------------------------------------------------------------\n"
 	unittest.TextTestRunner(verbosity=2).run(suite)
 
