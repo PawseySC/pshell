@@ -245,36 +245,101 @@ class parser(cmd.Cmd):
 	def emptyline(self):
 		return
 
+
 # ---
-	def default (self, line):
+	def default(self, line):
 # pull service call
+
+# TODO - bake all this into mfclient's xml_wrap as a way of serializing an aterm style call
+
+# TODO - strip any preceding whitespace
 		match = re.match('^\S+', line)
 		if match:
 			service_call = match.group(0)
+			argument_start = match.end()
 		else:
 			print "Nothing to process"
 			return
 
-# pull element name list
-# CURRENT - should now work with more complete asset.query commands
-		pattern = re.compile(r'(:\w+)\s([^:]+)')
+# NEW - parse Arcitecta's shorthand XML syntax
+# TODO - put in a separate function if required
+# TODO - test how this copes with attributes!!!!
+		i=argument_start
+		estart=estop=bcount=0
+		stack=[]
+		argument_list = []
 
-# TODO - cope with quoted strings/spaces in argument data eg asset.store.describe :name "Data Team" -> use -i script
-#		pattern = re.compile(r'(\s:\w+)\s("?)(\S+)(\1)')
-#		pattern = re.compile(r'(\s:\w+)\s(["])(?:\\?+.)*?\1')
-#		pattern = re.compile(r'(\s:\w+)\s(\S+)')
+		while i<len(line):
+# handle :
+			if line[i] == ':':
+				if bcount == 0 and estop != 0:
+					if len(stack) > 0:
+						element = stack.pop()
+						data = line[estop:i].strip()
+						current = "<%s>%s</%s>" % (element, data, element)
+						argument_list.append(current)
+						estop=0
+					else:
+						print "Parse error - raise?"
+				estart = i
+# handle <
+			if line[i] == '<':
+				bcount += 1
+# handle >
+			if line[i] == '>':
+				bcount -= 1
+				element = stack.pop()
+				if estop:
+					data = line[estop:i].strip()
+					estop=0
+					current = "<%s>%s</%s>" % (element, data, element)
+				else:
+					current = "<%s>%s</%s>" % (element, current, element)
 
-		list_args = []
-		for elem,value in re.findall(pattern, line):
-			list_args.append((elem[1:].strip(),value.strip()))
+				if bcount == 0:
+					if len(stack) > 0:
+						element = stack.pop()
+						current = "<%s>%s</%s>" % (element, current, element)
+						argument_list.append(current)
+						estop=0
+					else:
+						print "Parse error - raise?"
+# handle whitespace
+			if line[i] == ' ':
+				if estart:
+					if bcount == 0:
+						element = line[estart+1:i]
+						stack = []
+						stack.append(element)
+						estop = i
+					else:
+						element = line[estart+1:i]
+						stack.append(element)
+						estop = i
+				estart=0
+# loop until end of string
+			i += 1
 
-# DEBUG
-#		print list_args
-#		return
+# cope with end of string terminating the parse ... TODO - make this more elegant
+		if len(stack) > 0:
+			element = stack.pop()
+			data = line[estop:i].strip()
+			current = "<%s>%s</%s>" % (element, data, element)
+			argument_list.append(current)
 
-# generic passthru
-		reply = self.mf_client.run(service_call, list_args)
+
+# build XML, cross fingers, and then POST
+		xml_arguments = "".join(argument_list)
+
+		print "XML arguments: [%s]" % xml_arguments
+
+
+
+		xml_request = self.mf_client._xml_wrap(service_call, xml_arguments)
+		reply = self.mf_client._post(xml_request)
+# show response
 		self.mf_client.xml_print(reply)
+		return
 
 
 # --- helper
@@ -948,6 +1013,18 @@ class parser(cmd.Cmd):
 		print "Exit without terminating the session\n"
 	def do_exit(self, line):
 		exit(0)
+
+# --
+
+	def do_test(self, line):
+		print "Testing new stuff...\n"
+
+		xml = self.mf_client._xml_wrap("asset.set", "<id>1174</id><meta><mf-note><note>it works</note></mf-note></meta>")
+
+		result = self.mf_client._post(xml)
+
+		self.mf_client.xml_print(result)	
+
 
 # --
 	def loop_interactively(self):

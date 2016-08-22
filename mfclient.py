@@ -387,6 +387,9 @@ class mf_client:
 		for key, value in arguments:
 # I hate the use of attributes ... why? WHY???
 # HACK - rip out the element from key but (hopefully) leave attributes in place
+
+# NEW - cope with sub-elements embeded in the arguments ... ideally recursively ... ugh
+
 			key_element = key.split(" ")[0]
 
 			value = self._xml_sanitise(value)
@@ -398,6 +401,37 @@ class mf_client:
 
 # FIXME - very noisy - make it debug level 2?
 # don't print a logon XML post -> it might contain a password
+		if not logon:
+			self.log("DEBUG", "Request XML: %s" % xml)
+
+		return xml
+
+#------------------------------------------------------------
+# TODO - bake the expansion of Arcitecta's truncated XML in pshell into this function
+	def _xml_wrap(self, service_call, argument_payload):
+		""" 
+		Experimental method for constructing the XML request to send to the Mediaflux server eg if arguments are a tree - rather than (key, value) pairs
+
+		Args:
+			service_call: a STRING representing the Mediaflux service call to run on the server
+		     argument_payload: raw XML containing arguments to send to the server - good luck!
+
+		Returns:
+			A STRING containing the XML, suitable for sending via post() to the Mediaflux server
+		"""
+
+# special case for logon
+		if service_call == "system.logon":
+			xml = '<request><service name="%s"><args>' % service_call
+			tail = '</args></service></request>'
+			logon = True
+		else:
+			xml = '<request><service name="service.execute" session="%s"><args><service name="%s">' % (self.session, service_call)
+			tail = '</service></args></service></request>'
+			logon = False
+
+		xml += argument_payload
+		xml += tail
 		if not logon:
 			self.log("DEBUG", "Request XML: %s" % xml)
 
