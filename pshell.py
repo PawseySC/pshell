@@ -268,7 +268,9 @@ class parser(cmd.Cmd):
 		estart=estop=bcount=0
 		stack=[]
 		argument_list = []
+		current = ""
 
+# TODO - could use an enumerate here...
 		while i<len(line):
 # handle :
 			if line[i] == ':':
@@ -278,6 +280,7 @@ class parser(cmd.Cmd):
 						data = line[estop:i].strip()
 						current = "<%s>%s</%s>" % (element, data, element)
 						argument_list.append(current)
+						current = ""
 						estop=0
 					else:
 						print "Parse error - raise?"
@@ -301,6 +304,7 @@ class parser(cmd.Cmd):
 						element = stack.pop()
 						current = "<%s>%s</%s>" % (element, current, element)
 						argument_list.append(current)
+						current = ""
 						estop=0
 					else:
 						print "Parse error - raise?"
@@ -319,6 +323,7 @@ class parser(cmd.Cmd):
 				estart=0
 # loop until end of string
 			i += 1
+
 
 # cope with end of string terminating the parse ... TODO - make this more elegant
 		if len(stack) > 0:
