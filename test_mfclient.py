@@ -238,22 +238,22 @@ class mfclient_aterm_syntax(unittest.TestCase):
 
 	def test_aterm_asset_get(self):
 		line = 'asset.get :id 123 :format extended'
-		reply = self.mf_client._xml_aterm_run(line, run=False)
+		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<id>123</id><format>extended</format>')
 
 	def test_aterm_actor_grant(self):
 		line = 'actor.grant :perm < :access access :resource -type service asset.* > :name request-review :type role'
-		reply = self.mf_client._xml_aterm_run(line, run=False)
+		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<perm><access>access</access><resource type="service">asset.*</resource></perm><name>request-review</name><type>role</type>')
 
 	def test_aterm_asset_namespace_acl_grant(self):
 		line = 'asset.namespace.acl.grant :namespace /projects :acl < :actor -type user "system:posix" :access < :namespace access :asset access > >'
-		reply = self.mf_client._xml_aterm_run(line, run=False)
+		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<namespace>/projects</namespace><acl><actor type="user">system:posix</actor><access><namespace>access</namespace><asset>access</asset></access></acl>')
 
 	def test_aterm_asset_query(self):
 		line = 'asset.query :where "namespace>=/www" :action pipe :service -name asset.label.add < :label "PUBLISHED" >'
-		reply = self.mf_client._xml_aterm_run(line, run=False)
+		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<where>namespace&gt;=/www</where><action>pipe</action><service name="asset.label.add"><label>PUBLISHED</label></service>')
 
 

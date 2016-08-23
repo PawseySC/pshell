@@ -376,16 +376,12 @@ class mf_client:
 #------------------------------------------------------------
 	def _xml_element_attributes_format(self, element):
 		"""
-		Helper method to format attributes "-attribute value" -> "attribute=value"
+		Helper method to format attributes '-attribute value' -> 'attribute="value"'
 		"""
 
 #		print "unformatted: [%s]" % element
 
 		list_attributes = element.split()
-
-# no attributes - we're done
-		if len(list_attributes) == 1:
-			return(element)
 
 # build the element string
 		count=0
@@ -477,15 +473,9 @@ class mf_client:
 
 # add argument dictionary items
 		for key, value in arguments:
-# I hate the use of attributes ... why? WHY???
-# HACK - rip out the element from key but (hopefully) leave attributes in place
-
-# NEW - cope with sub-elements embeded in the arguments ... ideally recursively ... ugh
-
+# strip any attributes for terminating tag
 			key_element = key.split(" ")[0]
-
 			value = self._xml_sanitise(value)
-
 			xml += "<{0}>{1}</{2}>".format(key, value, key_element)
 
 # complete the xml
@@ -499,13 +489,13 @@ class mf_client:
 		return xml
 
 #------------------------------------------------------------
-# TODO - bake the expansion of Arcitecta's truncated XML in pshell into this function
-	def _xml_aterm_run(self, aterm_line, run=True):
+	def _xml_aterm_run(self, aterm_line, post=True):
 		""" 
 		Method for serializing aterm's compressed XML syntax and sending to the Mediaflux server 
 
 		Args:
 		     aterm_line: raw input text that is assumed to be in aterm syntax
+			   post: if False will just return the argument part of the serialized XML, if True will post and return reply
 
 		Returns:
 			A STRING containing the server reply
@@ -526,7 +516,6 @@ class mf_client:
 		stack=[]
 		xml = ""
 
-# FIXME - if text data is encapsulated in quotes/double-quotes and contains special characters (eg < >) this will fail
 # process the compressed XML
 		try:
 			for i in range(argument_start, length):
@@ -546,31 +535,34 @@ class mf_client:
 				if qcount or dqcount:
 					continue
 
-# data termination - can happen in a few different contexts
+# data termination - can happen if new element or end of line
 				if aterm_line[i] == ':' or i == length-1:
+# handle where data ends if new element OR if end of string happens to be a special character
 					if aterm_line[i] == ':' or aterm_line[i] == '>':
 						end = i-1
 					else:
+# end of line is not a special character -> include
 						end = i+1	
 
-# if we have a valid element -> add to the XML document
+# if we have a valid previous element -> add to the XML document
 					if start:
 						xml += self._xml_expand(aterm_line[start+1:end])
+# flag start of a current new element
 					start = i
 
-# handle < ie push nested element
+# handle < ie start XML tag and push reference
 				if aterm_line[i] == '<':
 					element = self._xml_element_attributes_format(aterm_line[start+1:i-1])
 					xml += "<%s>" % element
 					stack.append(element)
 					start = 0
 
-# handle > ie pop nested element
+# handle > ie pop reference and terminate XML tag
 				if aterm_line[i] == '>':
-# is this terminating any child elements?
+# include nested child elements - if any
 					if start < i-2:
 						xml += self._xml_expand(aterm_line[start+1:i-1])
-# parent nested termination
+# termination of popped parent XML tag
 					element = stack.pop()
 					element_noattrib = self._xml_element_attributes_strip(element)
 					xml += "</%s>" % element_noattrib
@@ -580,14 +572,14 @@ class mf_client:
 			self.log("DEBUG", "XML parse error: %s" % str(e))
 			raise Exception("Bad command syntax.")
 
-# build XML, cross fingers, and then POST
 #		print "output: [%s]" % xml
 
 # intended for no-session testing (see test_mflcient)
-		if run == False:
+		if post == False:
 			return xml
 
-# special case for logon (shouldn't actually be necessary)
+# wrap service call & authentication XML - cross fingers, and POST
+# special case for logon 
 		if service_call == "system.logon":
 			xml = '<request><service name="%s"><args>%s</args></service></request>' % (service_call, xml)
 		else:
