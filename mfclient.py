@@ -361,6 +361,98 @@ class mf_client:
 		return text
 
 #------------------------------------------------------------
+	def _xml_element_attributes_strip(self, element):
+		"""
+		Helper method to strip an element of any attributes
+		"""
+		k = element.find(' ')
+		if k != -1:
+			element_strip = element[:k]
+		else:
+			element_strip = element
+
+		return element_strip
+
+#------------------------------------------------------------
+	def _xml_element_attributes_format(self, element):
+		"""
+		Helper method to format attributes "-attribute value" -> "attribute=value"
+		"""
+
+#		print "unformatted: [%s]" % element
+
+		list_attributes = element.split()
+
+# no attributes - we're done
+		if len(list_attributes) == 1:
+			return(element)
+
+# build the element string
+		count=0
+		for item in list_attributes:
+			if count == 0:
+				element_string = item
+			else:
+				if count % 2 == 0:
+					element_string += '="%s"' % item
+				else:
+					element_string += " %s" % item[1:]
+			count += 1
+
+#		print "formatted: [%s]" % element_string
+
+		return element_string
+
+#------------------------------------------------------------
+	def _xml_expand(self, xml_condensed):
+		"""
+		Helper method to expand a single element+data in Arcitecta's condensed XML format
+		Generally of the form:
+		element -optional attribute1 -optional attribute2 text_data_section
+		"""
+
+#		print "condensed: [%s]" % xml_condensed
+
+		qcount=dqcount=0
+		for i, c in enumerate(reversed(xml_condensed)):
+# quoted string flagging
+			if c == "'":
+				if qcount:
+					qcount=0
+				else:
+					qcount=1
+			if c == '"':
+				if dqcount:
+					dqcount=0
+				else:
+					dqcount=1
+# if any quoted string flags are active - skip any further processing
+			if qcount or dqcount:
+				continue
+
+# find the whitespace separating the text data section from everything else
+			if c == ' ':
+				j = len(xml_condensed)-i-1
+				element = xml_condensed[:j]
+# format attributes (if any)
+				element = self._xml_element_attributes_format(element)
+# strip attributes for terminating tag
+				element_noattrib = self._xml_element_attributes_strip(element)
+
+# text data should have no outer wrapping quotes, for some reason...
+				if xml_condensed[j+1] == "'" or xml_condensed[j+1] == '"':
+					text = self._xml_sanitise(xml_condensed[j+2:-1])
+				else:
+					text = self._xml_sanitise(xml_condensed[j+1:])
+
+#				print "expanded: <%s>%s</%s>" % (element, text, element_noattrib)
+
+				return "<%s>%s</%s>" % (element, text, element_noattrib)
+
+		self.log("DEBUG", "Failed to find whitespace separating element from text in: [%s]" % xml_condensed)
+		raise Exception("Bad command syntax.")
+
+#------------------------------------------------------------
 	def _xml_request(self, service_call, arguments):
 		""" 
 		Helper method for constructing the XML request to send to the Mediaflux server
@@ -408,34 +500,103 @@ class mf_client:
 
 #------------------------------------------------------------
 # TODO - bake the expansion of Arcitecta's truncated XML in pshell into this function
-	def _xml_wrap(self, service_call, argument_payload):
+	def _xml_aterm_run(self, aterm_line, run=True):
 		""" 
-		Experimental method for constructing the XML request to send to the Mediaflux server eg if arguments are a tree - rather than (key, value) pairs
+		Method for serializing aterm's compressed XML syntax and sending to the Mediaflux server 
 
 		Args:
-			service_call: a STRING representing the Mediaflux service call to run on the server
-		     argument_payload: raw XML containing arguments to send to the server - good luck!
+		     aterm_line: raw input text that is assumed to be in aterm syntax
 
 		Returns:
-			A STRING containing the XML, suitable for sending via post() to the Mediaflux server
+			A STRING containing the server reply
 		"""
 
-# special case for logon
-		if service_call == "system.logon":
-			xml = '<request><service name="%s"><args>' % service_call
-			tail = '</args></service></request>'
-			logon = True
-		else:
-			xml = '<request><service name="service.execute" session="%s"><args><service name="%s">' % (self.session, service_call)
-			tail = '</service></args></service></request>'
-			logon = False
+#		print "\ninput: [%s]" % aterm_line
 
-		xml += argument_payload
-		xml += tail
-		if not logon:
+# pull the service call
+		match = re.match('^\S+', aterm_line)
+		if match:
+			service_call = match.group(0)
+			argument_start = match.end()
+		else:
+			raise Exception("Missing service call in: [%s]" % aterm_line)
+
+		start = qcount = dqcount = 0
+		length = len(aterm_line)
+		stack=[]
+		xml = ""
+
+# FIXME - if text data is encapsulated in quotes/double-quotes and contains special characters (eg < >) this will fail
+# process the compressed XML
+		try:
+			for i in range(argument_start, length):
+
+# quoted string flagging
+				if aterm_line[i] == "'":
+					if qcount:
+						qcount=0
+					else:
+						qcount=1
+				if aterm_line[i] == '"':
+					if dqcount:
+						dqcount=0
+					else:
+						dqcount=1
+# if any quoted string flags are active - skip any further processing
+				if qcount or dqcount:
+					continue
+
+# data termination - can happen in a few different contexts
+				if aterm_line[i] == ':' or i == length-1:
+					if aterm_line[i] == ':' or aterm_line[i] == '>':
+						end = i-1
+					else:
+						end = i+1	
+
+# if we have a valid element -> add to the XML document
+					if start:
+						xml += self._xml_expand(aterm_line[start+1:end])
+					start = i
+
+# handle < ie push nested element
+				if aterm_line[i] == '<':
+					element = self._xml_element_attributes_format(aterm_line[start+1:i-1])
+					xml += "<%s>" % element
+					stack.append(element)
+					start = 0
+
+# handle > ie pop nested element
+				if aterm_line[i] == '>':
+# is this terminating any child elements?
+					if start < i-2:
+						xml += self._xml_expand(aterm_line[start+1:i-1])
+# parent nested termination
+					element = stack.pop()
+					element_noattrib = self._xml_element_attributes_strip(element)
+					xml += "</%s>" % element_noattrib
+					start = 0
+
+		except Exception as e:
+			self.log("DEBUG", "XML parse error: %s" % str(e))
+			raise Exception("Bad command syntax.")
+
+# build XML, cross fingers, and then POST
+#		print "output: [%s]" % xml
+
+# intended for no-session testing (see test_mflcient)
+		if run == False:
+			return xml
+
+# special case for logon (shouldn't actually be necessary)
+		if service_call == "system.logon":
+			xml = '<request><service name="%s"><args>%s</args></service></request>' % (service_call, xml)
+		else:
+			xml = '<request><service name="service.execute" session="%s"><args><service name="%s">%s</service></args></service></request>' % (self.session, service_call, xml)
 			self.log("DEBUG", "Request XML: %s" % xml)
 
-		return xml
+		reply = self._post(xml)
+
+		return reply
 
 #------------------------------------------------------------
 	def _xml_recurse(self, elem):
