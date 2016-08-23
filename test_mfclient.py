@@ -330,9 +330,9 @@ if __name__ == '__main__':
 		f.close()
 
 # classes to test
-#	test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_transfers, mfclient_fixes, mfclient_aterm_syntax]
+	test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_transfers, mfclient_fixes, mfclient_aterm_syntax]
 #	test_class_list = [mfclient_fixes]
-	test_class_list = [mfclient_aterm_syntax]
+#	test_class_list = [mfclient_aterm_syntax]
 
 
 # build suite
