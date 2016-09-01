@@ -672,7 +672,15 @@ class parser(cmd.Cmd):
 
 	def do_mkdir(self, line):
 		ns_target = self.absolute_remote_filepath(line)
-		self.mf_client.run("asset.namespace.create", [("namespace", ns_target)])
+		try:
+			self.mf_client.run("asset.namespace.create", [("namespace", ns_target)])
+		except Exception as e:
+# don't raise an exception if the namespace already exists - just warn
+			if "already exists" in str(e):
+				print "Warning: %s" % str(e)
+			else:
+# other errors (no permission, etc) should still raise an exception - failure
+				raise Exception(e)
 
 # --
 	def help_rm(self):
