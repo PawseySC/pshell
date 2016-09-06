@@ -85,31 +85,36 @@ class mfclient_special_characters(unittest.TestCase):
 		global mf_client
 		self.mf_client = mf_client
 
-	def test_xml_sanitise_namespace(self):
+# namespace (folder) tests
+	def test_sanitise_namespace(self):
 		global namespace
 
-		tmp_remote = posixpath.join(namespace, 'namespace_<"&>')
-
+		c = "_^#%-&{}<>[]()*? $!`\":;,.@+`|=~1234567890\\"
+		tmp_name = 'namespace' + c
+		tmp_remote = posixpath.join(namespace, tmp_name)
 		self.mf_client.run("asset.namespace.create", [("namespace", tmp_remote)])
+# assert verified creation
 		self.assertTrue(self.mf_client.namespace_exists(tmp_remote), "Failed to create [%s] on server" % tmp_remote)
 		self.mf_client.run("asset.namespace.destroy", [("namespace", tmp_remote)])
+# assert verified destroy
 		self.assertFalse(self.mf_client.namespace_exists(tmp_remote), "Failed to destroy [%s] on server" % tmp_remote)
 
-	def test_xml_sanitise_assets(self):
+# asset (filename) tests
+	def test_sanitise_assets(self):
 		global namespace
 
-		tmp_name = 'asset_<"&>'
+		c = "_^#%-&{}<>[]()*? $!`\":;,.@+`|=~1234567890\\"
+		tmp_name = 'asset' + c
 		tmp_remote = posixpath.join(namespace, tmp_name)
-
 		self.mf_client.run("asset.create", [("namespace", namespace), ("name", tmp_name)])
 		xml_tree = self.mf_client.run("asset.exists", [("id", "path=%s"%tmp_remote)])
 		result = self.mf_client.xml_find(xml_tree, "exists")
+# assert verified creation
 		self.assertEqual(result.text, "true", "Failed to test existance of [%s] on server" % tmp_remote)
-
 		self.mf_client.run("asset.destroy", [("id", "path=%s"%tmp_remote)])
-
 		xml_tree = self.mf_client.run("asset.exists", [("id", "path=%s"%tmp_remote)])
 		result = self.mf_client.xml_find(xml_tree, "exists")
+# assert verified destroy
 		self.assertEqual(result.text, "false", "Failed to cleanup of [%s] on server" % tmp_remote)
 
 
@@ -333,6 +338,7 @@ if __name__ == '__main__':
 	test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_transfers, mfclient_fixes, mfclient_aterm_syntax]
 #	test_class_list = [mfclient_fixes]
 #	test_class_list = [mfclient_aterm_syntax]
+#	test_class_list = [mfclient_special_characters]
 
 
 # build suite
