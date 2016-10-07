@@ -34,7 +34,7 @@ class parser(cmd.Cmd):
 	config_filepath = None
 	mf_client = None
 	mf_fast = None
-	use_mf_fast = True
+	use_mf_fast = False
 	cwd = '/projects'
 
 # --- init global
@@ -952,8 +952,10 @@ def main():
 
 # server config (section heading) to use
 	p = argparse.ArgumentParser(description='pshell help')
-	p.add_argument('-c', dest='config', default='pawsey', help='the configuration name describing the remote server to connect to (eg pawsey)')
-	p.add_argument('-i', dest='script', help='input script file containing commands to run)')
+	p.add_argument('-c', dest='config', default='pawsey', help='The server in $HOME/.mf_config to connect to')
+	p.add_argument('-i', dest='script', help='Input script file containing commands')
+	p.add_argument("-d", dest='debug', help="Turn debugging on", action="store_true")
+
 	args = p.parse_args()
 	current = args.config
 	script = args.script
@@ -1010,6 +1012,10 @@ def main():
 		config.set(current, 'protocol', protocol)
 		config.set(current, 'port', port)
 		config_changed = True
+
+# new - commandline debug true overrides config
+	if args.debug:
+		debug = True
 
 # mediaflux client
 	try:
