@@ -33,8 +33,6 @@ class parser(cmd.Cmd):
 	config_name = None
 	config_filepath = None
 	mf_client = None
-	mf_fast = None
-	use_mf_fast = False
 	cwd = '/projects'
 
 # --- init global
@@ -552,13 +550,8 @@ class parser(cmd.Cmd):
 #				for asset_id, filepath in list_asset_filepath:
 #					print "get [id=%r] => %r" % (asset_id, filepath)
 
-				if self.mf_fast and self.use_mf_fast:
-					self.mf_client.log("DEBUG", "Using mf_fast")
-					self.mf_fast.session = self.mf_client.session
-					manager = self.mf_fast.get_managed(list_asset_filepath, total_bytes=total_bytes)
-				else:
-					self.mf_client.log("DEBUG", "Not using mf_fast")
-					manager = self.mf_client.get_managed(list_asset_filepath, total_bytes=total_bytes)
+				self.mf_client.log("DEBUG", "Starting transfer")
+				manager = self.mf_client.get_managed(list_asset_filepath, total_bytes=total_bytes)
 
 				try:
 					while True:
@@ -612,13 +605,8 @@ class parser(cmd.Cmd):
 #		for dest,src in upload_list:
 #			print "put: %s -> %s" % (src, dest)
 
-		if self.mf_fast and self.use_mf_fast:
-			self.mf_client.log("DEBUG", "Using mf_fast")
-			self.mf_fast.session = self.mf_client.session
-			manager = self.mf_fast.put_managed(upload_list)
-		else:
-			self.mf_client.log("DEBUG", "Not using mf_fast")
-			manager = self.mf_client.put_managed(upload_list)
+		self.mf_client.log("DEBUG", "Starting transfer...")
+		manager = self.mf_client.put_managed(upload_list)
 
 		try:
 			while True:
@@ -740,23 +728,9 @@ class parser(cmd.Cmd):
 		if "true" in line or "on" in line:
 			print "Turning DEBUG on"
 			self.mf_client.debug = True
-			if self.mf_fast:
-				self.mf_fast.debug = True
 		else:
 			print "Turning DEBUG off"
 			self.mf_client.debug = False
-			if self.mf_fast:
-				self.mf_fast.debug = False
-# --
-
-# debugging mechanism
-#	def do_fast(self, line):
-#		if "true" in line or "on" in line:
-#			print "Turning HTTP for data on"
-#			self.use_mf_fast = True
-#		else:
-#			print "Turning HTTP for data off"
-#			self.use_mf_fast = False
 
 # --
 	def help_lpwd(self):
@@ -969,7 +943,8 @@ def main():
 	try:
 		open(config_filepath, 'a').close()
 	except:
-		print "Bad home directory [%s] ... falling back to current directory" % os.path.expanduser("~")
+#		print "Bad home directory [%s] ... falling back to current directory" % os.path.expanduser("~")
+		print "Bad home directory [%s] ... falling back to current directory" % config_filepath
 		config_filepath = os.path.join(os.getcwd(), ".mf_config")
 
 	config.read(config_filepath)
@@ -1024,20 +999,6 @@ def main():
 		print "Failed to establish network connection to: %s" % current
 		exit(-1)
 
-# test http connection (data only) and don't send any session info
-	http_available = False
-	if protocol == "https":
-		try:	
-# internal network -> should be fast
-			mf_fast = mfclient.mf_client(protocol="http", port=80, server=server, timeout=1, session="", enforce_encrypted_login=encrypt, debug=debug)
-# FIXME - do a public login to check instead?
-			result = mf_fast.run("actor.self.describe")
-# TODO - strictly, should look at result
-			http_available = True
-		except Exception as e:
-			if "session is not valid" in str(e):
-				http_available = True
-
 # FIXME - need to deal with config parse inconsistency here
 # ie session = None gets spat out and read back in as a pure text string 
 # CURRENT - simplest soln might be to use empty string instead ie session="" instead of None (token as well ....)
@@ -1091,12 +1052,6 @@ def main():
 			readline.parse_and_bind("tab: complete")
 	except:
 		mf_client.log("WARNING", "No readline module available")
-
-# CURRENT
-	if http_available:
-		my_parser.mf_fast = mf_fast
-		if debug:
-			print "HTTP: available"
 
 # process script or go interactive
 	if script:
