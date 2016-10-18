@@ -96,7 +96,7 @@ class parser(cmd.Cmd):
 				return None
 #
 # noisy DEBUG
-#		print "cn: partial [%s] : target_ns: [%s] : isabs = %r : pattern = %r : prefix = %r" % (partial_ns, target_ns, isabs, pattern, prefix)
+#		print "\ncn: partial [%s] : target_ns: [%s] : isabs = %r : pattern = %r : prefix = %r" % (partial_ns, target_ns, isabs, pattern, prefix)
 
 # generate listing in target namespace for completion matches
 		result = self.mf_client.run("asset.namespace.list", [("namespace", target_ns)])
@@ -116,11 +116,13 @@ class parser(cmd.Cmd):
 						if isabs:
 							ns_list.append(path[start:] + "/")
 						else:
-							ns_list.append(prefix + elem.text + "/")
+# NEW - space delim bugfix
+							item = prefix + elem.text + "/"
+							ns_list.append(item[start:])
 				else:
 					ns_list.append(posixpath.join(prefix,elem.text+"/"))
 
-#		print "cn: ", ns_list
+#		print "\ncn: ", ns_list
 
 		return ns_list
 
