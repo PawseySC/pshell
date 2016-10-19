@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2.7
 
 import os
 import re
@@ -65,66 +65,60 @@ class parser(cmd.Cmd):
 
 		return cmd.Cmd.postcmd(self, stop, line)
 
-# --- helper: attempt to complete a partial namespace with replacement offset = start
+
+# --- helper: attempt to complete a namespace
 	def complete_namespace(self, partial_ns, start):
+
+# extract any partial namespace to use as pattern match 
+		match = re.match(r".*/", partial_ns)
+		if match:
+			offset = match.end()
+			pattern = partial_ns[offset:]
+		else:
+			offset = 0
+			pattern = partial_ns
+
+# namespace fragment prefix (if any) to include in the returned candidate
+		prefix = partial_ns[start:offset]
+# offset to use when extracting completion string from candidate matches
+		xlat_offset = max(0, start-offset)
+
+#		print "\ncn: partial [%s] : prefix = [%r] : pattern = [%r] : insertion_start=%r : xlat_offset=%r" % (partial_ns, prefix, pattern, start, xlat_offset)
+
+# special case - we "know" .. is a namespace
+		if pattern == "..":
+			return [partial_ns[start:]+"/"]
 
 # construct an absolute namespace (required for any remote lookups)
 		if posixpath.isabs(partial_ns):
-			candidate_ns = posixpath.normpath(partial_ns)
-			isabs = True
+			target_ns = posixpath.normpath(partial_ns[:offset])
 		else:
-			candidate_ns = posixpath.normpath(posixpath.join(self.cwd, partial_ns))
-			isabs = False
+			target_ns = posixpath.normpath(posixpath.join(self.cwd, partial_ns[:offset]))
 
-		if self.mf_client.namespace_exists(candidate_ns):
-# candidate is a namespace -> it's our target for listing
-			target_ns = candidate_ns
-# no pattern -> add all namespaces 
-#			pattern = partial_ns[start:]
-			pattern = None
-# replacement prefix for any matches
-			prefix = partial_ns[start:]
-		else:
-# candidate not a namespace -> set the parent as the namespace target
-			match = re.match(r".*/", candidate_ns)
-			if match:
-				target_ns = match.group(0)
-# extract pattern to search and prefix for any matches
-				pattern = candidate_ns[match.end():]
-				prefix = partial_ns[start:-len(pattern)]
-			else:
-				return None
-#
-# noisy DEBUG
-#		print "\ncn: partial [%s] : target_ns: [%s] : isabs = %r : pattern = %r : prefix = %r" % (partial_ns, target_ns, isabs, pattern, prefix)
+#		print "cn: target_ns: [%s]" % target_ns
 
 # generate listing in target namespace for completion matches
 		result = self.mf_client.run("asset.namespace.list", [("namespace", target_ns)])
-
-# noisy DEBUG
-#		self.mf_client.xml_print(result)
-
 		ns_list = []
 		for elem in result.iter('namespace'):
 			if elem.text is not None:
 # namespace matches the pattern we're looking for?
-				if pattern is not None:
+				item = None
+				if len(pattern) != 0:
 					if elem.text.startswith(pattern):
-# construct the full namespace that matches the pattern
-						path = posixpath.join(target_ns, elem.text)
-# extract the replacement text required to achieve the full namespace
-						if isabs:
-							ns_list.append(path[start:] + "/")
-						else:
-# NEW - space delim bugfix
-							item = prefix + elem.text + "/"
-							ns_list.append(item[start:])
+						item = posixpath.join(prefix, elem.text[xlat_offset:]+"/")
 				else:
-					ns_list.append(posixpath.join(prefix,elem.text+"/"))
+					item = posixpath.join(prefix, elem.text[xlat_offset:]+"/")
 
-#		print "\ncn: ", ns_list
+				if item is not None:
+					ns_list.append(item)
 
 		return ns_list
+
+# CURRENT - helper for completion testing
+#	def do_test(self, line):
+#		print "input: [%s]" % line
+#		print "output: %r" % self.complete_namespace(line, 0)
 
 
 # --- helper: attempt to complete an asset
@@ -133,10 +127,8 @@ class parser(cmd.Cmd):
 # construct an absolute namespace (required for any remote lookups)
 		if posixpath.isabs(partial_asset_path):
 			candidate_ns = posixpath.normpath(partial_asset_path)
-			isabs = True
 		else:
 			candidate_ns = posixpath.normpath(posixpath.join(self.cwd, partial_asset_path))
-			isabs = False
 
 		if self.mf_client.namespace_exists(candidate_ns):
 # candidate is a namespace -> it's our target for listing
@@ -158,7 +150,7 @@ class parser(cmd.Cmd):
 
 		target_ns = self.safe_namespace_query(target_ns)
 
-#		print "ca: target_ns: [%s] : isabs = %r : pattern = %r : prefix = %r" % (target_ns, isabs, pattern, prefix)
+#		print "ca: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix)
 
 		if pattern is not None:
 			result = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s*'" % (target_ns, pattern)), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
@@ -349,7 +341,8 @@ class parser(cmd.Cmd):
 # if absolute path exists as a namespace -> query this, else query via an asset pattern match
 # FIXME - this will fail if line is already an absolute path
 			if posixpath.isabs(line):
-				cwd = line
+#				cwd = line
+				cwd = posixpath.normpath(line)
 			else:
 				cwd = posixpath.normpath(posixpath.join(self.cwd, line))
 
@@ -637,7 +630,7 @@ class parser(cmd.Cmd):
 
 	def do_cd(self, line):
 		if os.path.isabs(line):
-			candidate = line
+			candidate = posixpath.normpath(line)
 		else:
 			candidate = posixpath.normpath(self.cwd + "/" + line)
 # set if exists on remote server
