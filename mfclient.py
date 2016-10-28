@@ -6,15 +6,16 @@ import cmd
 import sys
 import ssl
 import time
-import datetime
-import getpass
+import shlex
 import random
 import string
 import socket
 import signal
+import getpass
 import inspect
 import urllib2
 import httplib
+import datetime
 import functools
 import mimetypes
 import posixpath
@@ -402,51 +403,41 @@ class mf_client:
 #------------------------------------------------------------
 	def _xml_expand(self, xml_condensed):
 		"""
-		Helper method to expand a single element+data in Arcitecta's condensed XML format
-		Generally of the form:
-		element -optional attribute1 -optional attribute2 text_data_section
+		Helper method to expand a single element sequence written in Arcitecta's condensed XML format
+		Expected input is of the form:
+		element -optional1 attribute1 -optional2 attribute2 optional_text_data
+		Which is mapped to:
+		<element optional1=attribute1 optional2=attribute2>optional_text_data</element>
 		"""
 
-#		print "condensed: [%s]" % xml_condensed
+#		print "_xml_expand(input): [%s]" % xml_condensed
 
-		qcount=dqcount=0
-		for i, c in enumerate(reversed(xml_condensed)):
-# quoted string flagging
-			if c == "'":
-				if qcount:
-					qcount=0
-				else:
-					qcount=1
-			if c == '"':
-				if dqcount:
-					dqcount=0
-				else:
-					dqcount=1
-# if any quoted string flags are active - skip any further processing
-			if qcount or dqcount:
-				continue
+		split_string = shlex.split(xml_condensed)
+		count = len(split_string)
+		na = int((count-1)/2)
+		nv = count-1-2*na
+#		print "# attributes = %d" % na
+#		print "# values = %d" % nv
 
-# find the whitespace separating the text data section from everything else
-			if c == ' ':
-				j = len(xml_condensed)-i-1
-				element = xml_condensed[:j]
-# format attributes (if any)
-				element = self._xml_element_attributes_format(element)
-# strip attributes for terminating tag
-				element_noattrib = self._xml_element_attributes_strip(element)
+		if nv:
+			text = split_string[-1]
+		else:
+			text = ""
 
-# text data should have no outer wrapping quotes, for some reason...
-				if xml_condensed[j+1] == "'" or xml_condensed[j+1] == '"':
-					text = self._xml_sanitise(xml_condensed[j+2:-1])
-				else:
-					text = self._xml_sanitise(xml_condensed[j+1:])
+		start = close = split_string[0]
+		for i in range(0, na):
+			item = split_string[2*i+1]
+			value = split_string[2*i+2]
+# some attributes EXPECT quotes for their values (even if not required) and some do not expect them ... nice consistency
+# eg -role type "role" is OK but -role type role will FAIL with a 'missing quotes' error 
+# decided to quote everything - this may need to be revisited ...
+			start += " %s=\"%s\"" % (item[1:], value)
 
-#				print "expanded: <%s>%s</%s>" % (element, text, element_noattrib)
+		xml = "<%s>%s</%s>" % (start, self._xml_sanitise(text), close)
 
-				return "<%s>%s</%s>" % (element, text, element_noattrib)
+#		print "_xml_expand(output): [%s]" % xml
 
-		self.log("DEBUG", "Failed to find whitespace separating element from text in: [%s]" % xml_condensed)
-		raise Exception("Bad command syntax.")
+		return xml
 
 #------------------------------------------------------------
 	def _xml_request(self, service_call, arguments):
@@ -477,7 +468,6 @@ class mf_client:
 			key_element = key.split(" ")[0]
 			value = self._xml_sanitise(value)
 			xml += "<{0}>{1}</{2}>".format(key, value, key_element)
-
 # complete the xml
 		xml += tail
 
@@ -878,13 +868,7 @@ class mf_client:
 #		url = self.data_url + "?_skey={0}&id={1}&disposition=attachment".format(self.session, asset_id)
 		url = self.data_url + "?_skey={0}&id={1}".format(self.session, asset_id)
 
-
-
 		req = urllib2.urlopen(url)
-
-
-
-
 
 # distinguish between file data and mediaflux error message
 		info = req.info()
@@ -915,7 +899,7 @@ class mf_client:
 		output.close()
 
 #------------------------------------------------------------
-	def get_managed(self, list_asset_filepath, total_bytes, processes=2):
+	def get_managed(self, list_asset_filepath, total_bytes, processes=4):
 		"""
 		Managed multiprocessing download of a list of assets from the Mediaflux server. Uses get() as the file transfer primitive
 
