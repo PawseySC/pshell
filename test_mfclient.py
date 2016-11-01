@@ -267,20 +267,10 @@ class mfclient_aterm_syntax(unittest.TestCase):
 		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string"></element><element name="arg2" type="string" min-occurs="0" default=" "></element><element name="arg3" type="boolean" min-occurs="0" default="false"></element></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute>')
 
-
 	def test_aterm_semicolon_value(self):
-# CURRENT - : causes issues with element parse -> can quote (ie "public:public") as workaround
 		line = 'actor.grant :name public:public :type user :role -type role read-only'
-
 		reply = self.mf_client._xml_aterm_run(line, post=False)
-
 		self.assertEqual(reply, '<name>public:public</name><type>user</type><role type="role">read-only</role>')
-
-
-# TODO - test
-# secure.identity.token.create :to "now+4 week" :role -type domain ivec :role -type role user :role -type role "Demo:readwrite" :max-token-length 16
-
-
 
 
 ######
@@ -358,8 +348,10 @@ if __name__ == '__main__':
 # classes to test
 #	test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_transfers, mfclient_fixes, mfclient_aterm_syntax]
 #	test_class_list = [mfclient_fixes]
-	test_class_list = [mfclient_aterm_syntax]
+#	test_class_list = [mfclient_aterm_syntax]
 #	test_class_list = [mfclient_special_characters]
+# for when Jeffrey removes the backing store on test... (transfer tests will all fail)
+	test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_aterm_syntax]
 
 
 # build suite

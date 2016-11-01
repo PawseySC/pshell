@@ -410,6 +410,9 @@ class mf_client:
 		<element optional1=attribute1 optional2=attribute2>optional_text_data</element>
 		"""
 
+		if len(xml_condensed) == 0:
+			return xml_condensed
+
 #		print "_xml_expand(input): [%s]" % xml_condensed
 
 		split_string = shlex.split(xml_condensed)
@@ -502,16 +505,18 @@ class mf_client:
 		else:
 			raise Exception("Missing service call in: [%s]" % aterm_line)
 
-		start = qcount = dqcount = 0
+		qcount = dqcount = 0
 		length = len(aterm_line)
 		stack=[]
 		xml = ""
+		chunk = None
+		start = argument_start
 
 # process the compressed XML
 		try:
 			for i in range(argument_start, length):
 
-# quoted string flagging
+# if any quoted string flags are active - skip any further processing
 				if aterm_line[i] == "'":
 					if qcount:
 						qcount=0
@@ -522,40 +527,39 @@ class mf_client:
 						dqcount=0
 					else:
 						dqcount=1
-# if any quoted string flags are active - skip any further processing
 				if qcount or dqcount:
 					continue
 
-# data termination - can happen if new element or end of line
-				if (aterm_line[i] == ':' and aterm_line[i-1] == ' ') or i == length-1:
-# handle where data ends if new element OR if end of string happens to be a special character
-					if aterm_line[i] == ':' or aterm_line[i] == '>':
-						end = i-1
-					else:
-						end = i+1	
-# if we have a valid previous element -> add to the XML document
-					if start:
-						xml += self._xml_expand(aterm_line[start+1:end])
-# flag start of a current new element
+# Arcitecta's shorthand root element start
+				if (aterm_line[i] == ':' and aterm_line[i-1] == ' '):
+					chunk = self._xml_expand(aterm_line[start+1:i-1])
 					start = i
 
-# handle < ie start XML tag and push reference
+# push nested XML element reference
 				if aterm_line[i] == '<':
 					element = self._xml_element_attributes_format(aterm_line[start+1:i-1])
-					xml += "<%s>" % element
+					chunk = "<%s>" % element
 					stack.append(element)
-					start = 0
+#					print "Push:  [%s]" % element
 
-# handle > ie pop reference and terminate XML tag
+# pop nested XML element reference
 				if aterm_line[i] == '>':
-# include nested child elements - if any
-					if start < i-2:
-						xml += self._xml_expand(aterm_line[start+1:i-1])
-# termination of popped parent XML tag
+					chunk = self._xml_expand(aterm_line[start+1:i-1])
 					element = stack.pop()
 					element_noattrib = self._xml_element_attributes_strip(element)
-					xml += "</%s>" % element_noattrib
-					start = 0
+					chunk += "</%s>" % element_noattrib
+
+# accumulate XML chunks
+				if chunk is not None:
+#					print "Chunk: [%s]" % chunk
+					xml += chunk
+					chunk = None
+					start = i
+
+# final piece (if any)
+			chunk = self._xml_expand(aterm_line[start+1:])
+			xml += chunk
+#			print "Final: [%s]" % chunk
 
 		except Exception as e:
 			self.log("DEBUG", "XML parse error: %s" % str(e))
