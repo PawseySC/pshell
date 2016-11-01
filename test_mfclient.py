@@ -261,15 +261,26 @@ class mfclient_aterm_syntax(unittest.TestCase):
 		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<where>namespace&gt;=/www</where><action>pipe</action><service name="asset.label.add"><label>PUBLISHED</label></service>')
 
+	def test_aterm_service_add(self):
+# it's assuming the last attribute value is the element value
+		line = 'system.service.add :name custom.service :replace-if-exists true :access ACCESS :definition < :element -name arg1 -type string :element -name arg2 -type string -min-occurs 0 -default \" \" :element -name arg3 -type boolean -min-occurs 0 -default false > :execute \"return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]\"'
+		reply = self.mf_client._xml_aterm_run(line, post=False)
+		self.assertEqual(reply, '<name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string"></element><element name="arg2" type="string" min-occurs="0" default=" "></element><element name="arg3" type="boolean" min-occurs="0" default="false"></element></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute>')
+
+
+	def test_aterm_semicolon_value(self):
+# CURRENT - : causes issues with element parse -> can quote (ie "public:public") as workaround
+		line = 'actor.grant :name public:public :type user :role -type role read-only'
+
+		reply = self.mf_client._xml_aterm_run(line, post=False)
+
+		self.assertEqual(reply, '<name>public:public</name><type>user</type><role type="role">read-only</role>')
+
+
 # TODO - test
 # secure.identity.token.create :to "now+4 week" :role -type domain ivec :role -type role user :role -type role "Demo:readwrite" :max-token-length 16
 
-	def test_aterm_service_add(self):
-# it's assuming the last attribute value is the element value
-		line = 'system.service.add :name www.list :replace-if-exists true :access ACCESS :object-meta-access ACCESS :object-data-access ACCESS :definition < :element -name namespace -type string :element -name page -type long -min-occurs 0 -default 1 :element -name size -type long -min-occurs 0 -default 20 :element -name filter -type string -min-occurs 0 -default \" \" :element -name recurse -type boolean -min-occurs 0 -default false > :execute \"return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name size [xvalue size $args] :arg -name filter [xvalue filter $args] :arg -name recurse [xvalue recurse $args]]]\"'
 
-		reply = self.mf_client._xml_aterm_run(line, post=False)
-		self.assertEqual(reply, '<name>www.list</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><object-meta-access>ACCESS</object-meta-access><object-data-access>ACCESS</object-data-access><definition><element name="namespace" type="string"></element><element name="page" type="long" min-occurs="0" default="1"></element><element name="size" type="long" min-occurs="0" default="20"></element><element name="filter" type="string" min-occurs="0" default=" "></element><element name="recurse" type="boolean" min-occurs="0" default="false"></element></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name size [xvalue size $args] :arg -name filter [xvalue filter $args] :arg -name recurse [xvalue recurse $args]]]</execute>')
 
 
 ######
@@ -345,9 +356,9 @@ if __name__ == '__main__':
 		f.close()
 
 # classes to test
-	test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_transfers, mfclient_fixes, mfclient_aterm_syntax]
+#	test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_transfers, mfclient_fixes, mfclient_aterm_syntax]
 #	test_class_list = [mfclient_fixes]
-#	test_class_list = [mfclient_aterm_syntax]
+	test_class_list = [mfclient_aterm_syntax]
 #	test_class_list = [mfclient_special_characters]
 
 

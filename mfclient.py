@@ -413,6 +413,7 @@ class mf_client:
 #		print "_xml_expand(input): [%s]" % xml_condensed
 
 		split_string = shlex.split(xml_condensed)
+
 		count = len(split_string)
 		na = int((count-1)/2)
 		nv = count-1-2*na
@@ -526,14 +527,12 @@ class mf_client:
 					continue
 
 # data termination - can happen if new element or end of line
-				if aterm_line[i] == ':' or i == length-1:
+				if (aterm_line[i] == ':' and aterm_line[i-1] == ' ') or i == length-1:
 # handle where data ends if new element OR if end of string happens to be a special character
 					if aterm_line[i] == ':' or aterm_line[i] == '>':
 						end = i-1
 					else:
-# end of line is not a special character -> include
 						end = i+1	
-
 # if we have a valid previous element -> add to the XML document
 					if start:
 						xml += self._xml_expand(aterm_line[start+1:end])
