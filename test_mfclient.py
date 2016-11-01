@@ -262,7 +262,6 @@ class mfclient_aterm_syntax(unittest.TestCase):
 		self.assertEqual(reply, '<where>namespace&gt;=/www</where><action>pipe</action><service name="asset.label.add"><label>PUBLISHED</label></service>')
 
 	def test_aterm_service_add(self):
-# it's assuming the last attribute value is the element value
 		line = 'system.service.add :name custom.service :replace-if-exists true :access ACCESS :definition < :element -name arg1 -type string :element -name arg2 -type string -min-occurs 0 -default \" \" :element -name arg3 -type boolean -min-occurs 0 -default false > :execute \"return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]\"'
 		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string"></element><element name="arg2" type="string" min-occurs="0" default=" "></element><element name="arg3" type="boolean" min-occurs="0" default="false"></element></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute>')
@@ -272,8 +271,14 @@ class mfclient_aterm_syntax(unittest.TestCase):
 		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<name>public:public</name><type>user</type><role type="role">read-only</role>')
 
+# CURRENT - this won't work (line continuations) ... worth fixing?
+	def test_maybe(self):
+		line = 'system.service.add :name "project.describe" :replace-if-exists true :description "Custom project description for the web portal." :access ACCESS :object-meta-access ACCESS \
+					:definition < :element -name name -type string > \
+					:execute "return [xvalue result [asset.script.execute :id %d :arg -name name [xvalue name $args]]]"'
+		self.mf_client._xml_aterm_run(line, post=False)
 
-######
+
 # main
 ######
 if __name__ == '__main__':
@@ -348,10 +353,10 @@ if __name__ == '__main__':
 # classes to test
 #	test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_transfers, mfclient_fixes, mfclient_aterm_syntax]
 #	test_class_list = [mfclient_fixes]
-#	test_class_list = [mfclient_aterm_syntax]
+	test_class_list = [mfclient_aterm_syntax]
 #	test_class_list = [mfclient_special_characters]
 # for when Jeffrey removes the backing store on test... (transfer tests will all fail)
-	test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_aterm_syntax]
+#	test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_aterm_syntax]
 
 
 # build suite
