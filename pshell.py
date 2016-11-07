@@ -919,6 +919,12 @@ class parser(cmd.Cmd):
 
 def main():
 
+# CURRENT - can include additional data files in the zip bundle (eg CA certs) 
+#	import zipfile
+#	me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
+#	f = me.open('certificate.pem')
+#	print f.read()
+
 # server config (section heading) to use
 	p = argparse.ArgumentParser(description='pshell help')
 	p.add_argument('-c', dest='config', default='pawsey', help='The server in $HOME/.mf_config to connect to')
@@ -934,11 +940,9 @@ def main():
 # hydrographic NAS box gives a dud path for ~
 # NEW - test readwrite and if fail -> use CWD
 	config_filepath = os.path.expanduser("~/.mf_config")
-#	if not os.access(config_filepath, os.W_OK):
 	try:
 		open(config_filepath, 'a').close()
 	except:
-#		print "Bad home directory [%s] ... falling back to current directory" % os.path.expanduser("~")
 		print "Bad home directory [%s] ... falling back to current directory" % config_filepath
 		config_filepath = os.path.join(os.getcwd(), ".mf_config")
 
