@@ -1017,12 +1017,15 @@ def main():
 				config.set(current, 'session', mf_client.session)
 				config_changed = True
 				if debug:
-					print "Token ok"
-			except:
-				config.set(current, 'token', None)
-				config_changed = True
-				if debug:
-					print "Invalid/expired token"
+					print "Token: Ok"
+# CURRENT - there may be other causes of failures ... (not necessarily expired token) ... don't overwrite
+#			except:
+#				config.set(current, 'token', None)
+#				config_changed = True
+#				if debug:
+#					print "Invalid/expired token"
+			except Exception as e:
+				print "Token: %s" % str(e)
 
 # update config to match current state
 	if config_changed:
