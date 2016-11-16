@@ -251,7 +251,7 @@ class mfclient_aterm_syntax(unittest.TestCase):
 		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<perm><access>access</access><resource type="service">asset.*</resource></perm><name>request-review</name><type>role</type>')
 
-	def test_aterm_asset_namespace_acl_grant(self):
+	def test_aterm_acl_grant(self):
 		line = 'asset.namespace.acl.grant :namespace /www :acl < :actor -type user "public:public" :access < :namespace access :asset access > >'
 		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<namespace>/www</namespace><acl><actor type="user">public:public</actor><access><namespace>access</namespace><asset>access</asset></access></acl>')
@@ -271,10 +271,15 @@ class mfclient_aterm_syntax(unittest.TestCase):
 		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<name>public:public</name><type>user</type><role type="role">read-only</role>')
 
-	def test_aterm_text_spaces(self):
+	def test_aterm_whitespace_text(self):
 		line = 'asset.namespace.rename :name test3 :namespace /projects/Data Team/sean/test2'
 		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, "<name>test3</name><namespace>/projects/Data Team/sean/test2</namespace>")
+
+	def test_aterm_quoted_query(self):
+		line = "asset.query :where \"namespace='/www' and name='system-alert'\" :action get-name"
+		reply = self.mf_client._xml_aterm_run(line, post=False)
+		self.assertEqual(reply, "<where>namespace='/www' and name='system-alert'</where><action>get-name</action>")
 
 # CURRENT - this won't work (line continuations) ... worth fixing?
 #	def test_maybe(self):

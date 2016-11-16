@@ -466,7 +466,6 @@ class mf_client:
 			else:
 				text = xml_condensed[start_data+1:]
 				text = text.strip('"')
-				text = text.strip("'")
 				text = self._xml_sanitise(text)
 #				print "text = [%s]" % text
 				xml += '>%s</%s>' % (text, element)
