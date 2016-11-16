@@ -407,39 +407,75 @@ class mf_client:
 		Expected input is of the form:
 		element -optional1 attribute1 -optional2 attribute2 optional_text_data
 		Which is mapped to:
-		<element optional1=attribute1 optional2=attribute2>optional_text_data</element>
+		<element optional1="attribute1" optional2="attribute2">optional_text_data</element>
 		"""
 
 		if len(xml_condensed) == 0:
 			return xml_condensed
 
-#		print "_xml_expand(input): [%s]" % xml_condensed
+#		print "\n_xml_expand(input): [%s]" % xml_condensed
 
-		split_string = shlex.split(xml_condensed)
-
-		count = len(split_string)
-		na = int((count-1)/2)
-		nv = count-1-2*na
-#		print "# attributes = %d" % na
-#		print "# values = %d" % nv
-
-		if nv:
-			text = split_string[-1]
+		match = re.match('^\S+', xml_condensed)
+		if match:
+			element = match.group(0)
+			start = start_data = match.end()
 		else:
-			text = ""
+			raise Exception("Missing element name in: [%s]" % xml_condensed)
 
-		start = close = split_string[0]
-		for i in range(0, na):
-			item = split_string[2*i+1]
-			value = split_string[2*i+2]
-# some attributes EXPECT quotes for their values (even if not required) and some do not expect them ... nice consistency
-# eg -role type "role" is OK but -role type role will FAIL with a 'missing quotes' error 
-# decided to quote everything - this may need to be revisited ...
-			start += " %s=\"%s\"" % (item[1:], value)
+		qcount = dqcount = 0
+		length = len(xml_condensed)
+		start_attrib = start_value = 0
+		xml = "<%s" % element
 
-		xml = "<%s>%s</%s>" % (start, self._xml_sanitise(text), close)
+		try:
+			for i in range(start, length):
+# if any quoted string flags are active - skip any further processing
+				if xml_condensed[i] == "'":
+					if qcount:
+						qcount=0
+					else:
+						qcount=1
+				if xml_condensed[i] == '"':
+					if dqcount:
+						dqcount=0
+					else:
+						dqcount=1
+				if qcount or dqcount:
+					continue
+# attribute start
+				if xml_condensed[i] == '-' and xml_condensed[i-1] == ' ':
+					start_attrib = i
+# end of token candidate
+				if xml_condensed[i] == ' ':
+					if start_attrib:
+						attrib = xml_condensed[start_attrib+1:i]
+						xml += ' %s' % attrib
+						start_value = i
+						start_attrib = 0
+					elif start_value:
+						value = xml_condensed[start_value+1:i]
+# enforce only a single surrounding pair of quotes, regardless of whether input has them or not
+						xml += '="%s"' % value.strip('"')
+						start_value = 0
+						start_data = i
 
-#		print "_xml_expand(output): [%s]" % xml
+			if start_value:
+				value = xml_condensed[start_value+1:]
+#				print "value = [%s]" % value
+				xml += '="%s"></%s>' % (value.strip('"'), element)
+			else:
+				text = xml_condensed[start_data+1:]
+				text = text.strip('"')
+				text = text.strip("'")
+				text = self._xml_sanitise(text)
+#				print "text = [%s]" % text
+				xml += '>%s</%s>' % (text, element)
+
+		except Exception as e:
+			self.log("DEBUG", "XML parse error: %s" % str(e))
+			raise Exception("Bad command syntax.")
+
+#		print "_xml_expand(output): [%s]\n" % xml
 
 		return xml
 

@@ -252,9 +252,9 @@ class mfclient_aterm_syntax(unittest.TestCase):
 		self.assertEqual(reply, '<perm><access>access</access><resource type="service">asset.*</resource></perm><name>request-review</name><type>role</type>')
 
 	def test_aterm_asset_namespace_acl_grant(self):
-		line = 'asset.namespace.acl.grant :namespace /projects :acl < :actor -type user "system:posix" :access < :namespace access :asset access > >'
+		line = 'asset.namespace.acl.grant :namespace /www :acl < :actor -type user "public:public" :access < :namespace access :asset access > >'
 		reply = self.mf_client._xml_aterm_run(line, post=False)
-		self.assertEqual(reply, '<namespace>/projects</namespace><acl><actor type="user">system:posix</actor><access><namespace>access</namespace><asset>access</asset></access></acl>')
+		self.assertEqual(reply, '<namespace>/www</namespace><acl><actor type="user">public:public</actor><access><namespace>access</namespace><asset>access</asset></access></acl>')
 
 	def test_aterm_asset_query(self):
 		line = 'asset.query :where "namespace>=/www" :action pipe :service -name asset.label.add < :label "PUBLISHED" >'
@@ -262,7 +262,7 @@ class mfclient_aterm_syntax(unittest.TestCase):
 		self.assertEqual(reply, '<where>namespace&gt;=/www</where><action>pipe</action><service name="asset.label.add"><label>PUBLISHED</label></service>')
 
 	def test_aterm_service_add(self):
-		line = 'system.service.add :name custom.service :replace-if-exists true :access ACCESS :definition < :element -name arg1 -type string :element -name arg2 -type string -min-occurs 0 -default \" \" :element -name arg3 -type boolean -min-occurs 0 -default false > :execute \"return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]\"'
+		line = 'system.service.add :name custom.service :replace-if-exists true :access ACCESS :definition < :element -name arg1 -type string :element -name arg2 -type string -min-occurs 0 -default " " :element -name arg3 -type boolean -min-occurs 0 -default false > :execute \"return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]\"'
 		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string"></element><element name="arg2" type="string" min-occurs="0" default=" "></element><element name="arg3" type="boolean" min-occurs="0" default="false"></element></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute>')
 
@@ -271,12 +271,17 @@ class mfclient_aterm_syntax(unittest.TestCase):
 		reply = self.mf_client._xml_aterm_run(line, post=False)
 		self.assertEqual(reply, '<name>public:public</name><type>user</type><role type="role">read-only</role>')
 
+	def test_aterm_text_spaces(self):
+		line = 'asset.namespace.rename :name test3 :namespace /projects/Data Team/sean/test2'
+		reply = self.mf_client._xml_aterm_run(line, post=False)
+		self.assertEqual(reply, "<name>test3</name><namespace>/projects/Data Team/sean/test2</namespace>")
+
 # CURRENT - this won't work (line continuations) ... worth fixing?
-	def test_maybe(self):
-		line = 'system.service.add :name "project.describe" :replace-if-exists true :description "Custom project description for the web portal." :access ACCESS :object-meta-access ACCESS \
-					:definition < :element -name name -type string > \
-					:execute "return [xvalue result [asset.script.execute :id %d :arg -name name [xvalue name $args]]]"'
-		self.mf_client._xml_aterm_run(line, post=False)
+#	def test_maybe(self):
+#		line = 'system.service.add :name "project.describe" :replace-if-exists true :description "Custom project description for the web portal." :access ACCESS :object-meta-access ACCESS \
+#					:definition < :element -name name -type string > \
+#					:execute "return [xvalue result [asset.script.execute :id %d :arg -name name [xvalue name $args]]]"'
+#		self.mf_client._xml_aterm_run(line, post=False)
 
 
 # main
