@@ -310,7 +310,7 @@ class parser(cmd.Cmd):
 		print "List files stored on the remote server\n"
 		print "Pagination (if required) is controlled by the optional page and size arguments.\n"
 		print "Usage: ls <folder> <-p page> <-s size>\n"
-		print "Examples: ls /projects/my project/some directory"
+		print "Examples: ls /projects/my project/some folder"
 		print "          ls -p 2"
 		print "          ls\n"
 
@@ -330,7 +330,7 @@ class parser(cmd.Cmd):
 		page = max(1, page)
 		size = max(1, size)
 
-# strip out flags - look for directory/filename patterns
+# strip out flags - look for folder/filename patterns
 		line = re.sub(r'-\S+\s+\S+', '', line)
 		line = line.strip()
 
@@ -351,7 +351,7 @@ class parser(cmd.Cmd):
 				cwd = self.safe_namespace_query(posixpath.dirname(cwd))
 				asset_query = True
 
-#		print "Remote: %s" % cwd
+		print "Remote folder: %s" % cwd
 # query attempt
 		pagination_footer = None
 		try:
@@ -394,7 +394,7 @@ class parser(cmd.Cmd):
 			for elem in reply.iter('namespace'):
 				for child in elem:
 					if child.tag == "name":
-							print "[directory] %s" % child.text
+							print "[Folder] %s" % child.text
 # TODO - when production updated (new www.list) -> report the online/offline status
 # TODO - staging ...
 			for elem in reply.iter('asset'):
@@ -425,7 +425,7 @@ class parser(cmd.Cmd):
 
 # --
 	def help_get(self):
-		print "Download remote files to the current local working directory\n"
+		print "Download remote files to current local folder\n"
 		print "Usage: get <remote files or folders>\n"
 		print "Examples: get /projects/My Project/images"
 		print "          get *.txt\n"
@@ -535,7 +535,7 @@ class parser(cmd.Cmd):
 # FIXME - permission denied exception left to actual download ... better way to handle?
 				for local_path in list_local_path:
 					try:
-						self.mf_client.log("DEBUG", "Creating local directory: %s" % local_path)
+						self.mf_client.log("DEBUG", "Creating local folder: %s" % local_path)
 						os.makedirs(local_path)
 					except Exception as e:
 						self.mf_client.log("DEBUG", "%s" % str(e))
@@ -573,10 +573,10 @@ class parser(cmd.Cmd):
 
 # --
 	def help_put(self):
-		print "Upload local files or directories to the current folder on the remote server\n"
+		print "Upload local files or folders to the current folder on the remote server\n"
 		print "Usage: put <file or folder>\n"
 		print "Examples: put /home/sean/*.jpg"
-		print "          put /home/sean/mydirectory/\n"
+		print "          put /home/sean/myfolder/\n"
 
 	def do_put(self, line):
 # TODO - args for overwrite/crc checks?
@@ -625,8 +625,8 @@ class parser(cmd.Cmd):
 
 # --
 	def help_cd(self):
-		print "Change the current remote working directory.\n"
-		print "Usage: cd <directory>\n"
+		print "Change the current remote folder.\n"
+		print "Usage: cd <folder>\n"
 
 	def do_cd(self, line):
 		if os.path.isabs(line):
@@ -638,11 +638,11 @@ class parser(cmd.Cmd):
 			self.cwd = candidate
 			print "Remote: %s" % self.cwd
 		else:
-			print "Invalid remote directory: %s" % candidate
+			print "Invalid remote folder: %s" % candidate
 
 # --
 	def help_pwd(self):
-		print "Display the current remote working directory\n"
+		print "Display the current remote folder.\n"
 		print "Usage: pwd\n"
 
 	def do_pwd(self, line):
@@ -650,8 +650,8 @@ class parser(cmd.Cmd):
 
 # --
 	def help_mkdir(self):
-		print "Create a remote directory\n"
-		print "Usage: mkdir <directory>\n"
+		print "Create a remote folder\n"
+		print "Usage: mkdir <folder>\n"
 
 	def do_mkdir(self, line):
 		ns_target = self.absolute_remote_filepath(line)
@@ -697,8 +697,8 @@ class parser(cmd.Cmd):
 
 # --
 	def help_rmdir(self):
-		print "Remove a remote directory\n"
-		print "Usage: rmdir <directory>\n"
+		print "Remove a remote folder\n"
+		print "Usage: rmdir <folder>\n"
 
 	def do_rmdir(self, line):
 		if posixpath.isabs(line):
@@ -707,12 +707,12 @@ class parser(cmd.Cmd):
 			ns_target = posixpath.normpath(self.cwd + "/" + line)
 
 		if self.mf_client.namespace_exists(ns_target):
-			if self.ask("Remove directory: %s (y/n) " % ns_target):
+			if self.ask("Remove folder: %s (y/n) " % ns_target):
 				self.mf_client.run("asset.namespace.destroy", [("namespace", ns_target)])
 			else:
 				print "Aborted"
 		else:
-			print "No such directory: %s" % ns_target
+			print "No such folder: %s" % ns_target
 
 # -- local commands
 	def help_debug(self):
@@ -729,7 +729,7 @@ class parser(cmd.Cmd):
 
 # --
 	def help_lpwd(self):
-		print "Display local working directory\n"
+		print "Display local folder\n"
 		print "Usage: lpwd\n"
 
 	def do_lpwd(self, line):
@@ -737,8 +737,8 @@ class parser(cmd.Cmd):
 
 # --
 	def help_lcd(self):
-		print "Change local working directory\n"
-		print "Usage: lcd <directory>\n"
+		print "Change local folder\n"
+		print "Usage: lcd <folder>\n"
 
 	def do_lcd(self, line):
 		os.chdir(line)
@@ -746,28 +746,45 @@ class parser(cmd.Cmd):
 
 # --
 	def help_lls(self):
-		print "List contents of local working directory\n"
-		print "Usage: lls <directory>\n"
+		print "List contents of local folder\n"
+		print "Usage: lls <folder>\n"
 
 	def do_lls(self, line):
 
-# TODO - process flags, but for now strip out so (eg) "ls -al" doesn't trigger an exception
-# TODO - sort out other cases eg "ls *.pdf"
-		line = re.sub(r'-\S+', '', line)
+# no flags???
+#		line = re.sub(r'-\S+', '', line)
+
+# convert to absolute path for consistency
 		if not os.path.isabs(line):
 			path = os.path.normpath(os.path.join(os.getcwd(), line))
 		else:
 			path = line
 
-# FIXME - currently not listing for anything not in the local cwd 
-		print "Local: %s" % path
-		for filename in os.listdir(path):
+# get display folder and setup for a glob style listing
+		if os.path.isdir(path) == True:
+			display_path = path 
+			path = os.path.join(path, "*")
+		else:
+			display_path = os.path.dirname(path)
+
+		print "Local folder: %s" % display_path
+
+# NEW - glob these to allow wildcards
+		for filename in glob.glob(path):
 			if os.path.isdir(filename):
-				print "[directory] " + filename
-		for filename in os.listdir(path):
+				head,tail = os.path.split(filename)
+				print "[Folder] " + tail
+
+		for filename in glob.glob(path):
 			if os.path.isfile(filename):
-#				print "bytes=%-15d | %-s" % (os.path.getsize(filename), filename)
-				print "%s | %-s" % (self.human_size(os.path.getsize(filename)), filename)
+				head,tail = os.path.split(filename)
+				print "%s | %-s" % (self.human_size(os.path.getsize(filename)), tail)
+
+# --- working example of PKI via mediaflux
+#	def do_mls(self, line):
+#		pkey = open('/Users/sean/.ssh/id_rsa', 'r').read()
+#		reply = self.mf_client._xml_aterm_run("secure.shell.execute :command ls :host magnus.pawsey.org.au :private-key < :name sean :key \"%s\" >" % pkey)
+#		self.mf_client.xml_print(reply)
 
 # --- 
 	def help_whoami(self):
@@ -829,7 +846,7 @@ class parser(cmd.Cmd):
 
 # --
 	def help_delegate(self):
-		print "Create a delegated credential, stored in your local home directory, that will be automatically reused to authenticate to the remote server.\n"
+		print "Create a delegated credential, stored in your local home folder, that will be automatically reused to authenticate to the remote server.\n"
 		print "An optional argument can be supplied to set the credential lifetime, or set to off to destroy all delegated credentials for your account.\n"
 		print "Usage: delegate <days/off>\n"
 		print "Examples: delegate"
@@ -943,7 +960,7 @@ def main():
 	try:
 		open(config_filepath, 'a').close()
 	except:
-		print "Bad home directory [%s] ... falling back to current directory" % config_filepath
+		print "Bad home [%s] ... falling back to current folder" % config_filepath
 		config_filepath = os.path.join(os.getcwd(), ".mf_config")
 
 	config.read(config_filepath)
