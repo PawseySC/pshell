@@ -6,6 +6,7 @@ import cmd
 import sys
 import ssl
 import time
+import zlib
 import shlex
 import random
 import string
@@ -21,7 +22,6 @@ import mimetypes
 import posixpath
 import multiprocessing
 import xml.etree.ElementTree as xml_processor
-
 
 # Python standard lib implementation of a mediaflux client
 # Author: Sean Fleming
@@ -755,7 +755,6 @@ class mf_client:
 		Raises:
 			An error on failure
 		"""
-
 # query current authenticated identity
 		try:
 			result = self.run("actor.self.describe")
@@ -851,23 +850,16 @@ class mf_client:
 		return url
 
 #------------------------------------------------------------
-	def get_checksum(self, asset_id):
-		"""
-		Input:
-			asset_id: an INTEGER specifying the remote asset
-
-		Returns:
-			 The base 16 checksum of the asset on the server
-
-		Raises:
-			An error on failure
-		"""
-		result = self.run("asset.get", [("id", "%r" % asset_id), ("xpath", "content/csum") ])
-		elem = self.xml_find(result, "value")
-		if elem is not None:
-			return elem.text
-
-		raise Exception("Failed to retrieve checksum for asset: %r" % asset_id)
+	def get_local_checksum(self, filepath): 
+		current = 0
+		with open(filepath, 'rb') as fd:
+			while True:
+				buffer = fd.read(self.put_buffer)
+				if not buffer:
+					break
+				current = zlib.crc32(buffer, current)
+		fd.close()
+		return (current & 0xFFFFFFFF)
 
 #------------------------------------------------------------
 	def run(self, service_call, argument_tuple_list=[]):
@@ -905,12 +897,10 @@ class mf_client:
 # CURRENT - server returns data as disposition attachment regardless of the argument disposition=attachment
 #		url = self.data_url + "?_skey={0}&id={1}&disposition=attachment".format(self.session, asset_id)
 		url = self.data_url + "?_skey={0}&id={1}".format(self.session, asset_id)
-
 		req = urllib2.urlopen(url)
-
 # distinguish between file data and mediaflux error message
-		info = req.info()
 # DEBUG
+#		info = req.info()
 #		print "get info: %s" % info
 #		print "encoding: " , info.getencoding()
 #		print "type: " , info.gettype()
@@ -971,20 +961,45 @@ class mf_client:
 		Raises:
 			An error message if unsuccessful
 		"""
+		global bytes_sent
+
 # construct destination argument
 		filename = os.path.basename(filepath)
 		filename = self._xml_sanitise(filename)
 		namespace = self._xml_sanitise(namespace)
 		remotepath = posixpath.join(namespace, filename)
-# NB: CAN'T encase name or namespace with " -> interpreted literally by mediaflux
-		if overwrite is True:
-			xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.set">' % self.session
-			xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
-		else:
+		asset_id = -1
+# query the remote server for file details (if any)
+		try:
+			result = self._xml_aterm_run('asset.get :id "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
+			elem = self.xml_find(result, "id")
+			asset_id = int(elem.text)
+			elem = self.xml_find(result, "crc32")
+			remote_crc32 = int(elem.text, 16)
+			elem = self.xml_find(result, "size")
+			remote_size = int(elem.text)
+			local_crc32 = self.get_local_checksum(filepath)
+			self.log("DEBUG", "File [%s] exists : id=%d : local=%x : remote=%x" % (remotepath, asset_id, local_crc32, remote_crc32))
+			if local_crc32 == remote_crc32:
+# if local and remote are identical -> update progress and exit
+				with bytes_sent.get_lock():
+					bytes_sent.value += remote_size
+				return asset_id
+
+		except Exception as e:
+# any failure to query remote file -> upload
+			self.log("DEBUG", "Uploading: [%s]" % remotepath)
 			xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.create">' % self.session
 			xml_string += '<namespace>%s</namespace><name>%s</name></service></args></service></request>' % (namespace, filename)
+			asset_id = self._post_multipart_buffered(xml_string, filepath)
+			return asset_id
 
-		asset_id = self._post_multipart_buffered(xml_string, filepath)
+# local and remote crc32 don't match -> decision time ...
+		if overwrite is True:
+			self.log("DEBUG", "Overwriting: [%s]" % remotepath)
+			xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.set">' % self.session
+			xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
+			asset_id = self._post_multipart_buffered(xml_string, filepath)
 
 		return asset_id
 

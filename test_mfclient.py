@@ -163,25 +163,27 @@ class mfclient_transfers(unittest.TestCase):
 		tmp_local = "/tmp"
 		tmp_remote = namespace + "/tmp"
 # remote setup
-		self.assertFalse(self.mf_client.namespace_exists(tmp_remote), "Temporary namespace already exists on server")
+		self.assertFalse(self.mf_client.namespace_exists(tmp_remote), "Please remove temporary namespace: %s" % tmp_remote)
 		self.mf_client.run("asset.namespace.create", [("namespace", tmp_remote)])
 # local setup
 		self.assertTrue(os.path.isdir(tmp_local), "Need a temporary local directory for testing transfers")
 		src_filepath = os.path.realpath(__file__) 
 # compute local checksums
-		buff = open(__file__,'rb').read()
-		local_csum = (binascii.crc32(buff) & 0xFFFFFFFF)
+		local_csum = self.mf_client.get_local_checksum(__file__)
 
 		self.assertTrue(os.path.isfile(src_filepath), "Need a local file for testing transfers")
 		dest_filepath = os.path.join(tmp_local, os.path.basename(src_filepath))
-		self.assertFalse(os.path.isfile(dest_filepath), "Local temporary directory should not already contain file to download")
+		self.assertFalse(os.path.isfile(dest_filepath), "Please remove local copy: %s" % dest_filepath)
 # upload file 
 		asset_id = self.mf_client.put(tmp_remote, src_filepath)
+
 # download file
 		self.mf_client.get(int(asset_id), dest_filepath)
 		self.assertTrue(os.path.isfile(dest_filepath), "get failed")
 # compute/retrieve checksums
-		remote_csum = self.mf_client.get_checksum(asset_id)
+		result = self.mf_client.run("asset.get", [("id", asset_id), ("xpath", "content/csum") ])
+		elem = self.mf_client.xml_find(result, "value")
+		remote_csum = elem.text
 
 # assert checksums are identical
 		self.assertEqual(int(local_csum), int(remote_csum, 16), "Source file crc32 (%r) does not match after transfers (%r)" % (local_csum, remote_csum))

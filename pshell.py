@@ -34,6 +34,7 @@ class parser(cmd.Cmd):
 	config_filepath = None
 	mf_client = None
 	cwd = '/projects'
+	interactive = True
 
 # --- init global
 	def preloop(self):
@@ -275,6 +276,9 @@ class parser(cmd.Cmd):
 
 # --- helper
 	def ask(self, text):
+# new - if script, assume you know what you're doing
+		if self.interactive == False:
+			return True
 		response = raw_input(text)
 		if response == 'y' or response == 'Y':
 			return True
@@ -907,6 +911,11 @@ class parser(cmd.Cmd):
 				f.close()
 
 # --
+# TODO - passthru help if not found locally
+#	def do_help(self, line):
+#		print "help: %s" % line
+
+# --
 	def help_quit(self):
 		print "Exit without terminating the session\n"
 	def do_quit(self, line):
@@ -1074,6 +1083,7 @@ def main():
 
 # process script or go interactive
 	if script:
+		my_parser.interactive = False
 		with open(script) as f:
 			for line in f:
 				try:
