@@ -972,6 +972,15 @@ class mf_client:
 # query the remote server for file details (if any)
 		try:
 			result = self._xml_aterm_run('asset.get :id "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
+		except Exception as e:
+			self.log("DEBUG", "Not found - creating: [%s]" % remotepath)
+			xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.set">' % self.session
+			xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
+			asset_id = self._post_multipart_buffered(xml_string, filepath)
+			return asset_id
+
+# attempt checksum compare
+		try:
 			elem = self.xml_find(result, "id")
 			asset_id = int(elem.text)
 			elem = self.xml_find(result, "crc32")
@@ -979,20 +988,14 @@ class mf_client:
 			elem = self.xml_find(result, "size")
 			remote_size = int(elem.text)
 			local_crc32 = self.get_local_checksum(filepath)
-			self.log("DEBUG", "File [%s] exists : id=%d : local=%x : remote=%x" % (remotepath, asset_id, local_crc32, remote_crc32))
 			if local_crc32 == remote_crc32:
 # if local and remote are identical -> update progress and exit
+				self.log("DEBUG", "Checksum match, skipping [%s] -> [%s]" % (filepath, remotepath))
 				with bytes_sent.get_lock():
 					bytes_sent.value += remote_size
 				return asset_id
-
 		except Exception as e:
-# any failure to query remote file -> upload
-			self.log("DEBUG", "Uploading: [%s]" % remotepath)
-			xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.create">' % self.session
-			xml_string += '<namespace>%s</namespace><name>%s</name></service></args></service></request>' % (namespace, filename)
-			asset_id = self._post_multipart_buffered(xml_string, filepath)
-			return asset_id
+			self.log("ERROR", "Failed to compute checksum: %s" % str(e))
 
 # local and remote crc32 don't match -> decision time ...
 		if overwrite is True:
