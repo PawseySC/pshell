@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 
 import os
 import re
@@ -28,44 +28,37 @@ delegate_max = 365
 
 # NB: handle exceptions at this level
 class parser(cmd.Cmd):
-
 	config = None
 	config_name = None
 	config_filepath = None
 	mf_client = None
 	cwd = '/projects'
 	interactive = True
+	need_auth = True
+	intro = " === pshell: type 'help' for a list of commands ==="
 
-# --- init global
+# --- initial setup of prompt
 	def preloop(self):
-		if self.mf_client.authenticated():
-			self.need_auth = False
-			self.prompt = "%s:%s>" % (self.config_name, self.cwd)
-		else:
-			self.need_auth = True
-			self.prompt = "%s:offline>" % self.config_name
-
-# --- if not logged in -> don't even attempt to process remote commands
-	def precmd(self, line):
 		if self.need_auth:
 			self.prompt = "%s:offline>" % self.config_name
+		else:
+			self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+
+# --- not logged in -> don't even attempt to process remote commands
+	def precmd(self, line):
+		if self.need_auth:
 			if self.requires_auth(line):
 				print "Not logged in."
 				return cmd.Cmd.precmd(self, "")
-		else:
-			self.prompt = "%s:%s>" % (self.config_name, self.cwd)
-
 		return cmd.Cmd.precmd(self, line)
 
-# --- init for each
+# --- prompt refresh (eg after login/logout)
 	def postcmd(self, stop, line):
 		if self.need_auth:
 			self.prompt = "%s:offline>" % self.config_name
 		else:
 			self.prompt = "%s:%s>" % (self.config_name, self.cwd)
-
 		return cmd.Cmd.postcmd(self, stop, line)
-
 
 # --- helper: attempt to complete a namespace
 	def complete_namespace(self, partial_ns, start):
@@ -121,7 +114,6 @@ class parser(cmd.Cmd):
 #		print "input: [%s]" % line
 #		print "output: %r" % self.complete_namespace(line, 0)
 
-
 # --- helper: attempt to complete an asset
 	def complete_asset(self, partial_asset_path, start):
 
@@ -171,7 +163,6 @@ class parser(cmd.Cmd):
 
 # NB: if the return result is ambigious (>1 option) it'll require 2 presses to get the list
 # turn off DEBUG -> gets in the way of commandline completion
-# NEW - use helpers... 
 # NB: index offsets are 1 greater than the command under completion
 
 # ---
@@ -179,13 +170,13 @@ class parser(cmd.Cmd):
 		save_state = self.mf_client.debug
 		self.mf_client.debug = False
 		candidate_list = self.complete_asset(line[4:end_index], start_index-4)
-# currently, get on a namespace downloads individually - TODO - download as ZIP?
+# FIXME - get on a namespace downloads individually, download as ZIP?
 		candidate_list += self.complete_namespace(line[4:end_index], start_index-4)
 		self.mf_client.debug = save_state
 		return candidate_list
 
 # ---
-# NB: currently taking the approach that rm is for files (assets) only and rmdir is for folders (namespaces)
+# NB: taking the approach that rm is for files (assets) only and rmdir is for folders (namespaces)
 	def complete_rm(self, text, line, start_index, end_index):
 		save_state = self.mf_client.debug
 		self.mf_client.debug = False
@@ -249,13 +240,13 @@ class parser(cmd.Cmd):
 	def requires_auth(self, line):
 		local_commands = ["login", "help", "lls", "lcd", "lpwd", "debug", "exit", "quit"]
 
-		if not line:
-			return False
-
-# only want first keyword (avoid false positives on things like "help get")
-		primary = line.strip().split()[0]
-		if primary in local_commands:
-			return False
+# only want first keyword (avoid getting "not logged in" on input like "help get")
+		try:
+			primary = line.strip().split()[0]
+			if primary in local_commands:
+				return False
+		except:
+			pass
 
 		return True
 
@@ -567,7 +558,6 @@ class parser(cmd.Cmd):
 					manager.cleanup()
 					break
 
-
 			except Exception as e:
 				print "\n"
 				self.mf_client.log("DEBUG", "Last iterator completed: %s" % str(e))
@@ -809,7 +799,6 @@ class parser(cmd.Cmd):
 		except:
 			print "I'm not sure who you are!"
 
-
 # -- connection commands
 	def help_logout(self):
 		print "Terminate the current session to the server\n"
@@ -817,6 +806,7 @@ class parser(cmd.Cmd):
 
 	def do_logout(self, line):
 		self.mf_client.logout()
+		self.need_auth = True
 
 # --- 
 	def help_login(self):
@@ -845,8 +835,7 @@ class parser(cmd.Cmd):
 			f.close()
 
 		except Exception as e:
-			print "Not logged in: %s" % str(e)
-
+			print str(e)
 
 # --
 	def help_delegate(self):
@@ -951,6 +940,11 @@ def main():
 #	f = me.open('certificate.pem')
 #	print f.read()
 
+# TODO - probably should make it compatible with 3.x as well (sigh)
+	if sys.hexversion < 0x02070000:
+		print("ERROR: requires Python 2.7.x, using: ", sys.version)
+		exit(-1)
+
 # server config (section heading) to use
 	p = argparse.ArgumentParser(description='pshell help')
 	p.add_argument('-c', dest='config', default='pawsey', help='The server in $HOME/.mf_config to connect to')
@@ -981,13 +975,13 @@ def main():
 	config_changed = False
 
 	if config.has_section(current):
-		print "Reading config [%s]" % config_filepath
+#		print "Reading config [%s]" % config_filepath
 		try:
 			server = config.get(current, 'server')
 			protocol = config.get(current, 'protocol')
 			port = config.get(current, 'port')
 		except:
-			print "Config file has insufficiently specified server"
+			print "ERROR: config file [%s] has insufficiently specified server" % config_filepath
 			exit(-1)
 
 		if config.has_option(current, 'encrypt'):
@@ -1024,40 +1018,33 @@ def main():
 		print "Failed to establish network connection to: %s" % current
 		exit(-1)
 
-# FIXME - need to deal with config parse inconsistency here
-# ie session = None gets spat out and read back in as a pure text string 
-# CURRENT - simplest soln might be to use empty string instead ie session="" instead of None (token as well ....)
-
-# check session
+# check session first
+	need_auth = True
 	if not len(session) == 0:
 		if not mf_client.authenticated():
 			session = ""
 			config.set(current, 'session', session)
 			config_changed = True
+		else:
+			need_auth = False
 
-# no valid session - can we get one via token
+# missing or invalid session - check the token (if any)
 	if len(session) == 0:
 		if token:
 			try:
 				mf_client.login(token=token)
 				config.set(current, 'session', mf_client.session)
 				config_changed = True
+				need_auth = False
 				if debug:
 					print "Token: Ok"
-# CURRENT - there may be other causes of failures ... (not necessarily expired token) ... don't overwrite
-#			except:
-#				config.set(current, 'token', None)
-#				config_changed = True
-#				if debug:
-#					print "Invalid/expired token"
 			except Exception as e:
-				print "Token: %s" % str(e)
+				print "Token invalid: %s" % str(e)
 
 # update config to match current state
 	if config_changed:
 		if debug:
 			print "Writing config..."
-
 		f = open(config_filepath, "w")
 		config.write(f)
 		f.close()
@@ -1068,12 +1055,13 @@ def main():
 	my_parser.config_name = current
 	my_parser.config_filepath = config_filepath
 	my_parser.config = config
+	my_parser.need_auth = need_auth
 
 # TAB completion
 # FIXME - no readline in Windows ...
 	try:
 # strange hackery required to get tab completion working under OS-X and also still be able to use the b key
-#REF - http://stackoverflow.com/questions/7124035/in-python-shell-b-letter-does-not-work-what-the
+# REF - http://stackoverflow.com/questions/7124035/in-python-shell-b-letter-does-not-work-what-the
 		if 'libedit' in readline.__doc__:
 			readline.parse_and_bind("bind ^I rl_complete")
 		else:
@@ -1093,7 +1081,6 @@ def main():
 					print str(e)
 					exit(-1)
 	else:
-		print("Welcome to pshell, type 'help' for a list of commands")
 		my_parser.loop_interactively()
 
 

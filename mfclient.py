@@ -26,9 +26,6 @@ import xml.etree.ElementTree as xml_processor
 # Python standard lib implementation of a mediaflux client
 # Author: Sean Fleming
 
-# no poodles allowed
-ssl.PROTOCOL_SSLv23 = ssl.PROTOCOL_TLSv1
-
 #------------------------------------------------------------
 """
 Globals ... multiprocess IO monitoring is hard
@@ -133,17 +130,15 @@ class mf_client:
 		s.close()
 
 		if self.debug:
-			print "protocol: %s" % self.protocol
-			print "    port: %s" % self.port
-			print "  server: %s" % self.server
-			print " timeout: %s" % self.timeout
-			print " session: %s" % self.session
-			print "base url: %s" % self.base_url
-			print "post url: %s" % self.post_url
-			print "data url: %s" % self.data_url
-			print "http lib: %s" % self.http_lib
-			print " encrypt: %s" % self.enforce_encrypted_login
-			print "   debug: %s" % self.debug
+			print " server: %s://%s:%s" % (self.protocol, self.server, self.port)
+			if self.protocol == "https":
+				context = ssl.create_default_context()
+				context.verify_mode = ssl.CERT_REQUIRED
+				context.check_hostname = True
+				c = context.wrap_socket(socket.socket(socket.AF_INET), server_hostname=self.server)
+				c.connect((self.server, self.port))
+				print " cipher: ", c.cipher()
+				print "openssl: ", ssl.OPENSSL_VERSION
 
 #------------------------------------------------------------
 	def _post(self, xml_string):
@@ -268,7 +263,6 @@ class mf_client:
 		conn.putheader('Content-Transfer-Encoding', 'binary')
 
 		conn.endheaders()
-
 # data start
 		conn.send(body)
 
@@ -381,7 +375,6 @@ class mf_client:
 		"""
 
 #		print "unformatted: [%s]" % element
-
 		list_attributes = element.split()
 
 # build the element string
@@ -397,7 +390,6 @@ class mf_client:
 			count += 1
 
 #		print "formatted: [%s]" % element_string
-
 		return element_string
 
 #------------------------------------------------------------
