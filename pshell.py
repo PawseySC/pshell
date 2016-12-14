@@ -1036,15 +1036,13 @@ def main():
 				config.set(current, 'session', mf_client.session)
 				config_changed = True
 				need_auth = False
-				if debug:
-					print "Token: Ok"
+				mf_client.log("DEBUG", "Token is valid")
 			except Exception as e:
-				print "Token invalid: %s" % str(e)
+				mf_client.log("DEBUG", str(e))
 
 # update config to match current state
 	if config_changed:
-		if debug:
-			print "Writing config..."
+		mf_client.log("DEBUG", "Writing config...")
 		f = open(config_filepath, "w")
 		config.write(f)
 		f.close()

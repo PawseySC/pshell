@@ -505,7 +505,8 @@ class mf_client:
 # FIXME - very noisy - make it debug level 2?
 # don't print a logon XML post -> it might contain a password
 		if not logon:
-			self.log("DEBUG", "Request XML: %s" % xml)
+			tmp = re.sub(r'session=[^>]*', 'session="..."', xml)
+			self.log("DEBUG", "XML: %s" % tmp)
 
 		return xml
 
@@ -600,11 +601,13 @@ class mf_client:
 
 # wrap service call & authentication XML - cross fingers, and POST
 # special case for logon 
+# TODO - hide/obscure the session as well ...
 		if service_call == "system.logon":
 			xml = '<request><service name="%s"><args>%s</args></service></request>' % (service_call, xml)
 		else:
 			xml = '<request><service name="service.execute" session="%s"><args><service name="%s">%s</service></args></service></request>' % (self.session, service_call, xml)
-			self.log("DEBUG", "Request XML: %s" % xml)
+			tmp = re.sub(r'session=[^>]*', 'session="..."', xml)
+			self.log("DEBUG", "XML: %s" % tmp)
 
 		reply = self._post(xml)
 
