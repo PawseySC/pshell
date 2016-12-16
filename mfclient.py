@@ -261,8 +261,8 @@ class mf_client:
 		conn.putheader('Content-Type', 'multipart/form-data; boundary=%s' % boundary)
 # CURRENT - is this needed?
 		conn.putheader('Content-Transfer-Encoding', 'binary')
-
 		conn.endheaders()
+
 # data start
 		conn.send(body)
 
@@ -279,6 +279,7 @@ class mf_client:
 					try:
 						conn.send(chunk)
 						break
+
 					except Exception as e:
 						i = i+1
 						if i < retry_count:
@@ -294,45 +295,39 @@ class mf_client:
 			self.log("ERROR", "[pid=%d] Fatal send error : %s" % (pid, str(e)))
 			raise
 
+		finally:
+			self.log("DEBUG", "[pid=%d] Closing file: %s" % (pid, filepath))
+			infile.close()
+
 # terminating line (len(boundary) + 8)
 		chunk = "\r\n--%s--\r\n" % boundary
+		conn.send(chunk)
 
-		chunk = conn.send(chunk)
+		self.log("DEBUG", "[pid=%d] File send completed, waiting for server..." % pid)
 
-		self.log("DEBUG", "[pid=%d] File send complete, waiting for server..." % pid)
-
-# NOTE - here is where the timeouts frequently (on large unknown files) seem to occur
+# NOTE - used to get timeouts (on large unknown files) here
+# this is less of an issue since added Arcitecta's magic nb attachements flag to the upload
+# which meant data went straight to destination rather than tmp area and then moved (delay proportional to size)
+# CURRENTLY - for comms with dev VM (ie same machine) get a lot of connection terminated by peer errors
+# could this be the mediaflux server prematurely closing the connection due to non-existent network latency???
 		mf_ack = False
 		for i in range(0,retry_count):
 			try:
 				resp = conn.getresponse()
+				reply = resp.read()
+				conn.close()
+# TODO - check for mediaflux errors (eg no permission/quota exceeded)
+				tree = xml_processor.fromstring(reply)
 				mf_ack = True
 				break
-			except:
+
+# re-try if we have a slow server (final ack timeout)
+			except socket.timeout:
 				self.log("DEBUG", "[pid=%d] No response from server [count=%d] trying again..." % (pid, i))
-# NEW - give the server some time...
 				time.sleep(self.timeout)
 
 		if mf_ack is False:
-			raise Exception("Timeout on final server ACK")
-
-# connection status overview 
-		reply = resp.read()
-		conn.close()
-
-# check for bad connection close (unexpected end of stream etc)
-		if "OK" not in resp.reason:
-			self.log("ERROR", "[pid=%d] Full server reply: %s" % (pid, reply))
-			raise Exception(resp.reason)
-
-		self.log("DEBUG", "[pid=%d] Final connection status: %s" % (pid, resp.reason))
-#		self.log("DEBUG", "[pid=%d] final connection message: \n%s\n" % (pid, resp.msg))
-
-# check for mediaflux errors (eg no permission/quota exceeded)
-		tree = xml_processor.fromstring(reply)
-		error = self.xml_error(tree)
-		if error:
-			raise Exception(error)
+			raise Exception("[pid=%d] Missing final ACK from server." % pid)
 
 		self.log("DEBUG", "[pid=%d] Completed" % pid)
 

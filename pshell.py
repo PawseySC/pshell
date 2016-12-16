@@ -36,6 +36,7 @@ class parser(cmd.Cmd):
 	interactive = True
 	need_auth = True
 	intro = " === pshell: type 'help' for a list of commands ==="
+	transfer_processes = 4
 
 # --- initial setup of prompt
 	def preloop(self):
@@ -541,7 +542,7 @@ class parser(cmd.Cmd):
 #					print "get [id=%r] => %r" % (asset_id, filepath)
 
 				self.mf_client.log("DEBUG", "Starting transfer")
-				manager = self.mf_client.get_managed(list_asset_filepath, total_bytes=total_bytes)
+				manager = self.mf_client.get_managed(list_asset_filepath, total_bytes=total_bytes, processes=self.transfer_processes)
 
 				try:
 					while True:
@@ -595,7 +596,7 @@ class parser(cmd.Cmd):
 #			print "put: %s -> %s" % (src, dest)
 
 		self.mf_client.log("DEBUG", "Starting transfer...")
-		manager = self.mf_client.put_managed(upload_list)
+		manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
 
 		try:
 			while True:
@@ -798,6 +799,20 @@ class parser(cmd.Cmd):
 				print "  role = %s" % elem.text
 		except:
 			print "I'm not sure who you are!"
+
+# --- 
+	def help_processes(self):
+		print ("Set the number of concurrent processes to use when transferring files.")
+		print ("If no number is supplied, reports the current value.")
+		print ("Usage: processes <number>\n")
+
+	def do_processes(self, line):
+		try:
+			p = max(1, min(int(line), 8))
+			self.transfer_processes = p
+		except:
+			pass
+		print("Current number of processes: %r" % self.transfer_processes)
 
 # -- connection commands
 	def help_logout(self):
