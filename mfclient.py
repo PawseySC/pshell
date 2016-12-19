@@ -155,6 +155,7 @@ class mf_client:
 			raise Exception("No response from server")
 
 # TODO - skip this step to avoid double parse of the XML?
+# this would mean every _post() call would have to do its own handling
 		error = self.xml_error(tree)
 		if error:
 			raise Exception("Error from server: %s" % error)
@@ -225,7 +226,6 @@ class mf_client:
 # CURRENT - adding Jason's suggested form field (1 data file attachment?)
 # tested on dev box and does seem to 1) have no mfp created in volatile/tmp ... 2) be a lot faster
        		lines.extend(( '--%s' % boundary, 'Content-Disposition: form-data; name="nb-data-attachments"', '', "1",))
-
 # file
 		lines.extend(( '--%s' % boundary, 'Content-Disposition: form-data; name="filename"; filename="%s"' % filename, 'Content-Type: %s' % mimetype, '', '' ))
 		body = '\r\n'.join(lines)
@@ -242,7 +242,6 @@ class mf_client:
 #		print "================="
 #		print "Total size = %r" % total_size
 #		print "================="
-#		print "\n===BODY\n%s\n===END\n" % body
 
 # different connection object for HTTPS vs HTTP
 		if self.protocol == 'https':
@@ -259,7 +258,6 @@ class mf_client:
 		conn.putheader('Cache-Control', 'no-cache')
 		conn.putheader('Content-Length', str(total_size))
 		conn.putheader('Content-Type', 'multipart/form-data; boundary=%s' % boundary)
-# CURRENT - is this needed?
 		conn.putheader('Content-Transfer-Encoding', 'binary')
 		conn.endheaders()
 
@@ -283,16 +281,16 @@ class mf_client:
 					except Exception as e:
 						i = i+1
 						if i < retry_count:
-							self.log("DEBUG", "[pid=%d] Chunk send error [count=%d] : %s" % (pid, i, str(e)))
+							self.log("DEBUG", "[pid=%d] Chunk send error [count=%d]: %s" % (pid, i, str(e)))
 							can_recover = False
 							break
 						else:
-							self.log("ERROR", "[pid=%d] Chunk retry limit reached [count=%d], giving up : %s" % (pid, i, str(e)))
+							self.log("ERROR", "[pid=%d] Chunk retry limit reached [count=%d], giving up: %s" % (pid, i, str(e)))
 # multiprocessing-safe byte counter
 				with bytes_sent.get_lock():
 					bytes_sent.value += len(chunk)
 		except Exception as e:
-			self.log("ERROR", "[pid=%d] Fatal send error : %s" % (pid, str(e)))
+			self.log("ERROR", "[pid=%d] Fatal send error: %s" % (pid, str(e)))
 			raise
 
 		finally:
@@ -310,33 +308,28 @@ class mf_client:
 # which meant data went straight to destination rather than tmp area and then moved (delay proportional to size)
 # CURRENTLY - for comms with dev VM (ie same machine) get a lot of connection terminated by peer errors
 # could this be the mediaflux server prematurely closing the connection due to non-existent network latency???
-		mf_ack = False
+		message = "response did not contain an asset ID."
 		for i in range(0,retry_count):
 			try:
 				resp = conn.getresponse()
 				reply = resp.read()
 				conn.close()
-# TODO - check for mediaflux errors (eg no permission/quota exceeded)
 				tree = xml_processor.fromstring(reply)
-				mf_ack = True
-				break
+
+# return asset id of uploaded filed or any (error) message
+				for elem in tree.iter():
+					if elem.tag == 'id':
+						return int(elem.text)
+					if elem.tag == 'message':
+						message = elem.text
+				raise Exception(message)
 
 # re-try if we have a slow server (final ack timeout)
 			except socket.timeout:
 				self.log("DEBUG", "[pid=%d] No response from server [count=%d] trying again..." % (pid, i))
 				time.sleep(self.timeout)
 
-		if mf_ack is False:
-			raise Exception("[pid=%d] Missing final ACK from server." % pid)
-
-		self.log("DEBUG", "[pid=%d] Completed" % pid)
-
-# return uploaded asset id
-		for elem in tree.iter():
-			if elem.tag == 'id':
-				return int(elem.text)
-
-		raise Exception("Server response did not contain an asset ID")
+		raise Exception("[pid=%d] Giving up on final server ACK." % pid)
 
 #------------------------------------------------------------
 	def _xml_sanitise(self, text):

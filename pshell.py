@@ -611,10 +611,8 @@ class parser(cmd.Cmd):
 
 		print "\n"
 
-# CURRENT
-		print "Bytes sent: %f" % manager.bytes_sent()
-
-# TODO - transfer summary of some kind? (dump log file if too many failed transfers?)
+# TODO - transfer summary of some kind if failures? re-try strategy?
+#		print "Bytes sent: %f" % manager.bytes_sent()
 #		for pair in manager.summary:
 #			print "uploaded asset ID = {0}".format(pair[0])
 
