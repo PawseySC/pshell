@@ -1027,8 +1027,9 @@ def main():
 # mediaflux client
 	try:
 		mf_client = mfclient.mf_client(protocol=protocol, port=port, server=server, session=session, enforce_encrypted_login=encrypt, debug=debug)
-	except:
+	except Exception as e:
 		print "Failed to establish network connection to: %s" % current
+		print "Error: %s" % str(e)
 		exit(-1)
 
 # check session first

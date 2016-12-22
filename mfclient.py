@@ -132,13 +132,13 @@ class mf_client:
 		if self.debug:
 			print " server: %s://%s:%s" % (self.protocol, self.server, self.port)
 			if self.protocol == "https":
+				print "openssl:", ssl.OPENSSL_VERSION
 				context = ssl.create_default_context()
 				context.verify_mode = ssl.CERT_REQUIRED
 				context.check_hostname = True
 				c = context.wrap_socket(socket.socket(socket.AF_INET), server_hostname=self.server)
 				c.connect((self.server, self.port))
-				print " cipher: ", c.cipher()
-				print "openssl: ", ssl.OPENSSL_VERSION
+				print " cipher:", c.cipher()
 
 #------------------------------------------------------------
 	def _post(self, xml_string):
