@@ -133,6 +133,10 @@ class mf_client:
 		if self.debug:
 			print "  SERVER: %s://%s:%s" % (self.protocol, self.server, self.port)
 			if self.protocol == "https":
+# first line of python version info is all we're interested in
+				version = sys.version
+				i = version.find("\n")
+				print "  PYTHON: %s" % version[:i]
 				print " OPENSSL:", ssl.OPENSSL_VERSION
 # early versions of python 2.7.x are missing the SSL context method
 				try:
