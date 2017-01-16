@@ -129,16 +129,21 @@ class mf_client:
 		s.connect((self.server, self.port))
 		s.close()
 
+# if required, attempt to display more connection info
 		if self.debug:
-			print " server: %s://%s:%s" % (self.protocol, self.server, self.port)
+			print "  SERVER: %s://%s:%s" % (self.protocol, self.server, self.port)
 			if self.protocol == "https":
-				print "openssl:", ssl.OPENSSL_VERSION
-				context = ssl.create_default_context()
-				context.verify_mode = ssl.CERT_REQUIRED
-				context.check_hostname = True
-				c = context.wrap_socket(socket.socket(socket.AF_INET), server_hostname=self.server)
-				c.connect((self.server, self.port))
-				print " cipher:", c.cipher()
+				print " OPENSSL:", ssl.OPENSSL_VERSION
+# early versions of python 2.7.x are missing the SSL context method
+				try:
+					context = ssl.create_default_context()
+					context.verify_mode = ssl.CERT_REQUIRED
+					context.check_hostname = True
+					c = context.wrap_socket(socket.socket(socket.AF_INET), server_hostname=self.server)
+					c.connect((self.server, self.port))
+					print "  CIPHER:", c.cipher()
+				except Exception as e:
+					print " WARNING: %s" % str(e)
 
 #------------------------------------------------------------
 	def _post(self, xml_string):
