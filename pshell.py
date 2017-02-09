@@ -15,9 +15,9 @@ import mfclient
 import posixpath
 # no readline on windows
 try:
-	import readline
+    import readline
 except:
-	pass
+    pass
 
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
@@ -28,1073 +28,1180 @@ delegate_max = 365
 
 # NB: handle exceptions at this level
 class parser(cmd.Cmd):
-	config = None
-	config_name = None
-	config_filepath = None
-	mf_client = None
-	cwd = '/projects'
-	interactive = True
-	need_auth = True
-	intro = " === pshell: type 'help' for a list of commands ==="
-	transfer_processes = 4
+    config = None
+    config_name = None
+    config_filepath = None
+    mf_client = None
+    cwd = '/projects'
+    interactive = True
+    need_auth = True
+    intro = " === pshell: type 'help' for a list of commands ==="
+    transfer_processes = 4
 
 # --- initial setup of prompt
-	def preloop(self):
-		if self.need_auth:
-			self.prompt = "%s:offline>" % self.config_name
-		else:
-			self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+    def preloop(self):
+        if self.need_auth:
+            self.prompt = "%s:offline>" % self.config_name
+        else:
+            self.prompt = "%s:%s>" % (self.config_name, self.cwd)
 
 # --- not logged in -> don't even attempt to process remote commands
-	def precmd(self, line):
-		if self.need_auth:
-			if self.requires_auth(line):
-				print "Not logged in."
-				return cmd.Cmd.precmd(self, "")
-		return cmd.Cmd.precmd(self, line)
+    def precmd(self, line):
+        if self.need_auth:
+            if self.requires_auth(line):
+                print "Not logged in."
+                return cmd.Cmd.precmd(self, "")
+        return cmd.Cmd.precmd(self, line)
 
 # --- prompt refresh (eg after login/logout)
-	def postcmd(self, stop, line):
-		if self.need_auth:
-			self.prompt = "%s:offline>" % self.config_name
-		else:
-			self.prompt = "%s:%s>" % (self.config_name, self.cwd)
-		return cmd.Cmd.postcmd(self, stop, line)
+    def postcmd(self, stop, line):
+        if self.need_auth:
+            self.prompt = "%s:offline>" % self.config_name
+        else:
+            self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+        return cmd.Cmd.postcmd(self, stop, line)
 
 # --- helper: attempt to complete a namespace
-	def complete_namespace(self, partial_ns, start):
+    def complete_namespace(self, partial_ns, start):
 
 # extract any partial namespace to use as pattern match 
-		match = re.match(r".*/", partial_ns)
-		if match:
-			offset = match.end()
-			pattern = partial_ns[offset:]
-		else:
-			offset = 0
-			pattern = partial_ns
+        match = re.match(r".*/", partial_ns)
+        if match:
+            offset = match.end()
+            pattern = partial_ns[offset:]
+        else:
+            offset = 0
+            pattern = partial_ns
 
 # namespace fragment prefix (if any) to include in the returned candidate
-		prefix = partial_ns[start:offset]
+        prefix = partial_ns[start:offset]
 # offset to use when extracting completion string from candidate matches
-		xlat_offset = max(0, start-offset)
+        xlat_offset = max(0, start-offset)
 
-#		print "\ncn: partial [%s] : prefix = [%r] : pattern = [%r] : insertion_start=%r : xlat_offset=%r" % (partial_ns, prefix, pattern, start, xlat_offset)
+#         print "\ncn: partial [%s] : prefix = [%r] : pattern = [%r] : insertion_start=%r : xlat_offset=%r" % (partial_ns, prefix, pattern, start, xlat_offset)
 
 # special case - we "know" .. is a namespace
-		if pattern == "..":
-			return [partial_ns[start:]+"/"]
+        if pattern == "..":
+            return [partial_ns[start:]+"/"]
 
 # construct an absolute namespace (required for any remote lookups)
-		if posixpath.isabs(partial_ns):
-			target_ns = posixpath.normpath(partial_ns[:offset])
-		else:
-			target_ns = posixpath.normpath(posixpath.join(self.cwd, partial_ns[:offset]))
+        if posixpath.isabs(partial_ns):
+            target_ns = posixpath.normpath(partial_ns[:offset])
+        else:
+            target_ns = posixpath.normpath(posixpath.join(self.cwd, partial_ns[:offset]))
 
-#		print "cn: target_ns: [%s]" % target_ns
+#         print "cn: target_ns: [%s]" % target_ns
 
 # generate listing in target namespace for completion matches
-		result = self.mf_client.run("asset.namespace.list", [("namespace", target_ns)])
-		ns_list = []
-		for elem in result.iter('namespace'):
-			if elem.text is not None:
+        result = self.mf_client.run("asset.namespace.list", [("namespace", target_ns)])
+        ns_list = []
+        for elem in result.iter('namespace'):
+            if elem.text is not None:
 # namespace matches the pattern we're looking for?
-				item = None
-				if len(pattern) != 0:
-					if elem.text.startswith(pattern):
-						item = posixpath.join(prefix, elem.text[xlat_offset:]+"/")
-				else:
-					item = posixpath.join(prefix, elem.text[xlat_offset:]+"/")
+                item = None
+                if len(pattern) != 0:
+                    if elem.text.startswith(pattern):
+                        item = posixpath.join(prefix, elem.text[xlat_offset:]+"/")
+                else:
+                    item = posixpath.join(prefix, elem.text[xlat_offset:]+"/")
 
-				if item is not None:
-					ns_list.append(item)
+                if item is not None:
+                    ns_list.append(item)
 
-		return ns_list
+        return ns_list
 
 # CURRENT - helper for completion testing
-#	def do_test(self, line):
-#		print "input: [%s]" % line
-#		print "output: %r" % self.complete_namespace(line, 0)
+#     def do_test(self, line):
+#         print "input: [%s]" % line
+#         print "output: %r" % self.complete_namespace(line, 0)
 
 # --- helper: attempt to complete an asset
-	def complete_asset(self, partial_asset_path, start):
+    def complete_asset(self, partial_asset_path, start):
 
 # construct an absolute namespace (required for any remote lookups)
-		if posixpath.isabs(partial_asset_path):
-			candidate_ns = posixpath.normpath(partial_asset_path)
-		else:
-			candidate_ns = posixpath.normpath(posixpath.join(self.cwd, partial_asset_path))
+        if posixpath.isabs(partial_asset_path):
+            candidate_ns = posixpath.normpath(partial_asset_path)
+        else:
+            candidate_ns = posixpath.normpath(posixpath.join(self.cwd, partial_asset_path))
 
-		if self.mf_client.namespace_exists(candidate_ns):
+        if self.mf_client.namespace_exists(candidate_ns):
 # candidate is a namespace -> it's our target for listing
-			target_ns = candidate_ns
+            target_ns = candidate_ns
 # no pattern -> add all namespaces 
-			pattern = None
+            pattern = None
 # replacement prefix for any matches
-			prefix = partial_asset_path[start:]
-		else:
+            prefix = partial_asset_path[start:]
+        else:
 # candidate not a namespace -> set the parent as the namespace target
-			match = re.match(r".*/", candidate_ns)
-			if match:
-				target_ns = match.group(0)
+            match = re.match(r".*/", candidate_ns)
+            if match:
+                target_ns = match.group(0)
 # extract pattern to search and prefix for any matches
-				pattern = candidate_ns[match.end():]
-				prefix = partial_asset_path[start:-len(pattern)]
-			else:
-				return None
+                pattern = candidate_ns[match.end():]
+                prefix = partial_asset_path[start:-len(pattern)]
+            else:
+                return None
 
-		target_ns = self.safe_namespace_query(target_ns)
+        target_ns = self.safe_namespace_query(target_ns)
 
-#		print "ca: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix)
+#         print "ca: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix)
 
-		if pattern is not None:
-			result = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s*'" % (target_ns, pattern)), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
-		else:
-			result = self.mf_client.run("asset.query", [("where", "namespace='%s'" % target_ns), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
+        if pattern is not None:
+            result = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s*'" % (target_ns, pattern)), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
+        else:
+            result = self.mf_client.run("asset.query", [("where", "namespace='%s'" % target_ns), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
 
-#		self.mf_client.xml_print(result)
+#         self.mf_client.xml_print(result)
 
-		asset_list = []
-		for elem in result.iter('name'):
-			if elem.text is not None:
-				asset_list.append(posixpath.join(prefix,elem.text))
+        asset_list = []
+        for elem in result.iter('name'):
+            if elem.text is not None:
+                asset_list.append(posixpath.join(prefix,elem.text))
 
-#		print "ca: ", asset_list
+#         print "ca: ", asset_list
 
-		return asset_list
+        return asset_list
 
 # NB: if the return result is ambigious (>1 option) it'll require 2 presses to get the list
 # turn off DEBUG -> gets in the way of commandline completion
 # NB: index offsets are 1 greater than the command under completion
 
 # ---
-	def complete_get(self, text, line, start_index, end_index):
-		save_state = self.mf_client.debug
-		self.mf_client.debug = False
-		candidate_list = self.complete_asset(line[4:end_index], start_index-4)
+    def complete_get(self, text, line, start_index, end_index):
+        save_state = self.mf_client.debug
+        self.mf_client.debug = False
+        candidate_list = self.complete_asset(line[4:end_index], start_index-4)
 # FIXME - get on a namespace downloads individually, download as ZIP?
-		candidate_list += self.complete_namespace(line[4:end_index], start_index-4)
-		self.mf_client.debug = save_state
-		return candidate_list
+        candidate_list += self.complete_namespace(line[4:end_index], start_index-4)
+        self.mf_client.debug = save_state
+        return candidate_list
 
 # ---
 # NB: taking the approach that rm is for files (assets) only and rmdir is for folders (namespaces)
-	def complete_rm(self, text, line, start_index, end_index):
-		save_state = self.mf_client.debug
-		self.mf_client.debug = False
-		candidate_list = self.complete_asset(line[3:end_index], start_index-3)
-		return candidate_list
+    def complete_rm(self, text, line, start_index, end_index):
+        save_state = self.mf_client.debug
+        self.mf_client.debug = False
+        candidate_list = self.complete_asset(line[3:end_index], start_index-3)
+        return candidate_list
 
 # ---
-	def complete_file(self, text, line, start_index, end_index):
-		save_state = self.mf_client.debug
-		self.mf_client.debug = False
-		candidate_list = self.complete_asset(line[5:end_index], start_index-5)
-		candidate_list += self.complete_namespace(line[5:end_index], start_index-5)
-		self.mf_client.debug = save_state
-		return candidate_list
+    def complete_file(self, text, line, start_index, end_index):
+        save_state = self.mf_client.debug
+        self.mf_client.debug = False
+        candidate_list = self.complete_asset(line[5:end_index], start_index-5)
+        candidate_list += self.complete_namespace(line[5:end_index], start_index-5)
+        self.mf_client.debug = save_state
+        return candidate_list
 
 # ---
-	def complete_ls(self, text, line, start_index, end_index):
-		save_state = self.mf_client.debug
-		self.mf_client.debug = False
-		candidate_list = self.complete_namespace(line[3:end_index], start_index-3)
-		candidate_list += self.complete_asset(line[3:end_index], start_index-3)
-		self.mf_client.debug = save_state
-		return candidate_list
+    def complete_ls(self, text, line, start_index, end_index):
+        save_state = self.mf_client.debug
+        self.mf_client.debug = False
+        candidate_list = self.complete_namespace(line[3:end_index], start_index-3)
+        candidate_list += self.complete_asset(line[3:end_index], start_index-3)
+        self.mf_client.debug = save_state
+        return candidate_list
 
 # ---
-	def complete_cd(self, text, line, start_index, end_index):
-		save_state = self.mf_client.debug
-		self.mf_client.debug = False
-		ns_list = self.complete_namespace(line[3:end_index], start_index-3)
-		self.mf_client.debug = save_state
-		return ns_list
+    def complete_cd(self, text, line, start_index, end_index):
+        save_state = self.mf_client.debug
+        self.mf_client.debug = False
+        ns_list = self.complete_namespace(line[3:end_index], start_index-3)
+        self.mf_client.debug = save_state
+        return ns_list
 
 # ---
-	def complete_mkdir(self, text, line, start_index, end_index):
-		save_state = self.mf_client.debug
-		self.mf_client.debug = False
-		ns_list = self.complete_namespace(line[6:end_index], start_index-6)
-		self.mf_client.debug = save_state
-		return ns_list
+    def complete_mkdir(self, text, line, start_index, end_index):
+        save_state = self.mf_client.debug
+        self.mf_client.debug = False
+        ns_list = self.complete_namespace(line[6:end_index], start_index-6)
+        self.mf_client.debug = save_state
+        return ns_list
 
 # ---
-	def complete_rmdir(self, text, line, start_index, end_index):
-		save_state = self.mf_client.debug
-		self.mf_client.debug = False
-		ns_list = self.complete_namespace(line[6:end_index], start_index-6)
-		self.mf_client.debug = save_state
-		return ns_list
+    def complete_rmdir(self, text, line, start_index, end_index):
+        save_state = self.mf_client.debug
+        self.mf_client.debug = False
+        ns_list = self.complete_namespace(line[6:end_index], start_index-6)
+        self.mf_client.debug = save_state
+        return ns_list
 
 # ---
-	def emptyline(self):
-		return
+    def emptyline(self):
+        return
 
 # ---
-	def default(self, line):
+    def default(self, line):
 # unrecognized - assume it's an aterm command
-		reply = self.mf_client._xml_aterm_run(line)
-		self.mf_client.xml_print(reply)
-		return
+        reply = self.mf_client._xml_aterm_run(line)
+        self.mf_client.xml_print(reply)
+        return
 
 # --- helper
-	def requires_auth(self, line):
-		local_commands = ["login", "help", "lls", "lcd", "lpwd", "debug", "exit", "quit"]
+    def requires_auth(self, line):
+        local_commands = ["login", "help", "lls", "lcd", "lpwd", "debug", "exit", "quit"]
 
 # only want first keyword (avoid getting "not logged in" on input like "help get")
-		try:
-			primary = line.strip().split()[0]
-			if primary in local_commands:
-				return False
-		except:
-			pass
+        try:
+            primary = line.strip().split()[0]
+            if primary in local_commands:
+                return False
+        except:
+            pass
 
-		return True
-
-# --- helper
-	def human_size(self, nbytes):
-		suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
-
-		if nbytes:
-			rank = int((math.log10(nbytes)) / 3)
-			rank = min(rank, len(suffixes) - 1)
-			human = nbytes / (1000.0 ** rank)
-			f = ("%.2f" % human).rstrip('0').rstrip('.')
-		else:
-			f = "0"
-			rank = 0
-
-		return "%6s %-2s" % (f, suffixes[rank])
+        return True
 
 # --- helper
-	def ask(self, text):
+    def human_size(self, nbytes):
+        suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
+
+        if nbytes:
+            rank = int((math.log10(nbytes)) / 3)
+            rank = min(rank, len(suffixes) - 1)
+            human = nbytes / (1000.0 ** rank)
+            f = ("%.2f" % human).rstrip('0').rstrip('.')
+        else:
+            f = "0"
+            rank = 0
+
+        return "%6s %-2s" % (f, suffixes[rank])
+
+# --- helper
+    def ask(self, text):
 # new - if script, assume you know what you're doing
-		if self.interactive == False:
-			return True
-		response = raw_input(text)
-		if response == 'y' or response == 'Y':
-			return True
-		return False
+        if self.interactive == False:
+            return True
+        response = raw_input(text)
+        if response == 'y' or response == 'Y':
+            return True
+        return False
 
 # --- helper: I think this is only required if passing self.cwd through an asset.query
-	def safe_cwd(self):
-		return(self.cwd.replace("'", "\\'"))
+    def safe_cwd(self):
+        return(self.cwd.replace("'", "\\'"))
 
 # CURRENT - asset.query with namespaces enclosed by ' - must have ' double escaped ... asset.namespace.exists namespaces - must be just single escaped 
 # CURRENT - but asset.namespace.list should have no escaping ... thanks Arcitecta
-	def safe_namespace_query(self, namespace):
-		return(namespace.replace("'", "\\'"))
+    def safe_namespace_query(self, namespace):
+        return(namespace.replace("'", "\\'"))
 
 # --- helper: convert a relative/absolute mediaflux namespace/asset reference to minimal absolute form
-	def absolute_remote_filepath(self, line):
-		if not posixpath.isabs(line):
-			line = posixpath.join(self.cwd, line)
-		return posixpath.normpath(line)
+    def absolute_remote_filepath(self, line):
+        if not posixpath.isabs(line):
+            line = posixpath.join(self.cwd, line)
+        return posixpath.normpath(line)
 
 
 # CURRENT - return asset.get info
-	def help_file(self):
-		print "Return metadata information on a remote file\n"
-		print "Usage: file <filename>\n"
+    def help_file(self):
+        print "Return metadata information on a remote file\n"
+        print "Usage: file <filename>\n"
 
-	def do_file(self, line):
-		result = self.mf_client.run("asset.get", [("id", "path=%s" % self.absolute_remote_filepath(line))]) 
-		self.mf_client.xml_print(result)
+    def do_file(self, line):
+        result = self.mf_client.run("asset.get", [("id", "path=%s" % self.absolute_remote_filepath(line))]) 
+        self.mf_client.xml_print(result)
 
 # ---
-	def help_ls(self):
-		print "List files stored on the remote server\n"
-		print "Pagination (if required) is controlled by the optional page and size arguments.\n"
-		print "Usage: ls <folder> <-p page> <-s size>\n"
-		print "Examples: ls /projects/my project/some folder"
-		print "          ls -p 2"
-		print "          ls\n"
+    def help_ls(self):
+        print "List files stored on the remote server\n"
+        print "Pagination (if required) is controlled by the optional page and size arguments.\n"
+        print "Usage: ls <folder> <-p page> <-s size>\n"
+        print "Examples: ls /projects/my project/some folder"
+        print "      ls -p 2"
+        print "      ls\n"
 
 # TODO - default page size -> .mf_config
-	def do_ls(self, line):
+    def do_ls(self, line):
 
 # process flags (if any)
-		page = 1
-		size = 20
-		list_args = re.findall(r'-\S+\s+\S+', line)
-		for arg in list_args:
-			if arg.startswith("-p "):
-				page = int(arg[2:])
-			if arg.startswith("-s "):
-				size = int(arg[2:])
+        page = 1
+        size = 20
+        list_args = re.findall(r'-\S+\s+\S+', line)
+        for arg in list_args:
+            if arg.startswith("-p "):
+                page = int(arg[2:])
+            if arg.startswith("-s "):
+                size = int(arg[2:])
 # NEW - clamp
-		page = max(1, page)
-		size = max(1, size)
+        page = max(1, page)
+        size = max(1, size)
 
 # strip out flags - look for folder/filename patterns
-		line = re.sub(r'-\S+\s+\S+', '', line)
-		line = line.strip()
+        line = re.sub(r'-\S+\s+\S+', '', line)
+        line = line.strip()
 
-		asset_query = False
-		if len(line) == 0:
-			cwd = self.cwd
-		else:
+        asset_query = False
+        if len(line) == 0:
+            cwd = self.cwd
+        else:
 # if absolute path exists as a namespace -> query this, else query via an asset pattern match
 # FIXME - this will fail if line is already an absolute path
-			if posixpath.isabs(line):
-#				cwd = line
-				cwd = posixpath.normpath(line)
-			else:
-				cwd = posixpath.normpath(posixpath.join(self.cwd, line))
+            if posixpath.isabs(line):
+#                 cwd = line
+                cwd = posixpath.normpath(line)
+            else:
+                cwd = posixpath.normpath(posixpath.join(self.cwd, line))
 
-			if not self.mf_client.namespace_exists(cwd):
-				basename = posixpath.basename(cwd)
-				cwd = self.safe_namespace_query(posixpath.dirname(cwd))
-				asset_query = True
+            if not self.mf_client.namespace_exists(cwd):
+                basename = posixpath.basename(cwd)
+                cwd = self.safe_namespace_query(posixpath.dirname(cwd))
+                asset_query = True
 
-		print "Remote folder: %s" % cwd
+        print "Remote folder: %s" % cwd
 # query attempt
-		pagination_footer = None
-		try:
-			if asset_query:
+        pagination_footer = None
+        try:
+            if asset_query:
 # NEW - support for pagination
 # FIXME - a page number that is out of bounds will result in index = 0 being returned with no results ... handle better?
-				index = (page-1) * size + 1
+                index = (page-1) * size + 1
 
-				reply = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s'" % (cwd, basename)), ("action", "get-values"), ("xpath ename=\"name\"", "name"), ("xpath ename=\"size\"", "content/size"), ("idx", index), ("size", size), ("count", "true") ])
+                reply = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s'" % (cwd, basename)), ("action", "get-values"), ("xpath ename=\"name\"", "name"), ("xpath ename=\"size\"", "content/size"), ("idx", index), ("size", size), ("count", "true") ])
 
-				start = self.mf_client.xml_find(reply, "from")
-				total = self.mf_client.xml_find(reply, "total")
+                start = self.mf_client.xml_find(reply, "from")
+                total = self.mf_client.xml_find(reply, "total")
 
-				if start is not None and total is not None:
-					canonical_asset_index = int(start.text)
-					canonical_asset_count = int(total.text)
-					canonical_size = size
-					canonical_page = int(canonical_asset_index / size) + (canonical_asset_index % size > 0)
-					canonical_last = int(canonical_asset_count / size) + (canonical_asset_count % size > 0)
+                if start is not None and total is not None:
+                    canonical_asset_index = int(start.text)
+                    canonical_asset_count = int(total.text)
+                    canonical_size = size
+                    canonical_page = int(canonical_asset_index / size) + (canonical_asset_index % size > 0)
+                    canonical_last = int(canonical_asset_count / size) + (canonical_asset_count % size > 0)
 
-#				self.mf_client.xml_print(reply)
+#                 self.mf_client.xml_print(reply)
 
-			else:
-				reply = self.mf_client.run("www.list", [("namespace", cwd), ("page", page), ("size", size)])
+            else:
+                reply = self.mf_client.run("www.list", [("namespace", cwd), ("page", page), ("size", size)])
 
 # process pagination information
-				for elem in reply.iter('parent'):
-					for child in elem:
-						if child.tag == "page":
-							canonical_page = int(child.text)
-						if child.tag == "last":
-							canonical_last = int(child.text)
-						if child.tag == "size":
-							canonical_size = int(child.text)
+                for elem in reply.iter('parent'):
+                    for child in elem:
+                        if child.tag == "page":
+                            canonical_page = int(child.text)
+                        if child.tag == "last":
+                            canonical_last = int(child.text)
+                        if child.tag == "size":
+                            canonical_size = int(child.text)
 
-			if canonical_last > 1:
-				pagination_footer = "Displaying %r files per page; page %r of %r" % (canonical_size, canonical_page, canonical_last)
+            if canonical_last > 1:
+                pagination_footer = "Displaying %r files per page; page %r of %r" % (canonical_size, canonical_page, canonical_last)
 
 # display results
-			for elem in reply.iter('namespace'):
-				for child in elem:
-					if child.tag == "name":
-							print "[Folder] %s" % child.text
+            for elem in reply.iter('namespace'):
+                for child in elem:
+                    if child.tag == "name":
+                            print "[Folder] %s" % child.text
 # TODO - when production updated (new www.list) -> report the online/offline status
 # TODO - staging ...
-			for elem in reply.iter('asset'):
-				line = ""
-				for child in elem:
-					if child.tag == "name":
-						name = child.text
-					if child.tag == "size":
-						size = child.text
+            for elem in reply.iter('asset'):
+                line = ""
+                for child in elem:
+                    if child.tag == "name":
+                        name = child.text
+                    if child.tag == "size":
+                        size = child.text
 # CURRENT - hmmm, asset with no content ... a problem elsewhere?
-						if size is None:
-							size = 0
+                        if size is None:
+                            size = 0
 
-				print "%s | %-s" % (self.human_size(int(size)), name)
+                print "%s | %-s" % (self.human_size(int(size)), name)
 
 # display pagination info
-			if pagination_footer is not None:
-				print pagination_footer
+            if pagination_footer is not None:
+                print pagination_footer
 
 # fallback if www.list (custom service call) isn't installed on the mediaflux server
-		except Exception as e:
-			print "ERROR: %s" % str(e)
-			print "WARNING: failed to execute custom service call www.list, falling back ..."
-			reply = self.mf_client.run("asset.namespace.list", [("namespace", cwd), ("assets", "true")])
+        except Exception as e:
+            print "ERROR: %s" % str(e)
+            print "WARNING: failed to execute custom service call www.list, falling back ..."
+            reply = self.mf_client.run("asset.namespace.list", [("namespace", cwd), ("assets", "true")])
 # FIXME - do this a bit better
-			self.mf_client.xml_print(reply)
+            self.mf_client.xml_print(reply)
+
+# --
+
+
+    def poll_total(self, base_query):
+        total = dict()
+
+# enforce these keys are present in the dictionary
+        total['online-files'] = 0
+        total['offline-files'] = 0
+
+        count_files = 0
+        count_bytes = 0
+        result = self.mf_client.run("asset.content.status.statistics", [("where", base_query)])
+        for elem in result.iter("statistics"):
+            state = elem.attrib.get('state', elem.text)
+
+            if state == 'online+offline':
+                state = 'online'
+
+            for child in elem:
+                if child.tag == "total":
+                    count_files += int(child.text)
+                    total[state+"-files"] = int(child.text)
+                elif child.tag == "size":
+                    count_bytes += int(child.text)
+                    total[state+"-bytes"] = int(child.text)
+                else:
+                    total[state+"-"+child.tag] = int(child.text)
+
+# enforce these keys are present in the dictionary
+        total['total-files'] = count_files
+        total['total-bytes'] = count_bytes
+
+        return total
+
+
+# prepare state - online + offline init
+# return list of (online) files to download
+    def get_online_set(self, base_query):
+
+        online = dict()
+        list_local_path = {}
+
+        query = [("where", base_query + " and content online"),("as","iterator"),("action","get-values"),("xpath ename=\"id\"","id"),("xpath ename=\"namespace\"","namespace"),("xpath ename=\"filename\"","name")]
+        result = self.mf_client.run("asset.query",query)
+#         self.mf_client.xml_print(result)
+
+        elem = self.mf_client.xml_find(result, "iterator")
+        iterator = elem.text
+        iterate_size = 100
+
+        iterate = True
+        while iterate:
+            self.mf_client.log("DEBUG", "Online iterator chunk")
+# get file list for this sub-set
+            result = self.mf_client.run("asset.query.iterate", [("id", iterator), ("size", iterate_size)])
+            for elem in result.iter("asset"):
+                asset_id = None
+                filename = None
+                path = None
+                for child in elem:
+                    if child.tag == "id":
+                        asset_id = child.text
+                    if child.tag == "filename":
+                        filename = child.text
+                    if child.tag == "namespace":
+                        namespace = child.text
+                        relpath = posixpath.relpath(namespace, self.cwd)
+                        path = os.path.join(os.getcwd(), relpath)
+# add valid download entry
+                if asset_id is not None and filename is not None:
+                    if path is None:
+                        filepath = os.path.join(os.getcwd(), filename)
+                    else:
+                        filepath = os.path.join(path, filename)
+                        list_local_path[path] = 1
+                    online[asset_id] = filepath
+
+# NEW - check for completion - to avoid triggering a mediaflux exception on invalid iterator
+            for elem in result.iter("iterated"):
+                state = elem.get('complete')
+                if "true" in state:
+                    self.mf_client.log("DEBUG", "Asset iteration completed")
+                    iterate = False
+
+# TODO - *** split out this from the online files call -> call ONCE on ALL files at the start, rather than polling
+# create any required local dirs (NB: may get exception if they exist - hence the catch)
+# FIXME - permission denied exception left to actual download ... better way to handle?
+        for local_path in list_local_path:
+            try:
+                self.mf_client.log("DEBUG", "Creating local folder: %s" % local_path)
+                os.makedirs(local_path)
+            except Exception as e:
+# TODO - this is too noisy currently as we're doing this more than we should, but unavoidable until the split out above *** is done
+#                self.mf_client.log("DEBUG", "%s" % str(e))
+                pass
+
+# DEBUG - upload iterate sub-set of files
+#         for asset_id, filepath in online.iteritems():
+#             print "get [id=%r] => %r" % (asset_id, filepath)
+
+        return online
 
 
 # --
-	def help_get(self):
-		print "Download remote files to current local folder\n"
-		print "Usage: get <remote files or folders>\n"
-		print "Examples: get /projects/My Project/images"
-		print "          get *.txt\n"
+    def print_over(self, text):
+        sys.stdout.write("\r"+text)
+        sys.stdout.write("\033[K")
+# cursor up one line
+#         sys.stdout.write("\033[F")
+        sys.stdout.flush()
 
-	def do_get(self, line):
-		list_asset_filepath = []
-		list_local_path = {}
-		total_bytes = 0
+
+
+# --
+    def help_get(self):
+        print "Download remote files to current local folder\n"
+        print "Usage: get <remote files or folders>\n"
+        print "Examples: get /projects/My Project/images"
+        print "      get *.txt\n"
+
+    def do_get(self, line):
+        list_asset_filepath = []
+        total_bytes = 0
 
 # FIXME - will fail for things like get Data Team/sean or get Data Team/sean/*.zip -> need to do some unix style path analysis 1st ...
 # prefix with CWD -> then unix extract path and basename
 # NB: use posixpath for mediaflux namespace manipulation
-		if not posixpath.isabs(line):
-			line = posixpath.join(self.cwd, line)
+        if not posixpath.isabs(line):
+            line = posixpath.join(self.cwd, line)
 
 # sanitise as asset.query is special
-		double_escaped = self.safe_namespace_query(line)
+        double_escaped = self.safe_namespace_query(line)
 # collapsed namespace
-		namespace = posixpath.normpath(posixpath.dirname(double_escaped))
+        namespace = posixpath.normpath(posixpath.dirname(double_escaped))
 # possible download on asset/pattern
-		basename = posixpath.basename(double_escaped)
+        basename = posixpath.basename(double_escaped)
 # possible download on namespace
-		candidate = posixpath.join(namespace, basename)
+        candidate = posixpath.join(namespace, basename)
 
-		self.mf_client.log("DEBUG", "do_get(): namespace=[%s] , asset_query=[%s] , candidate_namespace=[%s]" % (namespace, basename, candidate))
-
-# CURRENT - redo to cope with 100 size limit ...
+        self.mf_client.log("DEBUG", "do_get(): namespace=[%s] , asset_query=[%s] , candidate_namespace=[%s]" % (namespace, basename, candidate))
 
 # this requires different escaping to an asset.query
-		if self.mf_client.namespace_exists(line):
-			args_init = [("where", "namespace >='%s'" % candidate), ("count", "true"), ("action", "sum") , ("xpath", "content/size") ]
-			args_main = [("where", "namespace >='%s'" % candidate), ("as", "iterator"), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"namespace\"", "namespace"), ("xpath ename=\"filename\"", "name") ]
-		else:
-# FIXME - this will fail on picking up namespaces (ie it only returns assets found)
-			args_init = [("where", "namespace='%s' and name='%s'" % (namespace, basename)), ("count", "true"), ("action", "sum") , ("xpath", "content/size") ]
-			args_main = [("where", "namespace='%s' and name='%s'" % (namespace, basename)), ("as", "iterator"), ("action", "get-values"), ("xpath ename=\"id\"", "id"), ("xpath ename=\"filename\"", "name"), ("xpath ename=\"size\"", "content/size") ]
+        if self.mf_client.namespace_exists(line):
+            base_query = "namespace >='%s'" % candidate
+        else:
+            base_query = "namespace='%s' and name='%s'" % (namespace, basename)
 
-		result = self.mf_client.run("asset.query", args_init)
+# get content statistics and init for transfer polling loop
+        stats = self.poll_total(base_query)
+        self.mf_client.log("DEBUG", str(stats))
+        current = dict()
+        done = dict()
+        complete = False
+        total_recv = 0
+        start_time = time.time()
+        dmf_elapsed_mins = 0
+        elapsed_mins = 0
 
-#		self.mf_client.xml_print(result)
+# we only expect to be able to download files where the content is in a known state
+        bad_files = 0
+        known_states = ["online-files", "online-bytes", "offline-files", "offline-bytes", "migrating-files", "migrating-bytes", "total-files", "total-bytes"]
+        for key in stats.keys():
+            if key not in known_states:
+                self.mf_client.log("WARNING", "Content %s = %s" % (key, stats[key]))
+                if "-files" in key:
+                    bad_files += stats[key]
+        todo = stats['total-files'] - bad_files
 
-		elem = self.mf_client.xml_find(result, "value")
+# recall all offline files and provide kick-off report for user
+        user_msg = "Total files=%d" % stats['total-files']
+        if bad_files > 0:
+            user_msg += ", ignored files=%d" % bad_files
 
-# sometimes None gets returned instead of 0 ... gg
-		try:
-			total_bytes = int(elem.text)
-			total_assets = int(elem.attrib['nbe'])
-		except:
-			print "No matching files"
-			return
+# TODO ... or migrating ...
+        unavailable_files = todo - stats['online-files']
+        if unavailable_files > 0:
+            user_msg += ", migrating files=%d, please be patient ... " % unavailable_files
+            xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" >' % base_query
+            self.mf_client._xml_aterm_run(xml_command)
+        else:
+            user_msg += ", transferring ..."
 
-		self.mf_client.log("DEBUG", "Total assets to get: %d" % total_assets)
-		self.mf_client.log("DEBUG", "Total bytes to get: %d" % total_bytes)
+        print user_msg
 
-		result = self.mf_client.run("asset.query", args_main)
-		elem = self.mf_client.xml_find(result, "iterator")
-		iterator = elem.text
+# overall transfer loop 
+# TODO - time expired breakout?
+        while todo > 0:
+            try:
 
-# TODO - adaptable size choice based on asset_count
-		iterate_size = 100
+# wait (if required) and start transfers as soon as possible
+                manager = None
+                while manager is None:
+                    online = self.get_online_set(base_query)
+# FIXME - python 2.6 causes compile error on this -> which means the error that you need version > 2.7 isn't displayed
+#                     current = {k:v for k,v in online.iteritems() if k not in done}
+# CURRENT - this seems to resolve the issue
+                    current = dict([(k,v) for (k,v) in online.iteritems() if k not in done])
 
-# CURRENT - iterator based download
-		total_bytes_sent = 0
+# is there something to transfer?
+                    if len(current) == 0:
+                        stats = self.poll_total(base_query)
+                        current_pc = int(100.0 * total_recv / stats['total-bytes'])
+                        msg = ""
+                        if stats.get('offline-bytes') is not None:
+                            msg += " offline=" + self.human_size(stats['offline-bytes'])
+                        if stats.get('migrating-bytes') is not None:
+                            msg += " migrating=" + self.human_size(stats['migrating-bytes'])
 
-# FIXME - turn noise on/off
-#		self.mf_client.debug = False
+# TODO - even small migrations take a while ... make this something like 1,5,10,15 mins? (ie back-off)
+                        for i in range(0,4):
+                            elapsed = time.time() - start_time
+                            elapsed_mins = int(elapsed/60.0)
+                            self.print_over("Progress=%d%%,%s, elapsed=%d mins ..." % (current_pc, msg,elapsed_mins))
+                            time.sleep(60)
+                    else:
+                        manager = self.mf_client.get_managed(current.iteritems(), total_bytes=stats['total-bytes'], processes=self.transfer_processes)
 
-		iterate = True
-		while iterate:
-			try:
-# clean
-				self.mf_client.log("DEBUG", "Iterator chunk start")
-				list_asset_filepath = []
+# network transfer polling
+                while manager is not None:
+                    current_recv = total_recv + manager.bytes_recv()
+                    current_pc = int(100.0 * current_recv / stats['total-bytes'])
+                    self.print_over("Progress=%d%%, rate=%.1f MB/s" % (current_pc, manager.byte_recv_rate()))
+# update statistics after managed pool completes
+                    if manager.is_done():
+                        done.update(current)
+                        todo = stats['total-files'] - bad_files - len(done)
+                        total_recv += manager.bytes_recv()
+                        break
+                    time.sleep(2)
 
-# get file list for this sub-set
-				result = self.mf_client.run("asset.query.iterate", [("id", iterator), ("size", iterate_size)])
-				for elem in result.iter("asset"):
-					asset_id = None
-					filename = None
-					path = None
-					for child in elem:
-						if child.tag == "id":
-							asset_id = child.text
-						if child.tag == "filename":
-							filename = child.text
-						if child.tag == "namespace":
-							namespace = child.text
-							relpath = posixpath.relpath(namespace, self.cwd)
-							path = os.path.join(os.getcwd(), relpath)
-# add valid download entry
-					if asset_id is not None and filename is not None:
-						if path is None:
-							filepath = os.path.join(os.getcwd(), filename)
-						else:
-							filepath = os.path.join(path, filename)
-							list_local_path[path] = 1
-						list_asset_filepath.extend([(asset_id, filepath)])
+            except KeyboardInterrupt:
+                if manager is not None:
+                    manager.cleanup()
+                break
 
-# NEW - check for completion - to avoid triggering a mediaflux exception on invalid iterator
-				for elem in result.iter("iterated"):
-					state = elem.get('complete')
-					if "true" in state:
-						self.mf_client.log("DEBUG", "Asset iteration completed")
-						iterate = False
+            except Exception as e:
+# FIXME - randomly getting this somewhere ...
+# <urlopen error [Errno 8] nodename nor servname provided, or not known>
+# CURRENT - a quick google search suggested network problem (wifi dropout?) or utf8 encoding issue
+# http://stackoverflow.com/questions/24502674/urllib2-urlopen-raise-urllib2-urlerror
+# ALSO - might be worth wrapping the URL open stuff in a try/catch, eg:
+# http://stackoverflow.com/questions/2702802/check-if-the-internet-cannot-be-accessed-in-python
+                self.mf_client.log("ERROR", str(e))
+                break
 
-# create any required local dirs (NB: may get exception if they exist)
-# FIXME - permission denied exception left to actual download ... better way to handle?
-				for local_path in list_local_path:
-					try:
-						self.mf_client.log("DEBUG", "Creating local folder: %s" % local_path)
-						os.makedirs(local_path)
-					except Exception as e:
-						self.mf_client.log("DEBUG", "%s" % str(e))
-						pass
+# final report
+        self.print_over("Downloaded files=%d, bytes=%s" % (len(done), self.human_size(total_recv)))
+# TODO - human_time() method to chose appropriate units ...
+        elapsed = time.time() - start_time
+        elapsed_mins = int(elapsed/60.0)
+        print ", elapsed=%d mins" % elapsed_mins
 
-# TODO - upload iterate sub-set of files
-#				for asset_id, filepath in list_asset_filepath:
-#					print "get [id=%r] => %r" % (asset_id, filepath)
-
-				self.mf_client.log("DEBUG", "Starting transfer")
-				manager = self.mf_client.get_managed(list_asset_filepath, total_bytes=total_bytes, processes=self.transfer_processes)
-
-				try:
-					while True:
-						progress = 100.0 * manager.bytes_recv() / float(total_bytes)
-						sys.stdout.write("Progress: %3.0f%% at %.1f MB/s    \r" % (progress, manager.byte_recv_rate()))
-						sys.stdout.flush()
-						if manager.is_done():
-							if iterate is False:
-								print "\n"
-							break
-						time.sleep(1)
-
-				except KeyboardInterrupt:
-					manager.cleanup()
-					break
-
-			except Exception as e:
-				print "\n"
-				self.mf_client.log("DEBUG", "Last iterator completed: %s" % str(e))
-				break
-
-		return
+        return
 
 # --
-	def help_put(self):
-		print "Upload local files or folders to the current folder on the remote server\n"
-		print "Usage: put <file or folder>\n"
-		print "Examples: put /home/sean/*.jpg"
-		print "          put /home/sean/myfolder/\n"
+    def help_put(self):
+        print "Upload local files or folders to the current folder on the remote server\n"
+        print "Usage: put <file or folder>\n"
+        print "Examples: put /home/sean/*.jpg"
+        print "      put /home/sean/myfolder/\n"
 
-	def do_put(self, line):
+    def do_put(self, line):
 # TODO - args for overwrite/crc checks?
 # build upload list pairs
-		upload_list = []
-		total_bytes = 0
-		if os.path.isdir(line):
-			print "Walking directory tree..."
+        upload_list = []
+        total_bytes = 0
+        if os.path.isdir(line):
+            print "Walking directory tree..."
 # FIXME - handle input of '/'
-			line = os.path.abspath(line)
-			parent = os.path.normpath(os.path.join(line, ".."))
+            line = os.path.abspath(line)
+            parent = os.path.normpath(os.path.join(line, ".."))
 
-			for root, directory_list, name_list in os.walk(line):
-				remote = self.cwd + "/" + os.path.relpath(path=root, start=parent)
-				upload_list.extend( [(remote , os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list] )
-		else:
-			print "Building file list..."
-			upload_list = [(self.cwd, os.path.join(os.getcwd(), filename)) for filename in glob.glob(line)]
+            for root, directory_list, name_list in os.walk(line):
+                remote = self.cwd + "/" + os.path.relpath(path=root, start=parent)
+                upload_list.extend( [(remote , os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list] )
+        else:
+            print "Building file list..."
+            upload_list = [(self.cwd, os.path.join(os.getcwd(), filename)) for filename in glob.glob(line)]
 
 # DEBUG
-#		for dest,src in upload_list:
-#			print "put: %s -> %s" % (src, dest)
+#         for dest,src in upload_list:
+#             print "put: %s -> %s" % (src, dest)
 
-		self.mf_client.log("DEBUG", "Starting transfer...")
-		manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
+        self.mf_client.log("DEBUG", "Starting transfer...")
+        manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
 
-		try:
-			while True:
-				progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
-				sys.stdout.write("Progress: %3.0f%% at %.1f MB/s    \r" % (progress, manager.byte_sent_rate()))
-				sys.stdout.flush()
-				if manager.is_done():
-					break
-				time.sleep(1)
-		except KeyboardInterrupt:
-			manager.cleanup()
+        try:
+            while True:
+                progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
+                sys.stdout.write("Progress: %3.0f%% at %.1f MB/s  \r" % (progress, manager.byte_sent_rate()))
+                sys.stdout.flush()
+                if manager.is_done():
+                    break
+                time.sleep(1)
+        except KeyboardInterrupt:
+            manager.cleanup()
 
-		print "\n"
+        print "\n"
 
 # TODO - transfer summary of some kind if failures? re-try strategy?
-#		print "Bytes sent: %f" % manager.bytes_sent()
-#		for pair in manager.summary:
-#			print "uploaded asset ID = {0}".format(pair[0])
+#         print "Bytes sent: %f" % manager.bytes_sent()
+#         for pair in manager.summary:
+#             print "uploaded asset ID = {0}".format(pair[0])
 
 # --
-	def help_cd(self):
-		print "Change the current remote folder.\n"
-		print "Usage: cd <folder>\n"
+    def help_cd(self):
+        print "Change the current remote folder.\n"
+        print "Usage: cd <folder>\n"
 
-	def do_cd(self, line):
-		if os.path.isabs(line):
-			candidate = posixpath.normpath(line)
-		else:
-			candidate = posixpath.normpath(self.cwd + "/" + line)
+    def do_cd(self, line):
+        if os.path.isabs(line):
+            candidate = posixpath.normpath(line)
+        else:
+            candidate = posixpath.normpath(self.cwd + "/" + line)
 # set if exists on remote server
-		if self.mf_client.namespace_exists(candidate):
-			self.cwd = candidate
-			print "Remote: %s" % self.cwd
-		else:
-			print "Invalid remote folder: %s" % candidate
+        if self.mf_client.namespace_exists(candidate):
+            self.cwd = candidate
+            print "Remote: %s" % self.cwd
+        else:
+            print "Invalid remote folder: %s" % candidate
 
 # --
-	def help_pwd(self):
-		print "Display the current remote folder.\n"
-		print "Usage: pwd\n"
+    def help_pwd(self):
+        print "Display the current remote folder.\n"
+        print "Usage: pwd\n"
 
-	def do_pwd(self, line):
-		print "Remote: %s" % self.cwd
+    def do_pwd(self, line):
+        print "Remote: %s" % self.cwd
 
 # --
-	def help_mkdir(self):
-		print "Create a remote folder\n"
-		print "Usage: mkdir <folder>\n"
+    def help_mkdir(self):
+        print "Create a remote folder\n"
+        print "Usage: mkdir <folder>\n"
 
-	def do_mkdir(self, line):
-		ns_target = self.absolute_remote_filepath(line)
-		try:
-			self.mf_client.run("asset.namespace.create", [("namespace", ns_target)])
-		except Exception as e:
+    def do_mkdir(self, line):
+        ns_target = self.absolute_remote_filepath(line)
+        try:
+            self.mf_client.run("asset.namespace.create", [("namespace", ns_target)])
+        except Exception as e:
 # don't raise an exception if the namespace already exists - just warn
-			if "already exists" in str(e):
-				print "Warning: %s" % str(e)
-			else:
+            if "already exists" in str(e):
+                print "Warning: %s" % str(e)
+            else:
 # other errors (no permission, etc) should still raise an exception - failure
-				raise Exception(e)
+                raise Exception(e)
 
 # --
-	def help_rm(self):
-		print "Delete remote file(s)\n"
-		print "Usage: rm <file or pattern>\n"
-		print "Examples: rm *.jpg"
-		print "          rm /projects/myproject/somefile\n"
+    def help_rm(self):
+        print "Delete remote file(s)\n"
+        print "Usage: rm <file or pattern>\n"
+        print "Examples: rm *.jpg"
+        print "      rm /projects/myproject/somefile\n"
 
-	def do_rm(self, line):
+    def do_rm(self, line):
 # TODO - cope with absolute path
-		try:
-			result = self.mf_client.run("asset.query", [("where", "namespace='{0}' and name='{1}'".format(self.safe_cwd(), line)), (":action", "count")])
-		except:
-			print "Server responded with an error"
-			return
+        try:
+            result = self.mf_client.run("asset.query", [("where", "namespace='{0}' and name='{1}'".format(self.safe_cwd(), line)), (":action", "count")])
+        except:
+            print "Server responded with an error"
+            return
 
 # not sure why this find doesn't work
-#		elem = result.find("value")
-		for elem in result.iter():
-			if elem.tag == "value":
-				count = int(elem.text)
-				if count == 0:
-					print "No match"
-					return
+#         elem = result.find("value")
+        for elem in result.iter():
+            if elem.tag == "value":
+                count = int(elem.text)
+                if count == 0:
+                    print "No match"
+                    return
 
-				if self.ask("Remove %d files: (y/n) " % count):
-					self.mf_client.run("asset.query", [("where", "namespace='{0}' and name='{1}'".format(self.safe_cwd(), line)), (":action", "pipe"), (":service name=\"asset.destroy\"", "")])
-				else:
-					print "Aborted"
-				return
+                if self.ask("Remove %d files: (y/n) " % count):
+                    self.mf_client.run("asset.query", [("where", "namespace='{0}' and name='{1}'".format(self.safe_cwd(), line)), (":action", "pipe"), (":service name=\"asset.destroy\"", "")])
+                else:
+                    print "Aborted"
+                return
 
 # --
-	def help_rmdir(self):
-		print "Remove a remote folder\n"
-		print "Usage: rmdir <folder>\n"
+    def help_rmdir(self):
+        print "Remove a remote folder\n"
+        print "Usage: rmdir <folder>\n"
 
-	def do_rmdir(self, line):
-		if posixpath.isabs(line):
-			ns_target = line
-		else:
-			ns_target = posixpath.normpath(self.cwd + "/" + line)
+    def do_rmdir(self, line):
+        if posixpath.isabs(line):
+            ns_target = line
+        else:
+            ns_target = posixpath.normpath(self.cwd + "/" + line)
 
-		if self.mf_client.namespace_exists(ns_target):
-			if self.ask("Remove folder: %s (y/n) " % ns_target):
-				self.mf_client.run("asset.namespace.destroy", [("namespace", ns_target)])
-			else:
-				print "Aborted"
-		else:
-			print "No such folder: %s" % ns_target
+        if self.mf_client.namespace_exists(ns_target):
+            if self.ask("Remove folder: %s (y/n) " % ns_target):
+                self.mf_client.run("asset.namespace.destroy", [("namespace", ns_target)])
+            else:
+                print "Aborted"
+        else:
+            print "No such folder: %s" % ns_target
 
 # -- local commands
-	def help_debug(self):
-		print "Turn debugging output on/off\n"
-		print "Usage: debug <on/off>\n"
+    def help_debug(self):
+        print "Turn debugging output on/off\n"
+        print "Usage: debug <on/off>\n"
 
-	def do_debug(self, line):
-		if "true" in line or "on" in line:
-			print "Turning DEBUG on"
-			self.mf_client.debug = True
-		else:
-			print "Turning DEBUG off"
-			self.mf_client.debug = False
-
-# --
-	def help_lpwd(self):
-		print "Display local folder\n"
-		print "Usage: lpwd\n"
-
-	def do_lpwd(self, line):
-		print "Local: %s" % os.getcwd()
+    def do_debug(self, line):
+        if "true" in line or "on" in line:
+            print "Turning DEBUG on"
+            self.mf_client.debug = True
+        else:
+            print "Turning DEBUG off"
+            self.mf_client.debug = False
 
 # --
-	def help_lcd(self):
-		print "Change local folder\n"
-		print "Usage: lcd <folder>\n"
+    def help_lpwd(self):
+        print "Display local folder\n"
+        print "Usage: lpwd\n"
 
-	def do_lcd(self, line):
-		os.chdir(line)
-		print "Local: %s" % os.getcwd()
+    def do_lpwd(self, line):
+        print "Local: %s" % os.getcwd()
 
 # --
-	def help_lls(self):
-		print "List contents of local folder\n"
-		print "Usage: lls <folder>\n"
+    def help_lcd(self):
+        print "Change local folder\n"
+        print "Usage: lcd <folder>\n"
 
-	def do_lls(self, line):
+    def do_lcd(self, line):
+        os.chdir(line)
+        print "Local: %s" % os.getcwd()
+
+# --
+    def help_lls(self):
+        print "List contents of local folder\n"
+        print "Usage: lls <folder>\n"
+
+    def do_lls(self, line):
 
 # no flags???
-#		line = re.sub(r'-\S+', '', line)
+#         line = re.sub(r'-\S+', '', line)
 
 # convert to absolute path for consistency
-		if not os.path.isabs(line):
-			path = os.path.normpath(os.path.join(os.getcwd(), line))
-		else:
-			path = line
+        if not os.path.isabs(line):
+            path = os.path.normpath(os.path.join(os.getcwd(), line))
+        else:
+            path = line
 
 # get display folder and setup for a glob style listing
-		if os.path.isdir(path) == True:
-			display_path = path 
-			path = os.path.join(path, "*")
-		else:
-			display_path = os.path.dirname(path)
+        if os.path.isdir(path) == True:
+            display_path = path 
+            path = os.path.join(path, "*")
+        else:
+            display_path = os.path.dirname(path)
 
-		print "Local folder: %s" % display_path
+        print "Local folder: %s" % display_path
 
 # NEW - glob these to allow wildcards
-		for filename in glob.glob(path):
-			if os.path.isdir(filename):
-				head,tail = os.path.split(filename)
-				print "[Folder] " + tail
+        for filename in glob.glob(path):
+            if os.path.isdir(filename):
+                head,tail = os.path.split(filename)
+                print "[Folder] " + tail
 
-		for filename in glob.glob(path):
-			if os.path.isfile(filename):
-				head,tail = os.path.split(filename)
-				print "%s | %-s" % (self.human_size(os.path.getsize(filename)), tail)
+        for filename in glob.glob(path):
+            if os.path.isfile(filename):
+                head,tail = os.path.split(filename)
+                print "%s | %-s" % (self.human_size(os.path.getsize(filename)), tail)
 
 # --- working example of PKI via mediaflux
-#	def do_mls(self, line):
-#		pkey = open('/Users/sean/.ssh/id_rsa', 'r').read()
-#		reply = self.mf_client._xml_aterm_run("secure.shell.execute :command ls :host magnus.pawsey.org.au :private-key < :name sean :key \"%s\" >" % pkey)
-#		self.mf_client.xml_print(reply)
+#     def do_mls(self, line):
+#         pkey = open('/Users/sean/.ssh/id_rsa', 'r').read()
+#         reply = self.mf_client._xml_aterm_run("secure.shell.execute :command ls :host magnus.pawsey.org.au :private-key < :name sean :key \"%s\" >" % pkey)
+#         self.mf_client.xml_print(reply)
 
 # --- 
-	def help_whoami(self):
-		print "Report the current authenticated user or delegate and associated roles\n"
-		print "Usage: whoami\n"
+    def help_whoami(self):
+        print "Report the current authenticated user or delegate and associated roles\n"
+        print "Usage: whoami\n"
 
-	def do_whoami(self, line):
-		try:
-			result = self.mf_client.run("actor.self.describe")
-			for elem in result.iter('actor'):
-				name = elem.attrib['name']
-				if ":" in name:
-					print "actor = %s" % name
-				else:
-					print "actor = delegate"
-			for elem in result.iter('role'):
-				print "  role = %s" % elem.text
-		except:
-			print "I'm not sure who you are!"
+    def do_whoami(self, line):
+        try:
+            result = self.mf_client.run("actor.self.describe")
+            for elem in result.iter('actor'):
+                name = elem.attrib['name']
+                if ":" in name:
+                    print "actor = %s" % name
+                else:
+                    print "actor = delegate"
+            for elem in result.iter('role'):
+                print "  role = %s" % elem.text
+        except:
+            print "I'm not sure who you are!"
 
 # --- 
-	def help_processes(self):
-		print ("Set the number of concurrent processes to use when transferring files.")
-		print ("If no number is supplied, reports the current value.")
-		print ("Usage: processes <number>\n")
+    def help_processes(self):
+        print ("Set the number of concurrent processes to use when transferring files.")
+        print ("If no number is supplied, reports the current value.")
+        print ("Usage: processes <number>\n")
 
-	def do_processes(self, line):
-		try:
-			p = max(1, min(int(line), 8))
-			self.transfer_processes = p
-		except:
-			pass
-		print("Current number of processes: %r" % self.transfer_processes)
+    def do_processes(self, line):
+        try:
+            p = max(1, min(int(line), 8))
+            self.transfer_processes = p
+        except:
+            pass
+        print("Current number of processes: %r" % self.transfer_processes)
 
 # -- connection commands
-	def help_logout(self):
-		print "Terminate the current session to the server\n"
-		print "Usage: logout\n"
+    def help_logout(self):
+        print "Terminate the current session to the server\n"
+        print "Usage: logout\n"
 
-	def do_logout(self, line):
-		self.mf_client.logout()
-		self.need_auth = True
+    def do_logout(self, line):
+        self.mf_client.logout()
+        self.need_auth = True
 
 # --- 
-	def help_login(self):
-		print "Initiate login to the current remote server\n"
-		print "Usage: login\n"
+    def help_login(self):
+        print "Initiate login to the current remote server\n"
+        print "Usage: login\n"
 
-	def do_login(self, line):
-		user = raw_input("Username: ")
+    def do_login(self, line):
+        user = raw_input("Username: ")
 # NB: special cases
-		if user == "manager":
-			domain = 'system'
-		elif user == "public":
-			domain = 'public'
-		else:
-			domain = 'ivec'
-		password = getpass.getpass("Password: ")
+        if user == "manager":
+            domain = 'system'
+        elif user == "public":
+            domain = 'public'
+        else:
+            domain = 'ivec'
+        password = getpass.getpass("Password: ")
 
-		try:
-			self.mf_client.login(domain, user, password)
-			self.need_auth = False
+        try:
+            self.mf_client.login(domain, user, password)
+            self.need_auth = False
 # save the authentication token
-#			print "Writing session to config file: %s" % self.config_filepath
-			self.config.set(self.config_name, 'session', self.mf_client.session)
-			f = open(self.config_filepath, "w")
-			self.config.write(f)
-			f.close()
+#             print "Writing session to config file: %s" % self.config_filepath
+            self.config.set(self.config_name, 'session', self.mf_client.session)
+            f = open(self.config_filepath, "w")
+            self.config.write(f)
+            f.close()
 
-		except Exception as e:
-			print str(e)
+        except Exception as e:
+            print str(e)
 
 # --
-	def help_delegate(self):
-		print "Create a delegated credential, stored in your local home folder, that will be automatically reused to authenticate to the remote server.\n"
-		print "An optional argument can be supplied to set the credential lifetime, or set to off to destroy all delegated credentials for your account.\n"
-		print "Usage: delegate <days/off>\n"
-		print "Examples: delegate"
-		print "          delegate 7"
-		print "          delegate off\n"
+    def help_delegate(self):
+        print "Create a delegated credential, stored in your local home folder, that will be automatically reused to authenticate to the remote server.\n"
+        print "An optional argument can be supplied to set the credential lifetime, or set to off to destroy all delegated credentials for your account.\n"
+        print "Usage: delegate <days/off>\n"
+        print "Examples: delegate"
+        print "      delegate 7"
+        print "      delegate off\n"
 
-	def do_delegate(self, line):
+    def do_delegate(self, line):
 # argument parse
-		dt = delegate_default
-		if line:
-			if line == "off":
-				try:
-#					self.mf_client.run("secure.identity.token.destroy.all")
+        dt = delegate_default
+        if line:
+            if line == "off":
+                try:
+#                     self.mf_client.run("secure.identity.token.destroy.all")
 # wtf arcitecta - we just rename these things on a whim?
-					self.mf_client.run("secure.identity.token.all.destroy")
-					print "Delegate credentials removed."
-				except:
-					print "No delegate credentials found."
-				use_token = False
+                    self.mf_client.run("secure.identity.token.all.destroy")
+                    print "Delegate credentials removed."
+                except:
+                    print "No delegate credentials found."
+                use_token = False
 # remove all auth info and update config
-				self.config.remove_option(self.config_name, 'token')
-				self.config.remove_option(self.config_name, 'session')
-				f = open(self.config_filepath, "w")
-				self.config.write(f)
-				f.close()
-				self.need_auth = True
-				return
-			else:
-				try:
-					dt = max(min(float(line), delegate_max), delegate_min)
-				except:
-					print "Bad delegate lifetime."
+                self.config.remove_option(self.config_name, 'token')
+                self.config.remove_option(self.config_name, 'session')
+                f = open(self.config_filepath, "w")
+                self.config.write(f)
+                f.close()
+                self.need_auth = True
+                return
+            else:
+                try:
+                    dt = max(min(float(line), delegate_max), delegate_min)
+                except:
+                    print "Bad delegate lifetime."
 # lifetime setup
-		d = datetime.datetime.now() + datetime.timedelta(days=dt)
-		expiry = d.strftime("%d-%b-%Y %H:%M:%S")
-		print "Delegating until: " + expiry
+        d = datetime.datetime.now() + datetime.timedelta(days=dt)
+        expiry = d.strftime("%d-%b-%Y %H:%M:%S")
+        print "Delegating until: " + expiry
 # query current authenticated identity
-		try:
-			result = self.mf_client.run("actor.self.describe")
-			for elem in result.iter():
-				if elem.tag == 'actor':
-					actor = elem.attrib.get('name', elem.text)
-					i = actor.find(":")
-					domain = actor[0:i]
-					user = actor[i+1:]
-		except:
-			raise Exception("Failed to get valid identity")
+        try:
+            result = self.mf_client.run("actor.self.describe")
+            for elem in result.iter():
+                if elem.tag == 'actor':
+                    actor = elem.attrib.get('name', elem.text)
+                    i = actor.find(":")
+                    domain = actor[0:i]
+                    user = actor[i+1:]
+        except:
+            raise Exception("Failed to get valid identity")
 
 # create secure token (delegate) and assign current authenticated identity to the token
-		result = self.mf_client.run("secure.identity.token.create", [ ("to", expiry), ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("min-token-length", 16) ])
-		for elem in result.iter():
-			if elem.tag == 'token':
+        result = self.mf_client.run("secure.identity.token.create", [ ("to", expiry), ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("min-token-length", 16) ])
+        for elem in result.iter():
+            if elem.tag == 'token':
 # remove current session ID (real user)
-				self.config.remove_option(self.config_name, 'session')
-				self.config.set(self.config_name, 'token', elem.text)
-				f = open(self.config_filepath, "w")
-				self.config.write(f)
-				f.close()
+                self.config.remove_option(self.config_name, 'session')
+                self.config.set(self.config_name, 'token', elem.text)
+                f = open(self.config_filepath, "w")
+                self.config.write(f)
+                f.close()
 
 # --
 # TODO - passthru help if not found locally
-#	def do_help(self, line):
-#		print "help: %s" % line
+#     def do_help(self, line):
+#         print "help: %s" % line
 
 # --
-	def help_quit(self):
-		print "Exit without terminating the session\n"
-	def do_quit(self, line):
-		exit(0)
+    def help_quit(self):
+        print "Exit without terminating the session\n"
+    def do_quit(self, line):
+        exit(0)
 
 # --
-	def help_exit(self):
-		print "Exit without terminating the session\n"
-	def do_exit(self, line):
-		exit(0)
+    def help_exit(self):
+        print "Exit without terminating the session\n"
+    def do_exit(self, line):
+        exit(0)
 
 # --
-	def loop_interactively(self):
-		while True:
-			try:
-				self.cmdloop()
-			except KeyboardInterrupt:
-				print "Interrupted, cleaning up     "
-				continue
+    def loop_interactively(self):
+        while True:
+            try:
+                self.cmdloop()
+            except KeyboardInterrupt:
+                print "Interrupted, cleaning up   "
+                continue
 
-			except Exception as e:
+            except Exception as e:
 # NEW - handle EOF case where stdin is force fed via command line
-				if "EOF" in str(e):
-					return
+                if "EOF" in str(e):
+                    return
 
-				print str(e)
+                print str(e)
 
 def main():
 
 # CURRENT - can include additional data files in the zip bundle (eg CA certs) 
-#	import zipfile
-#	me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
-#	f = me.open('certificate.pem')
-#	print f.read()
+#     import zipfile
+#     me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
+#     f = me.open('certificate.pem')
+#     print f.read()
 
 # TODO - probably should make it compatible with 3.x as well (sigh)
-	if sys.hexversion < 0x02070000:
-		print("ERROR: requires Python 2.7.x, using: ", sys.version)
-		exit(-1)
+    if sys.hexversion < 0x02070000:
+        print("ERROR: requires Python 2.7.x, using: ", sys.version)
+        exit(-1)
 
 # server config (section heading) to use
-	p = argparse.ArgumentParser(description='pshell help')
-	p.add_argument('-c', dest='config', default='pawsey', help='The server in $HOME/.mf_config to connect to')
-	p.add_argument('-i', dest='script', help='Input script file containing commands')
-	p.add_argument("-d", dest='debug', help="Turn debugging on", action="store_true")
+    p = argparse.ArgumentParser(description='pshell help')
+    p.add_argument('-c', dest='config', default='pawsey', help='The server in $HOME/.mf_config to connect to')
+    p.add_argument('-i', dest='script', help='Input script file containing commands')
+    p.add_argument("-d", dest='debug', help="Turn debugging on", action="store_true")
 
-	args = p.parse_args()
-	current = args.config
-	script = args.script
+    args = p.parse_args()
+    current = args.config
+    script = args.script
 
 # use config if exists, else create a dummy one
-	config = ConfigParser.ConfigParser()
+    config = ConfigParser.ConfigParser()
 # hydrographic NAS box gives a dud path for ~
 # NEW - test readwrite and if fail -> use CWD
-	config_filepath = os.path.expanduser("~/.mf_config")
-	try:
-		open(config_filepath, 'a').close()
-	except:
-		print "Bad home [%s] ... falling back to current folder" % config_filepath
-		config_filepath = os.path.join(os.getcwd(), ".mf_config")
+    config_filepath = os.path.expanduser("~/.mf_config")
+    try:
+        open(config_filepath, 'a').close()
+    except:
+        print "Bad home [%s] ... falling back to current folder" % config_filepath
+        config_filepath = os.path.join(os.getcwd(), ".mf_config")
 
-	config.read(config_filepath)
+    config.read(config_filepath)
 
-	encrypt = True
-	debug = False
-	session = ""
-	token = None
-	config_changed = False
+    encrypt = True
+    debug = False
+    session = ""
+    token = None
+    config_changed = False
 
-	if config.has_section(current):
-#		print "Reading config [%s]" % config_filepath
-		try:
-			server = config.get(current, 'server')
-			protocol = config.get(current, 'protocol')
-			port = config.get(current, 'port')
-		except:
-			print "ERROR: config file [%s] has insufficiently specified server" % config_filepath
-			exit(-1)
+    if config.has_section(current):
+#         print "Reading config [%s]" % config_filepath
+        try:
+            server = config.get(current, 'server')
+            protocol = config.get(current, 'protocol')
+            port = config.get(current, 'port')
+        except:
+            print "ERROR: config file [%s] has insufficiently specified server" % config_filepath
+            exit(-1)
 
-		if config.has_option(current, 'encrypt'):
-			encrypt = config.getboolean(current, 'encrypt')
-		if config.has_option(current, 'debug'):
-			debug = config.getboolean(current, 'debug')
-		if config.has_option(current, 'session'):
-			session = config.get(current, 'session')
-		if config.has_option(current, 'token'):
-			token = config.get(current, 'token')
-	else:
-		if current != 'pawsey':
-			print "Server configuration for %s not found in %s" % (current, config_filepath)
-			exit(-1)
+        if config.has_option(current, 'encrypt'):
+            encrypt = config.getboolean(current, 'encrypt')
+        if config.has_option(current, 'debug'):
+            debug = config.getboolean(current, 'debug')
+        if config.has_option(current, 'session'):
+            session = config.get(current, 'session')
+        if config.has_option(current, 'token'):
+            token = config.get(current, 'token')
+    else:
+        if current != 'pawsey':
+            print "Server configuration for %s not found in %s" % (current, config_filepath)
+            exit(-1)
 
-		print "Creating default config [%s]" % config_filepath
-		config.add_section(current)
-		server = "data.pawsey.org.au"
-		protocol = "https"
-		port = 443
-		config.set(current, 'server', server)
-		config.set(current, 'protocol', protocol)
-		config.set(current, 'port', port)
-		config_changed = True
+        print "Creating default config [%s]" % config_filepath
+        config.add_section(current)
+        server = "data.pawsey.org.au"
+        protocol = "https"
+        port = 443
+        config.set(current, 'server', server)
+        config.set(current, 'protocol', protocol)
+        config.set(current, 'port', port)
+        config_changed = True
 
 # new - commandline debug true overrides config
-	if args.debug:
-		debug = True
+    if args.debug:
+        debug = True
 
 # mediaflux client
-	try:
-		mf_client = mfclient.mf_client(protocol=protocol, port=port, server=server, session=session, enforce_encrypted_login=encrypt, debug=debug)
-	except Exception as e:
-		print "Failed to establish network connection to: %s" % current
-		print "Error: %s" % str(e)
-		exit(-1)
+    try:
+        mf_client = mfclient.mf_client(protocol=protocol, port=port, server=server, session=session, enforce_encrypted_login=encrypt, debug=debug)
+    except Exception as e:
+        print "Failed to establish network connection to: %s" % current
+        print "Error: %s" % str(e)
+        exit(-1)
 
 # check session first
-	need_auth = True
-	if not len(session) == 0:
-		if not mf_client.authenticated():
-			session = ""
-			config.set(current, 'session', session)
-			config_changed = True
-		else:
-			need_auth = False
+    need_auth = True
+    if not len(session) == 0:
+        if not mf_client.authenticated():
+            session = ""
+            config.set(current, 'session', session)
+            config_changed = True
+        else:
+            need_auth = False
 
 # missing or invalid session - check the token (if any)
-	if len(session) == 0:
-		if token:
-			try:
-				mf_client.login(token=token)
-				config.set(current, 'session', mf_client.session)
-				config_changed = True
-				need_auth = False
-				mf_client.log("DEBUG", "Token is valid")
-			except Exception as e:
-				mf_client.log("DEBUG", str(e))
+    if len(session) == 0:
+        if token:
+            try:
+                mf_client.login(token=token)
+                config.set(current, 'session', mf_client.session)
+                config_changed = True
+                need_auth = False
+                mf_client.log("DEBUG", "Token is valid")
+            except Exception as e:
+                mf_client.log("DEBUG", str(e))
 
 # update config to match current state
-	if config_changed:
-		mf_client.log("DEBUG", "Writing config...")
-		f = open(config_filepath, "w")
-		config.write(f)
-		f.close()
+    if config_changed:
+        mf_client.log("DEBUG", "Writing config...")
+        f = open(config_filepath, "w")
+        config.write(f)
+        f.close()
 
 # hand control of mediaflux client over to parsing loop
-	my_parser = parser()
-	my_parser.mf_client = mf_client
-	my_parser.config_name = current
-	my_parser.config_filepath = config_filepath
-	my_parser.config = config
-	my_parser.need_auth = need_auth
+    my_parser = parser()
+    my_parser.mf_client = mf_client
+    my_parser.config_name = current
+    my_parser.config_filepath = config_filepath
+    my_parser.config = config
+    my_parser.need_auth = need_auth
 
 # TAB completion
 # FIXME - no readline in Windows ...
-	try:
+    try:
 # strange hackery required to get tab completion working under OS-X and also still be able to use the b key
 # REF - http://stackoverflow.com/questions/7124035/in-python-shell-b-letter-does-not-work-what-the
-		if 'libedit' in readline.__doc__:
-			readline.parse_and_bind("bind ^I rl_complete")
-		else:
-			readline.parse_and_bind("tab: complete")
-	except:
-		mf_client.log("WARNING", "No readline module available")
+        if 'libedit' in readline.__doc__:
+            readline.parse_and_bind("bind ^I rl_complete")
+        else:
+            readline.parse_and_bind("tab: complete")
+    except:
+        mf_client.log("WARNING", "No readline module available")
 
 # process script or go interactive
-	if script:
-		my_parser.interactive = False
-		with open(script) as f:
-			for line in f:
-				try:
-					print "input> %s" % line
-					my_parser.onecmd(line)
-				except Exception as e:
-					print str(e)
-					exit(-1)
-	else:
-		my_parser.loop_interactively()
+    if script:
+        my_parser.interactive = False
+        with open(script) as f:
+            for line in f:
+                try:
+                    print "input> %s" % line
+                    my_parser.onecmd(line)
+                except Exception as e:
+                    print str(e)
+                    exit(-1)
+    else:
+        my_parser.loop_interactively()
 
 
 if __name__ == '__main__':
-	main()
+    main()

@@ -125,7 +125,9 @@ class mf_client:
 		self.indent = 0
 # check is server is reachable
 		s = socket.socket()
-		s.settimeout(self.timeout)
+# initial connection test exception
+#		s.settimeout(self.timeout)
+		s.settimeout(7)
 		s.connect((self.server, self.port))
 		s.close()
 
@@ -900,7 +902,11 @@ class mf_client:
 # TODO - auto overwrite if different? (CRC)
 		if os.path.isfile(filepath) and not overwrite:
 			self.log("DEBUG", "Local file of that name (%s) already exists, skipping." % filepath)
+
 # FIXME - this should lower the expected total_bytes by the size of the file ...
+			with bytes_recv.get_lock():
+				bytes_recv.value += os.path.getsize(filepath)
+
 			req.close()
 			return
 
@@ -1045,6 +1051,7 @@ class mf_manager:
 	task = None
 	pool = None
 
+# TODO - will probably need an offline list added to signature ...
 	def __init__(self, function, arguments, processes=1, total_bytes=0):
 		"""
 		Args:
@@ -1077,7 +1084,13 @@ class mf_manager:
 # restore control-C 
 		signal.signal(signal.SIGINT, handler)
 
+
+# TODO - repeat the map_async with new items as they are available
 		self.task = self.pool.map_async(function, arguments, callback=self.summary.extend)
+# TODO - don't end here if there are still pending (offline/migrating) files
+
+# NOTE - if additional map_asyncs don't work ... just create new ... (NB: will need close() + join() on the old to properly terminate)
+# some egs: http://cslocumwx.github.io/blog/2015/02/23/python-multiprocessing/
 
 		self.pool.close()
 
@@ -1135,6 +1148,8 @@ class mf_manager:
 		"""
 		BOOLEAN test for transfer completion
 		"""
+# TODO - modify this - if (new) offline list is not empty -> we're not done after all
+# also a secondary timer (enforce we don't hammer the server) for any new tasks to be added to the pool
 		if self.task.ready():
 			self.pool.join()
 			manage_lock.release()
