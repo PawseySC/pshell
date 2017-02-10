@@ -612,7 +612,7 @@ class parser(cmd.Cmd):
                 manager = None
                 while manager is None:
                     online = self.get_online_set(base_query)
-# FIXME - python 2.6 causes compile error on this -> which means the error that you need version > 2.7 isn't displayed
+# FIXME - python 2.6 causes compile error on this -> which means the runtime print "you need version > 2.7" isn't displayed
 #                     current = {k:v for k,v in online.iteritems() if k not in done}
 # CURRENT - this seems to resolve the issue
                     current = dict([(k,v) for (k,v) in online.iteritems() if k not in done])
@@ -1157,8 +1157,9 @@ def main():
                 config.set(current, 'session', mf_client.session)
                 config_changed = True
                 need_auth = False
-                mf_client.log("DEBUG", "Token is valid")
+                mf_client.log("DEBUG", "Delegate is valid")
             except Exception as e:
+                mf_client.log("WARNING", "Delegate authentication failed.")
                 mf_client.log("DEBUG", str(e))
 
 # update config to match current state
