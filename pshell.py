@@ -7,6 +7,8 @@ import sys
 import glob
 import math
 import time
+# NEW - shell like pattern matching
+import fnmatch
 import getpass
 import argparse
 import datetime
@@ -110,10 +112,9 @@ class parser(cmd.Cmd):
 
         return ns_list
 
-# CURRENT - helper for completion testing
-#     def do_test(self, line):
-#         print "input: [%s]" % line
-#         print "output: %r" % self.complete_namespace(line, 0)
+
+# CURRENT - testing helper 
+#    def do_test(self, line):
 
 # --- helper: attempt to complete an asset
     def complete_asset(self, partial_asset_path, start):
@@ -292,7 +293,27 @@ class parser(cmd.Cmd):
         return posixpath.normpath(line)
 
 
-# CURRENT - return asset.get info
+# CURRENT - general method for retrieving an iterator for remote folders
+    def remote_namespaces_iter(self, pattern):
+        fullpath = self.absolute_remote_filepath(pattern)
+        namespace = posixpath.dirname(fullpath)
+        pattern = posixpath.basename(fullpath)
+
+        if len(pattern) == 0:
+            pattern = "*"
+
+        result = self.mf_client.run("asset.namespace.list", [("namespace", namespace)])
+
+        for elem in result.iter('namespace'):
+            if elem.text is not None:
+                if fnmatch.fnmatch(elem.text, pattern):
+                    yield elem.text
+
+# TODO - general method for retrieving an iterator for remote files
+#    def remote_files_get(self, pattern):
+
+
+# --- file info
     def help_file(self):
         print "Return metadata information on a remote file\n"
         print "Usage: file <filename>\n"
@@ -301,14 +322,71 @@ class parser(cmd.Cmd):
         result = self.mf_client.run("asset.get", [("id", "path=%s" % self.absolute_remote_filepath(line))]) 
         self.mf_client.xml_print(result)
 
+
+
+# --- helper
+# TODO - test all this on windows
+
+    def wait_key(self):
+        ''' Wait for a key press on the console and return it. '''
+        result = None
+        if self.interactive == False:
+            return result
+        if os.name == 'nt':
+            import msvcrt
+            result = msvcrt.getch()
+        else:
+            import termios
+            fd = sys.stdin.fileno()
+
+            oldterm = termios.tcgetattr(fd)
+            newattr = termios.tcgetattr(fd)
+            newattr[3] = newattr[3] & ~termios.ICANON & ~termios.ECHO
+            termios.tcsetattr(fd, termios.TCSANOW, newattr)
+
+            try:
+                result = sys.stdin.read(1)
+            except IOError:
+                pass
+            finally:
+                termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
+
+        return result
+
+    def pagination_controller(self, prompt):
+        result = None
+        if prompt is not None:
+            if self.interactive:
+                sys.stdout.write(prompt)
+                result = ""
+                while True:
+                    key = self.wait_key()
+                    sys.stdout.write(key)
+                    if key == 'q':
+                        result += key
+                        print
+                        return result
+                    elif key == '\x7f':
+                        sys.stdout.write("\b \b")
+                        sys.stdout.flush()
+                        result = result[:-1]
+                    elif key == '\n':
+                        return result
+                    else:
+                        result += key
+            else:
+                print prompt
+
+        return result
+
 # ---
     def help_ls(self):
-        print "List files stored on the remote server\n"
-        print "Pagination (if required) is controlled by the optional page and size arguments.\n"
+        print "List files stored on the remote server.\n"
+        print "Pagination can be controlled by the optional page and size arguments."
+        print "Navigation in paginated output can be achieved by directly inputing page numbers or /<pattern> or q to quit.\n"
         print "Usage: ls <folder> <-p page> <-s size>\n"
         print "Examples: ls /projects/my project/some folder"
-        print "      ls -p 2"
-        print "      ls\n"
+        print "          ls *.txt\n"
 
 # TODO - default page size -> .mf_config
     def do_ls(self, line):
@@ -330,96 +408,111 @@ class parser(cmd.Cmd):
         line = re.sub(r'-\S+\s+\S+', '', line)
         line = line.strip()
 
-        asset_query = False
+        asset_filter = None
+
         if len(line) == 0:
             cwd = self.cwd
         else:
 # if absolute path exists as a namespace -> query this, else query via an asset pattern match
 # FIXME - this will fail if line is already an absolute path
             if posixpath.isabs(line):
-#                 cwd = line
                 cwd = posixpath.normpath(line)
             else:
                 cwd = posixpath.normpath(posixpath.join(self.cwd, line))
 
             if not self.mf_client.namespace_exists(cwd):
-                basename = posixpath.basename(cwd)
+                asset_filter = posixpath.basename(cwd)
                 cwd = self.safe_namespace_query(posixpath.dirname(cwd))
-                asset_query = True
 
-        print "Remote folder: %s" % cwd
+#        print "Remote folder: %s" % cwd
 # query attempt
-        pagination_footer = None
-        try:
-            if asset_query:
-# NEW - support for pagination
-# FIXME - a page number that is out of bounds will result in index = 0 being returned with no results ... handle better?
-                index = (page-1) * size + 1
 
-                reply = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s'" % (cwd, basename)), ("action", "get-values"), ("xpath ename=\"name\"", "name"), ("xpath ename=\"size\"", "content/size"), ("idx", index), ("size", size), ("count", "true") ])
+        pagination_complete = False
+        show_header = True
 
-                start = self.mf_client.xml_find(reply, "from")
-                total = self.mf_client.xml_find(reply, "total")
+        while pagination_complete is False:
 
-                if start is not None and total is not None:
-                    canonical_asset_index = int(start.text)
-                    canonical_asset_count = int(total.text)
-                    canonical_size = size
-                    canonical_page = int(canonical_asset_index / size) + (canonical_asset_index % size > 0)
-                    canonical_last = int(canonical_asset_count / size) + (canonical_asset_count % size > 0)
+            pagination_footer = None
 
-#                 self.mf_client.xml_print(reply)
-
+            if asset_filter is not None:
+                reply = self.mf_client.run("www.list", [("namespace", cwd), ("page", page), ("size", size), ("filter", asset_filter)])
             else:
                 reply = self.mf_client.run("www.list", [("namespace", cwd), ("page", page), ("size", size)])
 
-# process pagination information
-                for elem in reply.iter('parent'):
-                    for child in elem:
-                        if child.tag == "page":
-                            canonical_page = int(child.text)
-                        if child.tag == "last":
-                            canonical_last = int(child.text)
-                        if child.tag == "size":
-                            canonical_size = int(child.text)
+            for elem in reply.iter('parent'):
+                for child in elem:
+                    if child.tag == "name":
+                        canonical_folder = child.text
+                    if child.tag == "page":
+                        canonical_page = int(child.text)
+                    if child.tag == "last":
+                        canonical_last = int(child.text)
+                    if child.tag == "size":
+                        canonical_size = int(child.text)
+                    if child.tag == "assets":
+                        canonical_assets = int(child.text)
+                    if child.tag == "namespaces":
+                        canonical_namespaces = int(child.text)
 
-            if canonical_last > 1:
-                pagination_footer = "Displaying %r files per page; page %r of %r" % (canonical_size, canonical_page, canonical_last)
+# print header 
+# TODO - total files = ?, x files pp, folder:
+            if show_header:
+                print "%d items, %d items per page, remote folder: %s" % (canonical_assets+canonical_namespaces, canonical_size, canonical_folder)
+                show_header = False
 
-# display results
+            pagination_footer = "Page %r of %r, filter [%r]: " % (canonical_page, canonical_last, asset_filter)
+
+            if canonical_last == 1:
+                    pagination_complete = True
+
+# for each namespace
             for elem in reply.iter('namespace'):
                 for child in elem:
                     if child.tag == "name":
                             print "[Folder] %s" % child.text
-# TODO - when production updated (new www.list) -> report the online/offline status
-# TODO - staging ...
+# for each asset
             for elem in reply.iter('asset'):
-                line = ""
+                state = " "
                 for child in elem:
                     if child.tag == "name":
-                        name = child.text
+                        filename = child.text
                     if child.tag == "size":
-                        size = child.text
-# CURRENT - hmmm, asset with no content ... a problem elsewhere?
-                        if size is None:
-                            size = 0
+                        filesize = child.text
+# FIXME - size overwrites the size for the www.list argument ...
+# hmmm, asset with no content ... 
+                        if filesize is None:
+                            filesize = 0
+                    if child.tag == "state":
+                        if "online" in child.text:
+                            filestate = " online  | "
+                        else:
+                            filestate = " %s | " % child.text
 
-                print "%s | %-s" % (self.human_size(int(size)), name)
+# file item
+                print "%s |%s%-s" % (self.human_size(int(filesize)), filestate, filename)
 
-# display pagination info
-            if pagination_footer is not None:
-                print pagination_footer
-
-# fallback if www.list (custom service call) isn't installed on the mediaflux server
-        except Exception as e:
-            print "ERROR: %s" % str(e)
-            print "WARNING: failed to execute custom service call www.list, falling back ..."
-            reply = self.mf_client.run("asset.namespace.list", [("namespace", cwd), ("assets", "true")])
-# FIXME - do this a bit better
-            self.mf_client.xml_print(reply)
+# pagination controls
+            response = self.pagination_controller(pagination_footer)
+            if response is not None:
+                try:
+                    page = int(response)
+                except:
+#                    print "response: [%s]" % response
+                    if response == 'q' or response == 'quit':
+                        pagination_complete = True
+                        break
+                    elif response.startswith("/"):
+                        asset_filter = response[1:]
+                        show_header = True
+                        page = 1
+                    else:
+                        page = page + 1
+                        if page > canonical_last:
+                            pagination_complete = True
+            else:
+                break
 
 # --
-
 
     def poll_total(self, base_query):
         total = dict()
@@ -587,15 +680,16 @@ class parser(cmd.Cmd):
                     bad_files += stats[key]
         todo = stats['total-files'] - bad_files
 
-# recall all offline files and provide kick-off report for user
+# start kick-off report for user
         user_msg = "Total files=%d" % stats['total-files']
         if bad_files > 0:
             user_msg += ", ignored files=%d" % bad_files
 
-# TODO ... or migrating ...
+# feedback on files we're still waiting for
         unavailable_files = todo - stats['online-files']
         if unavailable_files > 0:
             user_msg += ", migrating files=%d, please be patient ... " % unavailable_files
+# recall all offline files 
             xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" >' % base_query
             self.mf_client._xml_aterm_run(xml_command)
         else:
