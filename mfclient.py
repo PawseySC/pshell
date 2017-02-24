@@ -888,6 +888,8 @@ class mf_client:
 		Raises:
 			An error on failure
 		"""
+                global bytes_recv
+
 # CURRENT - server returns data as disposition attachment regardless of the argument disposition=attachment
 #		url = self.data_url + "?_skey={0}&id={1}&disposition=attachment".format(self.session, asset_id)
 		url = self.data_url + "?_skey={0}&id={1}".format(self.session, asset_id)
@@ -1064,6 +1066,7 @@ class mf_manager:
 			manager object which can be queried for progress (see methods below) and final status
 		"""
 		global bytes_sent
+		global bytes_recv
 
 # fail if there is already a managed transfer (there can only be one!)
 		if not manage_lock.acquire(block=False):
@@ -1073,6 +1076,7 @@ class mf_manager:
 
 		bytes_sent.value = 0
 		bytes_recv.value = 0
+
 		self.summary = []
 		self.bytes_total = total_bytes
 
@@ -1080,18 +1084,18 @@ class mf_manager:
 # force control-C to be ignored by process pool
 		handler = signal.signal(signal.SIGINT, signal.SIG_IGN)	
 # NB: urllib2 and httplib are not thread safe -> use process pool instead of threads
+
 		self.pool = multiprocessing.Pool(processes)
+
+# CURRENT - windows is a pain (again) 
+# no fork - so the global shared memory values just aren't duplicated
+# I suspect this is why byte rate progress works fine under *nix but not windows
+# reading suggests that the only way to do this is to pass in the values directly to the end function (ie add ANOTHER tuple to the arguments iterator)
+# ugh ...
+
 # restore control-C 
 		signal.signal(signal.SIGINT, handler)
-
-
-# TODO - repeat the map_async with new items as they are available
 		self.task = self.pool.map_async(function, arguments, callback=self.summary.extend)
-# TODO - don't end here if there are still pending (offline/migrating) files
-
-# NOTE - if additional map_asyncs don't work ... just create new ... (NB: will need close() + join() on the old to properly terminate)
-# some egs: http://cslocumwx.github.io/blog/2015/02/23/python-multiprocessing/
-
 		self.pool.close()
 
 # use this if exception occurred (eg control-C) during transfer to cleanup process pool
@@ -1116,8 +1120,13 @@ class mf_manager:
 		"""
 		global bytes_sent
 		elapsed = time.time() - self.start_time
-		rate = bytes_sent.value / elapsed
-		rate /= 1024.0*1024.0
+# current - avoid div by 0
+                try:
+		    rate = bytes_sent.value / elapsed
+                except:
+                    rate = 0.0
+
+		rate /= 1000000.0
 		return rate
 
 	def byte_recv_rate(self):
@@ -1126,8 +1135,13 @@ class mf_manager:
 		"""
 		global bytes_recv
 		elapsed = time.time() - self.start_time
-		rate = bytes_recv.value / elapsed
-		rate /= 1024.0*1024.0
+# current - avoid div by 0
+                try:
+		    rate = bytes_recv.value / elapsed
+                except:
+                    rate = 0.0
+
+		rate /= 1000000.0
 		return rate
 
 	def bytes_sent(self):
