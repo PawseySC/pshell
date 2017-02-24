@@ -325,13 +325,21 @@ class parser(cmd.Cmd):
 
 
 # --- helper
-# TODO - test all this on windows
-
+# immediately return any key pressed as a character
     def wait_key(self):
-        ''' Wait for a key press on the console and return it. '''
+#        import select
+
         result = None
         if self.interactive == False:
             return result
+
+# TODO - can we use something like this to replace the ugly platform specific stuff ???
+#        while True:
+#            if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
+#                line = raw_input()
+#                print "got [%s]" % line
+#                return line
+
         if os.name == 'nt':
             import msvcrt
             result = msvcrt.getch()
@@ -353,6 +361,7 @@ class parser(cmd.Cmd):
 
         return result
 
+# display prompt and return pagination specific directives (next page, quit)
     def pagination_controller(self, prompt):
         result = None
         if prompt is not None:
@@ -361,17 +370,31 @@ class parser(cmd.Cmd):
                 result = ""
                 while True:
                     key = self.wait_key()
+#                    print "got [%r]" % key
                     sys.stdout.write(key)
+# end pagination immediately on q press
                     if key == 'q':
                         result += key
                         print
                         return result
+# handle backspaces on windows
+                    elif key == '\x08':
+                        sys.stdout.write(" \b")
+                        sys.stdout.flush()
+                        result = result[:-1]
+# handle backspaces on *nix
                     elif key == '\x7f':
                         sys.stdout.write("\b \b")
                         sys.stdout.flush()
                         result = result[:-1]
+# *nix <enter> press
                     elif key == '\n':
                         return result
+# windows <enter> press (NB: need to force a newline - hence the print)
+                    elif key == '\r':
+                        print
+                        return result
+# concat everything else onto the final result 
                     else:
                         result += key
             else:
@@ -460,10 +483,8 @@ class parser(cmd.Cmd):
                 print "%d items, %d items per page, remote folder: %s" % (canonical_assets+canonical_namespaces, canonical_size, canonical_folder)
                 show_header = False
 
-            pagination_footer = "Page %r of %r, filter [%r]: " % (canonical_page, canonical_last, asset_filter)
+            pagination_footer = "Page %r of %r, file filter [%r]: " % (canonical_page, canonical_last, asset_filter)
 
-            if canonical_last == 1:
-                    pagination_complete = True
 
 # for each namespace
             for elem in reply.iter('namespace'):
@@ -491,13 +512,17 @@ class parser(cmd.Cmd):
 # file item
                 print "%s |%s%-s" % (self.human_size(int(filesize)), filestate, filename)
 
+# no pagination required?
+            if canonical_last == 1:
+                break
+
 # pagination controls
             response = self.pagination_controller(pagination_footer)
+#            print "response = [%r]" % response
             if response is not None:
                 try:
                     page = int(response)
                 except:
-#                    print "response: [%s]" % response
                     if response == 'q' or response == 'quit':
                         pagination_complete = True
                         break
@@ -509,8 +534,6 @@ class parser(cmd.Cmd):
                         page = page + 1
                         if page > canonical_last:
                             pagination_complete = True
-            else:
-                break
 
 # --
 
@@ -545,6 +568,12 @@ class parser(cmd.Cmd):
         total['total-bytes'] = count_bytes
 
         return total
+
+
+
+
+
+
 
 
 # prepare state - online + offline init
@@ -614,16 +643,15 @@ class parser(cmd.Cmd):
 
         return online
 
-
 # --
     def print_over(self, text):
+# these clear to end of line codes don't work on windows
+#        sys.stdout.write('\x1b[2K')
+#        sys.stdout.write("\033[K")
+# FIXME - we need to CLEAR the whole terminal line or the write over may have traces of the previous message
+# but to do this across linux and windows is fiddly ...
         sys.stdout.write("\r"+text)
-        sys.stdout.write("\033[K")
-# cursor up one line
-#         sys.stdout.write("\033[F")
         sys.stdout.flush()
-
-
 
 # --
     def help_get(self):
@@ -1117,6 +1145,99 @@ class parser(cmd.Cmd):
 # TODO - passthru help if not found locally
 #     def do_help(self, line):
 #         print "help: %s" % line
+
+# CURRENT - helper
+# TODO - progress ...
+
+    def get_remote_set(self, remote_namespace):
+
+        remote_files = set()
+
+        prefix = len(remote_namespace)
+
+        base_query = "namespace >='%s'" % remote_namespace
+        query = [("where", base_query),("as","iterator"),("action","get-path")]
+        result = self.mf_client.run("asset.query", query)
+
+        elem = self.mf_client.xml_find(result, "iterator")
+        iterator = elem.text
+        iterate_size = 100
+
+        iterate = True
+        while iterate:
+            self.mf_client.log("DEBUG", "Remote iterator chunk")
+# get file list for this sub-set
+            result = self.mf_client.run("asset.query.iterate", [("id", iterator), ("size", iterate_size)])
+
+            for elem in result.iter("path"):
+#                relpath = posixpath.relpath(remote_namespace, elem.text)
+                relpath = elem.text[prefix+1:]
+                remote_files.add(relpath)
+
+# NEW - check for completion - to avoid triggering a mediaflux exception on invalid iterator
+            for elem in result.iter("iterated"):
+                state = elem.get('complete')
+                if "true" in state:
+                    self.mf_client.log("DEBUG", "Asset iteration completed")
+                    iterate = False
+
+        return remote_files
+
+# ---
+    def help_compare(self):
+        print "Compares a local and a remote folder and reports any differences"
+        print "The local and remote folders must have the same name and appear in the current local and remote working directories"
+        print "Usage: compare folder\n"
+        print "Examples: compare mystuff\n"
+
+# CURRENT - compare local and remote folders
+# compare folder tree structure ... how?
+    def do_compare(self, line):
+
+        remote_fullpath = self.absolute_remote_filepath(line)
+        remote_basename = posixpath.basename(remote_fullpath)
+        local_fullpath = os.path.join(os.getcwd(), remote_basename)
+
+        print "=== Compare start ==="
+#        print "Comparing remote: [%s] and local: [%s]" % (remote_fullpath, local_fullpath)
+#        if self.mf_client.namespace_exists(remote_fullpath):
+#            print "remote: OK"
+#        else:
+#            print "remote does not exist"
+
+        local_files = set()
+        remote_files = set()
+
+# build remote files
+        print "Building remote file set under [%s] ..." % remote_fullpath
+        remote_files = self.get_remote_set(remote_fullpath)
+        print "Total remote files = %d" % len(remote_files)
+
+# build local files
+        print "Building local file set under [%s] ..." % local_fullpath
+        print "Local root = [%s]" % local_fullpath
+        try:
+            for (dirpath, dirnames, filenames) in os.walk(local_fullpath):
+                for filename in filenames:
+                    full_path = os.path.join(dirpath, filename)
+                    relpath = os.path.relpath(full_path, local_fullpath)
+                    local_files.add(relpath)
+
+            print "Total local files = %d" % len(local_files)
+
+        except Exception as e:
+            print "Error: %s" % str(e)
+
+        print "=== Remote files with no local match ==="
+        for item in remote_files - local_files:
+            print "[%s]" % item
+
+        print "=== Local files with no remote match ==="
+        for item in local_files - remote_files:
+            print "[%s]" % item
+
+        print "=== Compare complete ==="
+
 
 # --
     def help_quit(self):

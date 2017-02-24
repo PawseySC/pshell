@@ -83,7 +83,7 @@ def get_jump(mfclient, data):
 class mf_client:
 	"""
 	Base Mediaflux authentication and communication client
-	Parallel transfers should be handled with multiprocessing (urllib2 and httplib are not thread-safe)
+	Parallel transfers are handled by multiprocessing (urllib2 and httplib are not thread-safe)
 	All unexpected failures are handled by raising exceptions
 	"""
 
