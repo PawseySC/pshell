@@ -1057,7 +1057,7 @@ class mf_manager:
 	def __init__(self, function, arguments, processes=1, total_bytes=0):
 		"""
 		Args:
-			   function: the primitive transfer METHOD put() or get() to invoke in transfering a single file
+			   function: the primitive transfer METHOD put() or get() to invoke in transferring a single file
 			  arguments: a LIST of STRING pairs to be supplied to the transfer function primitive
 			  processes: INTEGER number of processes to spawn to deal with the input list 
 			total_bytes: INTEGER size of the transfer, for progress reporting

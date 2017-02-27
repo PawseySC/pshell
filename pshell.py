@@ -268,6 +268,17 @@ class parser(cmd.Cmd):
         return "%6s %-2s" % (f, suffixes[rank])
 
 # --- helper
+    def human_time(self, nseconds):
+        if nseconds:
+            if nseconds < 120:
+                text = "%d secs" % nseconds
+            else:
+                value = float(nseconds) / 60.0
+                text = "%.1f mins" % value
+
+        return text
+
+# --- helper
     def ask(self, text):
 # new - if script, assume you know what you're doing
         if self.interactive == False:
@@ -321,7 +332,6 @@ class parser(cmd.Cmd):
     def do_file(self, line):
         result = self.mf_client.run("asset.get", [("id", "path=%s" % self.absolute_remote_filepath(line))]) 
         self.mf_client.xml_print(result)
-
 
 
 # --- helper
@@ -570,12 +580,6 @@ class parser(cmd.Cmd):
         return total
 
 
-
-
-
-
-
-
 # prepare state - online + offline init
 # return list of (online) files to download
     def get_online_set(self, base_query):
@@ -703,7 +707,7 @@ class parser(cmd.Cmd):
         known_states = ["online-files", "online-bytes", "offline-files", "offline-bytes", "migrating-files", "migrating-bytes", "total-files", "total-bytes"]
         for key in stats.keys():
             if key not in known_states:
-                self.mf_client.log("WARNING", "Content %s = %s" % (key, stats[key]))
+                self.mf_client.log("WARNING", "Content %s=%s" % (key, stats[key]))
                 if "-files" in key:
                     bad_files += stats[key]
         todo = stats['total-files'] - bad_files
@@ -716,12 +720,12 @@ class parser(cmd.Cmd):
 # feedback on files we're still waiting for
         unavailable_files = todo - stats['online-files']
         if unavailable_files > 0:
-            user_msg += ", migrating files=%d, please be patient ... " % unavailable_files
+            user_msg += ", migrating files=%d, please be patient ...  " % unavailable_files
 # recall all offline files 
             xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" >' % base_query
             self.mf_client._xml_aterm_run(xml_command)
         else:
-            user_msg += ", transferring ..."
+            user_msg += ", transferring ...  "
 
         print user_msg
 
@@ -753,16 +757,21 @@ class parser(cmd.Cmd):
                         for i in range(0,4):
                             elapsed = time.time() - start_time
                             elapsed_mins = int(elapsed/60.0)
-                            self.print_over("Progress=%d%%,%s, elapsed=%d mins ..." % (current_pc, msg,elapsed_mins))
+                            self.print_over("Progress=%d%%,%s, elapsed=%d mins ...  " % (current_pc, msg,elapsed_mins))
                             time.sleep(60)
                     else:
                         manager = self.mf_client.get_managed(current.iteritems(), total_bytes=stats['total-bytes'], processes=self.transfer_processes)
 
 # network transfer polling
                 while manager is not None:
-                    current_recv = total_recv + manager.bytes_recv()
-                    current_pc = int(100.0 * current_recv / stats['total-bytes'])
-                    self.print_over("Progress=%d%%, rate=%.1f MB/s" % (current_pc, manager.byte_recv_rate()))
+# CURRENT - work around window's fork() not making it easy for global shared memory variables
+                    if os.name == 'nt':
+                        self.print_over("Remaining files=%d, rate=unknown  " % manager.remaining())
+                    else:
+                        current_recv = total_recv + manager.bytes_recv()
+                        current_pc = int(100.0 * current_recv / stats['total-bytes'])
+                        self.print_over("Progress=%d%%, rate=%.1f MB/s  " % (current_pc, manager.byte_recv_rate()))
+
 # update statistics after managed pool completes
                     if manager.is_done():
                         done.update(current)
@@ -786,12 +795,11 @@ class parser(cmd.Cmd):
                 self.mf_client.log("ERROR", str(e))
                 break
 
-# final report
-        self.print_over("Downloaded files=%d, bytes=%s" % (len(done), self.human_size(total_recv)))
-# TODO - human_time() method to chose appropriate units ...
+# NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
+        self.print_over("Downloaded files=%d" % len(done))
         elapsed = time.time() - start_time
-        elapsed_mins = int(elapsed/60.0)
-        print ", elapsed=%d mins" % elapsed_mins
+        rate = stats['total-bytes'] / (1000000*elapsed)
+        print ", average rate=%.1f MB/s  " % rate
 
         return
 
@@ -808,7 +816,7 @@ class parser(cmd.Cmd):
         upload_list = []
         total_bytes = 0
         if os.path.isdir(line):
-            print "Walking directory tree..."
+            self.print_over("Walking directory tree...")
 # FIXME - handle input of '/'
             line = os.path.abspath(line)
             parent = os.path.normpath(os.path.join(line, ".."))
@@ -817,33 +825,40 @@ class parser(cmd.Cmd):
                 remote = self.cwd + "/" + os.path.relpath(path=root, start=parent)
                 upload_list.extend( [(remote , os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list] )
         else:
-            print "Building file list..."
+            self.print_over("Building file list...")
             upload_list = [(self.cwd, os.path.join(os.getcwd(), filename)) for filename in glob.glob(line)]
 
 # DEBUG
 #         for dest,src in upload_list:
 #             print "put: %s -> %s" % (src, dest)
 
+        self.print_over("Total files=%d" % len(upload_list))
         self.mf_client.log("DEBUG", "Starting transfer...")
+        start_time = time.time()
         manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
+        print ", transferring...  "
 
         try:
             while True:
-                progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
-                sys.stdout.write("Progress: %3.0f%% at %.1f MB/s  \r" % (progress, manager.byte_sent_rate()))
-                sys.stdout.flush()
+                if os.name == 'nt':
+                    elapsed = time.time() - start_time
+                    self.print_over("Remaining files=%d, elapsed time=%s  " % (manager.remaining(), self.human_time(elapsed)))
+                else:
+                    progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
+                    self.print_over("Progress: %3.0f%% at %.1f MB/s  " % (progress, manager.byte_sent_rate()))
+
                 if manager.is_done():
                     break
                 time.sleep(1)
         except KeyboardInterrupt:
             manager.cleanup()
 
-        print "\n"
+# transfer summary of some kind for failures?
+# NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
+        self.print_over("Uploaded files=%d" % len(upload_list))
+        elapsed = time.time() - start_time
+        print ", elapsed time=%s  " % self.human_time(elapsed)
 
-# TODO - transfer summary of some kind if failures? re-try strategy?
-#         print "Bytes sent: %f" % manager.bytes_sent()
-#         for pair in manager.summary:
-#             print "uploaded asset ID = {0}".format(pair[0])
 
 # --
     def help_cd(self):
