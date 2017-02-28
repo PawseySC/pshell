@@ -694,6 +694,10 @@ class parser(cmd.Cmd):
 # get content statistics and init for transfer polling loop
         stats = self.poll_total(base_query)
         self.mf_client.log("DEBUG", str(stats))
+        if stats['total-bytes'] == 0:
+            print "Nothing to do"
+            return
+
         current = dict()
         done = dict()
         complete = False
@@ -814,7 +818,6 @@ class parser(cmd.Cmd):
 # TODO - args for overwrite/crc checks?
 # build upload list pairs
         upload_list = []
-        total_bytes = 0
         if os.path.isdir(line):
             self.print_over("Walking directory tree...")
 # FIXME - handle input of '/'
@@ -844,7 +847,10 @@ class parser(cmd.Cmd):
                     elapsed = time.time() - start_time
                     self.print_over("Remaining files=%d, elapsed time=%s  " % (manager.remaining(), self.human_time(elapsed)))
                 else:
-                    progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
+                    if manager.bytes_total > 0:
+                        progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
+                    else:
+                        progress = 0.0
                     self.print_over("Progress: %3.0f%% at %.1f MB/s  " % (progress, manager.byte_sent_rate()))
 
                 if manager.is_done():
@@ -854,11 +860,14 @@ class parser(cmd.Cmd):
             manager.cleanup()
 
 # transfer summary of some kind for failures?
-# NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
+# NB: for windows - bytes sent will be 0 as we can't track (the no fork() shared memory variables BS)
         self.print_over("Uploaded files=%d" % len(upload_list))
         elapsed = time.time() - start_time
-        print ", elapsed time=%s  " % self.human_time(elapsed)
-
+        if os.name == 'nt':
+            print ", elapsed time=%s  " % self.human_time(elapsed)
+        else:
+            rate = manager.bytes_sent() / (1000000*elapsed)
+            print ", average rate=%.1f MB/s  " % rate
 
 # --
     def help_cd(self):
