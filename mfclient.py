@@ -79,6 +79,20 @@ def get_jump(mfclient, data):
 
 	return (0, data[0], data[1])
 
+
+
+# CURRENT - this might solve our Windows updating woes...
+def init_jump(recv, sent):
+    global bytes_sent
+    global bytes_recv
+
+# initialize the globals in this process with the main process globals O.O
+    bytes_sent = sent
+    bytes_recv = recv
+
+
+
+
 #########################################################
 class mf_client:
 	"""
@@ -130,6 +144,9 @@ class mf_client:
 		s.settimeout(7)
 		s.connect((self.server, self.port))
 		s.close()
+
+# CURRENT
+                self.share = None
 
 # if required, attempt to display more connection info
 		if self.debug:
@@ -890,6 +907,9 @@ class mf_client:
 		"""
                 global bytes_recv
 
+                if self.share is not None:
+                    print "get: ", self.share
+
 # CURRENT - server returns data as disposition attachment regardless of the argument disposition=attachment
 #		url = self.data_url + "?_skey={0}&id={1}&disposition=attachment".format(self.session, asset_id)
 		url = self.data_url + "?_skey={0}&id={1}".format(self.session, asset_id)
@@ -1086,7 +1106,13 @@ class mf_manager:
 		handler = signal.signal(signal.SIGINT, signal.SIG_IGN)	
 # NB: urllib2 and httplib are not thread safe -> use process pool instead of threads
 
-		self.pool = multiprocessing.Pool(processes)
+
+# CURRENT - try to use an initializer for byte counters
+#		self.pool = multiprocessing.Pool(processes)
+		self.pool = multiprocessing.Pool(processes, init_jump, (bytes_recv, bytes_sent))
+
+
+
 
 # CURRENT - windows is a pain (again) 
 # no fork - so the global shared memory values just aren't duplicated

@@ -768,13 +768,17 @@ class parser(cmd.Cmd):
 
 # network transfer polling
                 while manager is not None:
+
 # CURRENT - work around window's fork() not making it easy for global shared memory variables
-                    if os.name == 'nt':
-                        self.print_over("Remaining files=%d, rate=unknown  " % manager.remaining())
-                    else:
-                        current_recv = total_recv + manager.bytes_recv()
-                        current_pc = int(100.0 * current_recv / stats['total-bytes'])
-                        self.print_over("Progress=%d%%, rate=%.1f MB/s  " % (current_pc, manager.byte_recv_rate()))
+#                    if os.name == 'nt':
+#                        self.print_over("Remaining files=%d, rate=unknown  " % manager.remaining())
+#                    else:
+#                        current_recv = total_recv + manager.bytes_recv()
+#                        current_pc = int(100.0 * current_recv / stats['total-bytes'])
+#                        self.print_over("Progress=%d%%, rate=%.1f MB/s  " % (current_pc, manager.byte_recv_rate()))
+                    current_recv = total_recv + manager.bytes_recv()
+                    current_pc = int(100.0 * current_recv / stats['total-bytes'])
+                    self.print_over("Progress=%d%%, rate=%.1f MB/s  " % (current_pc, manager.byte_recv_rate()))
 
 # update statistics after managed pool completes
                     if manager.is_done():
@@ -843,15 +847,19 @@ class parser(cmd.Cmd):
         print ", transferring...  "
         try:
             while True:
-                if os.name == 'nt':
-                    elapsed = time.time() - start_time
-                    self.print_over("Remaining files=%d, elapsed time=%s  " % (manager.remaining(), self.human_time(elapsed)))
+
+# CURRENT
+#                if os.name == 'nt':
+#                    elapsed = time.time() - start_time
+#                    self.print_over("Remaining files=%d, elapsed time=%s  " % (manager.remaining(), self.human_time(elapsed)))
+#                else:
+
+                if manager.bytes_total > 0:
+                    progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
                 else:
-                    if manager.bytes_total > 0:
-                        progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
-                    else:
-                        progress = 0.0
-                    self.print_over("Progress: %3.0f%% at %.1f MB/s  " % (progress, manager.byte_sent_rate()))
+                    progress = 0.0
+
+                self.print_over("Progress: %3.0f%% at %.1f MB/s  " % (progress, manager.byte_sent_rate()))
 
                 if manager.is_done():
                     break
@@ -863,11 +871,11 @@ class parser(cmd.Cmd):
 # NB: for windows - bytes sent will be 0 as we can't track (the no fork() shared memory variables BS)
         self.print_over("Uploaded files=%d" % len(upload_list))
         elapsed = time.time() - start_time
-        if os.name == 'nt':
-            print ", elapsed time=%s  " % self.human_time(elapsed)
-        else:
-            rate = manager.bytes_sent() / (1000000*elapsed)
-            print ", average rate=%.1f MB/s  " % rate
+#        if os.name == 'nt':
+#            print ", elapsed time=%s  " % self.human_time(elapsed)
+#        else:
+        rate = manager.bytes_sent() / (1000000*elapsed)
+        print ", average rate=%.1f MB/s  " % rate
 
 # --
     def help_cd(self):
