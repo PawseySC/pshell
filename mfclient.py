@@ -1034,7 +1034,8 @@ class mf_client:
 
 		self.log("DEBUG", "Total upload bytes: %d" % total_bytes)
 		if total_bytes == 0:
-			raise Exception("Nothing to do")
+                        print
+			raise Exception("No data to upload")
 
 # shenanigans to enable mfclient method to be called from the global process pool (python can't serialize instance methods)
 		put_alias = functools.partial(put_jump, self)

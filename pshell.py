@@ -695,7 +695,7 @@ class parser(cmd.Cmd):
         stats = self.poll_total(base_query)
         self.mf_client.log("DEBUG", str(stats))
         if stats['total-bytes'] == 0:
-            print "Nothing to do"
+            print "No data to download"
             return
 
         current = dict()
@@ -828,19 +828,19 @@ class parser(cmd.Cmd):
                 remote = self.cwd + "/" + os.path.relpath(path=root, start=parent)
                 upload_list.extend( [(remote , os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list] )
         else:
-            self.print_over("Building file list...")
+            self.print_over("Building file list... ")
             upload_list = [(self.cwd, os.path.join(os.getcwd(), filename)) for filename in glob.glob(line)]
 
 # DEBUG
 #         for dest,src in upload_list:
 #             print "put: %s -> %s" % (src, dest)
 
-        self.print_over("Total files=%d" % len(upload_list))
-        self.mf_client.log("DEBUG", "Starting transfer...")
         start_time = time.time()
         manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
-        print ", transferring...  "
+        self.mf_client.log("DEBUG", "Starting transfer...")
 
+        self.print_over("Total files=%d" % len(upload_list))
+        print ", transferring...  "
         try:
             while True:
                 if os.name == 'nt':
