@@ -827,17 +827,26 @@ class parser(cmd.Cmd):
 # FIXME - handle input of '/'
             line = os.path.abspath(line)
             parent = os.path.normpath(os.path.join(line, ".."))
-
             for root, directory_list, name_list in os.walk(line):
-                remote = self.cwd + "/" + os.path.relpath(path=root, start=parent)
+# CURRENT - Window's causing issues here
+# convert a local relative path - which could contain either windows or *nix path separators - to a remote path, which must be *nix style
+                local_relpath = os.path.relpath(path=root, start=parent)
+# split on LOCAL separator (whatever that may be)
+                relpath_list = local_relpath.split(os.sep)
+# join on remote separator (always /)
+                remote_relpath = "/".join(relpath_list)
+# full remote path
+                remote = posixpath.join(self.cwd, remote_relpath)
+# DEBUG
+#                print "remote relpath=%s" % remote_relpath
                 upload_list.extend( [(remote , os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list] )
         else:
             self.print_over("Building file list... ")
             upload_list = [(self.cwd, os.path.join(os.getcwd(), filename)) for filename in glob.glob(line)]
 
-# DEBUG
-#         for dest,src in upload_list:
-#             print "put: %s -> %s" % (src, dest)
+# DEBUG - window's path 
+#        for dest,src in upload_list:
+#            print "put: %s -> %s" % (src, dest)
 
         start_time = time.time()
         manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
@@ -1225,17 +1234,17 @@ class parser(cmd.Cmd):
 # CURRENT - compare local and remote folders
 # compare folder tree structure ... how?
     def do_compare(self, line):
-
         remote_fullpath = self.absolute_remote_filepath(line)
+        if self.mf_client.namespace_exists(remote_fullpath) is False:
+            print "Could not find remote folder: %s" % remote_fullpath
+            return
         remote_basename = posixpath.basename(remote_fullpath)
         local_fullpath = os.path.join(os.getcwd(), remote_basename)
+        if os.path.exists(local_fullpath) is False:
+            print "Could not find local folder: %s" % local_fullpath
+            return
 
         print "=== Compare start ==="
-#        print "Comparing remote: [%s] and local: [%s]" % (remote_fullpath, local_fullpath)
-#        if self.mf_client.namespace_exists(remote_fullpath):
-#            print "remote: OK"
-#        else:
-#            print "remote does not exist"
 
         local_files = set()
         remote_files = set()
@@ -1247,7 +1256,6 @@ class parser(cmd.Cmd):
 
 # build local files
         print "Building local file set under [%s] ..." % local_fullpath
-        print "Local root = [%s]" % local_fullpath
         try:
             for (dirpath, dirnames, filenames) in os.walk(local_fullpath):
                 for filename in filenames:
@@ -1262,11 +1270,13 @@ class parser(cmd.Cmd):
 
         print "=== Remote files with no local match ==="
         for item in remote_files - local_files:
-            print "[%s]" % item
+            print "%s" % item
 
         print "=== Local files with no remote match ==="
         for item in local_files - remote_files:
-            print "[%s]" % item
+            print "%s" % item
+
+# TODO - checksum compares as well?
 
         print "=== Compare complete ==="
 
