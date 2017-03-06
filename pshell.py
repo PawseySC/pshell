@@ -495,7 +495,6 @@ class parser(cmd.Cmd):
 
             pagination_footer = "Page %r of %r, file filter [%r]: " % (canonical_page, canonical_last, asset_filter)
 
-
 # for each namespace
             for elem in reply.iter('namespace'):
                 for child in elem:
@@ -518,7 +517,6 @@ class parser(cmd.Cmd):
                             filestate = " online  | "
                         else:
                             filestate = " %s | " % child.text
-
 # file item
                 print "%s |%s%-s" % (self.human_size(int(filesize)), filestate, filename)
 
@@ -611,8 +609,12 @@ class parser(cmd.Cmd):
                         filename = child.text
                     if child.tag == "namespace":
                         namespace = child.text
-                        relpath = posixpath.relpath(namespace, self.cwd)
-                        path = os.path.join(os.getcwd(), relpath)
+# remote = *nix , local = windows or *nix
+                        remote_relpath = posixpath.relpath(path=namespace, start=self.cwd)
+                        relpath_list = remote_relpath.split("/")
+                        local_relpath = os.sep.join(relpath_list)
+                        path = os.path.join(os.getcwd(), local_relpath)
+
 # add valid download entry
                 if asset_id is not None and filename is not None:
                     if path is None:
@@ -620,6 +622,7 @@ class parser(cmd.Cmd):
                     else:
                         filepath = os.path.join(path, filename)
                         list_local_path[path] = 1
+
                     online[asset_id] = filepath
 
 # NEW - check for completion - to avoid triggering a mediaflux exception on invalid iterator
@@ -642,8 +645,8 @@ class parser(cmd.Cmd):
                 pass
 
 # DEBUG - upload iterate sub-set of files
-#         for asset_id, filepath in online.iteritems():
-#             print "get [id=%r] => %r" % (asset_id, filepath)
+#        for asset_id, filepath in online.iteritems():
+#            print "get [id=%r] => %r" % (asset_id, filepath)
 
         return online
 
@@ -652,8 +655,7 @@ class parser(cmd.Cmd):
 # these clear to end of line codes don't work on windows
 #        sys.stdout.write('\x1b[2K')
 #        sys.stdout.write("\033[K")
-# FIXME - we need to CLEAR the whole terminal line or the write over may have traces of the previous message
-# but to do this across linux and windows is fiddly ...
+# TODO - would be nice if there was an os independent way of clearing to the end of a line
         sys.stdout.write("\r"+text)
         sys.stdout.flush()
 
@@ -687,7 +689,7 @@ class parser(cmd.Cmd):
 
 # this requires different escaping to an asset.query
         if self.mf_client.namespace_exists(line):
-            base_query = "namespace >='%s'" % candidate
+            base_query = "namespace>='%s'" % candidate
         else:
             base_query = "namespace='%s' and name='%s'" % (namespace, basename)
 
@@ -768,18 +770,9 @@ class parser(cmd.Cmd):
 
 # network transfer polling
                 while manager is not None:
-
-# CURRENT - work around window's fork() not making it easy for global shared memory variables
-#                    if os.name == 'nt':
-#                        self.print_over("Remaining files=%d, rate=unknown  " % manager.remaining())
-#                    else:
-#                        current_recv = total_recv + manager.bytes_recv()
-#                        current_pc = int(100.0 * current_recv / stats['total-bytes'])
-#                        self.print_over("Progress=%d%%, rate=%.1f MB/s  " % (current_pc, manager.byte_recv_rate()))
                     current_recv = total_recv + manager.bytes_recv()
                     current_pc = int(100.0 * current_recv / stats['total-bytes'])
                     self.print_over("Progress=%d%%, rate=%.1f MB/s  " % (current_pc, manager.byte_recv_rate()))
-
 # update statistics after managed pool completes
                     if manager.is_done():
                         done.update(current)
@@ -794,21 +787,14 @@ class parser(cmd.Cmd):
                 break
 
             except Exception as e:
-# FIXME - randomly getting this somewhere ...
-# <urlopen error [Errno 8] nodename nor servname provided, or not known>
-# CURRENT - a quick google search suggested network problem (wifi dropout?) or utf8 encoding issue
-# http://stackoverflow.com/questions/24502674/urllib2-urlopen-raise-urllib2-urlerror
-# ALSO - might be worth wrapping the URL open stuff in a try/catch, eg:
-# http://stackoverflow.com/questions/2702802/check-if-the-internet-cannot-be-accessed-in-python
                 self.mf_client.log("ERROR", str(e))
                 break
 
 # NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
         self.print_over("Downloaded files=%d" % len(done))
-        elapsed = time.time() - start_time
-        rate = stats['total-bytes'] / (1000000*elapsed)
+        elapsed = max(1.0, time.time() - start_time)
+        rate = stats['total-bytes'] / (1000000.0*elapsed)
         print ", average rate=%.1f MB/s  " % rate
-
         return
 
 # --
@@ -819,7 +805,6 @@ class parser(cmd.Cmd):
         print "      put /home/sean/myfolder/\n"
 
     def do_put(self, line):
-# TODO - args for overwrite/crc checks?
 # build upload list pairs
         upload_list = []
         if os.path.isdir(line):
@@ -828,17 +813,12 @@ class parser(cmd.Cmd):
             line = os.path.abspath(line)
             parent = os.path.normpath(os.path.join(line, ".."))
             for root, directory_list, name_list in os.walk(line):
-# CURRENT - Window's causing issues here
 # convert a local relative path - which could contain either windows or *nix path separators - to a remote path, which must be *nix style
                 local_relpath = os.path.relpath(path=root, start=parent)
-# split on LOCAL separator (whatever that may be)
+# split on LOCAL separator (whatever that may be) then join on remote *nix separator
                 relpath_list = local_relpath.split(os.sep)
-# join on remote separator (always /)
                 remote_relpath = "/".join(relpath_list)
-# full remote path
                 remote = posixpath.join(self.cwd, remote_relpath)
-# DEBUG
-#                print "remote relpath=%s" % remote_relpath
                 upload_list.extend( [(remote , os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list] )
         else:
             self.print_over("Building file list... ")
@@ -851,18 +831,10 @@ class parser(cmd.Cmd):
         start_time = time.time()
         manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
         self.mf_client.log("DEBUG", "Starting transfer...")
-
         self.print_over("Total files=%d" % len(upload_list))
         print ", transferring...  "
         try:
             while True:
-
-# CURRENT
-#                if os.name == 'nt':
-#                    elapsed = time.time() - start_time
-#                    self.print_over("Remaining files=%d, elapsed time=%s  " % (manager.remaining(), self.human_time(elapsed)))
-#                else:
-
                 if manager.bytes_total > 0:
                     progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
                 else:
@@ -874,15 +846,16 @@ class parser(cmd.Cmd):
                     break
                 time.sleep(1)
         except KeyboardInterrupt:
+            self.mf_client.log("WARNING", "Interrupted by user")
+            manager.cleanup()
+        except Exception as e:
+            self.mf_client.log("ERROR", str(e))
             manager.cleanup()
 
-# transfer summary of some kind for failures?
-# NB: for windows - bytes sent will be 0 as we can't track (the no fork() shared memory variables BS)
+# final summary
+# TODO - include info on failures?
         self.print_over("Uploaded files=%d" % len(upload_list))
-        elapsed = time.time() - start_time
-#        if os.name == 'nt':
-#            print ", elapsed time=%s  " % self.human_time(elapsed)
-#        else:
+        elapsed = max(1.0, time.time() - start_time)
         rate = manager.bytes_sent() / (1000000*elapsed)
         print ", average rate=%.1f MB/s  " % rate
 
@@ -1182,28 +1155,16 @@ class parser(cmd.Cmd):
                 self.config.write(f)
                 f.close()
 
-# --
-# TODO - passthru help if not found locally
-#     def do_help(self, line):
-#         print "help: %s" % line
-
-# CURRENT - helper
-# TODO - progress ...
-
+# -- helper: recursively get complete list of remote files under a given namespace
     def get_remote_set(self, remote_namespace):
-
         remote_files = set()
-
         prefix = len(remote_namespace)
-
         base_query = "namespace >='%s'" % remote_namespace
         query = [("where", base_query),("as","iterator"),("action","get-path")]
         result = self.mf_client.run("asset.query", query)
-
         elem = self.mf_client.xml_find(result, "iterator")
         iterator = elem.text
         iterate_size = 100
-
         iterate = True
         while iterate:
             self.mf_client.log("DEBUG", "Remote iterator chunk")
@@ -1211,11 +1172,10 @@ class parser(cmd.Cmd):
             result = self.mf_client.run("asset.query.iterate", [("id", iterator), ("size", iterate_size)])
 
             for elem in result.iter("path"):
-#                relpath = posixpath.relpath(remote_namespace, elem.text)
                 relpath = elem.text[prefix+1:]
                 remote_files.add(relpath)
 
-# NEW - check for completion - to avoid triggering a mediaflux exception on invalid iterator
+# check for completion - to avoid triggering a mediaflux exception on invalid iterator
             for elem in result.iter("iterated"):
                 state = elem.get('complete')
                 if "true" in state:
@@ -1231,7 +1191,6 @@ class parser(cmd.Cmd):
         print "Usage: compare folder\n"
         print "Examples: compare mystuff\n"
 
-# CURRENT - compare local and remote folders
 # compare folder tree structure ... how?
     def do_compare(self, line):
         remote_fullpath = self.absolute_remote_filepath(line)
