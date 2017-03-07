@@ -661,6 +661,15 @@ class mf_client:
         for elem in xml_tree.iter():
             if elem.tag == 'error':
                 error=True
+# NEW - the case where error message is embedded in the tag itself (eg rm on assets when actor is ro)
+                line_list = elem.text.split('\n')
+                for line in line_list:
+                    if "error" in line:
+                        i = line.rfind(':')
+                        if i != -1:
+                            message = line[i+1:]
+                        else:
+                            message = line
             if elem.tag == 'message' and error:
                 message = elem.text
         return message

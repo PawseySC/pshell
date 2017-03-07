@@ -143,7 +143,7 @@ class parser(cmd.Cmd):
             else:
                 return None
 
-        target_ns = self.safe_namespace_query(target_ns)
+        target_ns = self.escape_single_quotes(target_ns)
 
 #         print "ca: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix)
 
@@ -294,7 +294,7 @@ class parser(cmd.Cmd):
 
 # CURRENT - asset.query with namespaces enclosed by ' - must have ' double escaped ... asset.namespace.exists namespaces - must be just single escaped 
 # CURRENT - but asset.namespace.list should have no escaping ... thanks Arcitecta
-    def safe_namespace_query(self, namespace):
+    def escape_single_quotes(self, namespace):
         return(namespace.replace("'", "\\'"))
 
 # --- helper: convert a relative/absolute mediaflux namespace/asset reference to minimal absolute form
@@ -302,7 +302,6 @@ class parser(cmd.Cmd):
         if not posixpath.isabs(line):
             line = posixpath.join(self.cwd, line)
         return posixpath.normpath(line)
-
 
 # CURRENT - general method for retrieving an iterator for remote folders
     def remote_namespaces_iter(self, pattern):
@@ -447,15 +446,10 @@ class parser(cmd.Cmd):
             cwd = self.cwd
         else:
 # if absolute path exists as a namespace -> query this, else query via an asset pattern match
-# FIXME - this will fail if line is already an absolute path
-            if posixpath.isabs(line):
-                cwd = posixpath.normpath(line)
-            else:
-                cwd = posixpath.normpath(posixpath.join(self.cwd, line))
-
+            cwd = self.absolute_remote_filepath(line)
             if not self.mf_client.namespace_exists(cwd):
                 asset_filter = posixpath.basename(cwd)
-                cwd = self.safe_namespace_query(posixpath.dirname(cwd))
+                cwd = self.escape_single_quotes(posixpath.dirname(cwd))
 
 #        print "Remote folder: %s" % cwd
 # query attempt
@@ -586,7 +580,7 @@ class parser(cmd.Cmd):
         list_local_path = {}
 
         query = [("where", base_query + " and content online"),("as","iterator"),("action","get-values"),("xpath ename=\"id\"","id"),("xpath ename=\"namespace\"","namespace"),("xpath ename=\"filename\"","name")]
-        result = self.mf_client.run("asset.query",query)
+        result = self.mf_client.run("asset.query", query)
 #         self.mf_client.xml_print(result)
 
         elem = self.mf_client.xml_find(result, "iterator")
@@ -677,7 +671,7 @@ class parser(cmd.Cmd):
             line = posixpath.join(self.cwd, line)
 
 # sanitise as asset.query is special
-        double_escaped = self.safe_namespace_query(line)
+        double_escaped = self.escape_single_quotes(line)
 # collapsed namespace
         namespace = posixpath.normpath(posixpath.dirname(double_escaped))
 # possible download on asset/pattern
@@ -865,11 +859,7 @@ class parser(cmd.Cmd):
         print "Usage: cd <folder>\n"
 
     def do_cd(self, line):
-        if os.path.isabs(line):
-            candidate = posixpath.normpath(line)
-        else:
-            candidate = posixpath.normpath(self.cwd + "/" + line)
-# set if exists on remote server
+        candidate = self.absolute_remote_filepath(line)
         if self.mf_client.namespace_exists(candidate):
             self.cwd = candidate
             print "Remote: %s" % self.cwd
@@ -909,13 +899,20 @@ class parser(cmd.Cmd):
         print "      rm /projects/myproject/somefile\n"
 
     def do_rm(self, line):
-# TODO - cope with absolute path
+# build query corresponding to input
+        fullpath = self.absolute_remote_filepath(line)
+        namespace = posixpath.dirname(fullpath)
+        pattern = posixpath.basename(fullpath)
+        base_query = "namespace='%s' and name='%s'" % (self.escape_single_quotes(namespace), self.escape_single_quotes(pattern))
+
+# count
         try:
-            result = self.mf_client.run("asset.query", [("where", "namespace='{0}' and name='{1}'".format(self.safe_cwd(), line)), (":action", "count")])
-        except:
-            print "Server responded with an error"
+            result = self.mf_client._xml_aterm_run("asset.query :where %s :action count" % base_query)
+        except Exception as e:
+            print str(e)
             return
 
+# confirm remove
 # not sure why this find doesn't work
 #         elem = result.find("value")
         for elem in result.iter():
@@ -924,9 +921,8 @@ class parser(cmd.Cmd):
                 if count == 0:
                     print "No match"
                     return
-
                 if self.ask("Remove %d files: (y/n) " % count):
-                    self.mf_client.run("asset.query", [("where", "namespace='{0}' and name='{1}'".format(self.safe_cwd(), line)), (":action", "pipe"), (":service name=\"asset.destroy\"", "")])
+                    self.mf_client._xml_aterm_run("asset.query :where %s :action pipe :service -name asset.destroy" % base_query)
                 else:
                     print "Aborted"
                 return
@@ -937,11 +933,7 @@ class parser(cmd.Cmd):
         print "Usage: rmdir <folder>\n"
 
     def do_rmdir(self, line):
-        if posixpath.isabs(line):
-            ns_target = line
-        else:
-            ns_target = posixpath.normpath(self.cwd + "/" + line)
-
+        ns_target = self.absolute_remote_filepath(line)
         if self.mf_client.namespace_exists(ns_target):
             if self.ask("Remove folder: %s (y/n) " % ns_target):
                 self.mf_client.run("asset.namespace.destroy", [("namespace", ns_target)])
