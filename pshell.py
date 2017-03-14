@@ -510,7 +510,7 @@ class parser(cmd.Cmd):
                         if "online" in child.text:
                             filestate = " online  | "
                         else:
-                            filestate = " %s | " % child.text
+                            filestate = " %.9s | " % child.text
 # file item
                 print "%s |%s%-s" % (self.human_size(int(filesize)), filestate, filename)
 
@@ -776,18 +776,22 @@ class parser(cmd.Cmd):
                     time.sleep(2)
 
             except KeyboardInterrupt:
-                if manager is not None:
-                    manager.cleanup()
-                break
+                self.mf_client.log("WARNING", "get interrupted by user")
+                return
 
             except Exception as e:
                 self.mf_client.log("ERROR", str(e))
-                break
+                return
+
+# CURRENT - enforce cleanup, see if helps KZ issues
+            finally:
+                if manager is not None:
+                    manager.cleanup()
 
 # NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
         self.print_over("Downloaded files=%d" % len(done))
         elapsed = max(1.0, time.time() - start_time)
-        rate = stats['total-bytes'] / (1000000.0*elapsed)
+        rate = total_recv / (1000000.0*elapsed)
         print ", average rate=%.1f MB/s  " % rate
         return
 
@@ -838,13 +842,19 @@ class parser(cmd.Cmd):
 
                 if manager.is_done():
                     break
-                time.sleep(1)
+                time.sleep(2)
+
         except KeyboardInterrupt:
-            self.mf_client.log("WARNING", "Interrupted by user")
-            manager.cleanup()
+            self.mf_client.log("WARNING", "put interrupted by user")
+            return
+
         except Exception as e:
             self.mf_client.log("ERROR", str(e))
-            manager.cleanup()
+            return
+
+        finally:
+            if manager is not None:
+                manager.cleanup()
 
 # final summary
 # TODO - include info on failures?

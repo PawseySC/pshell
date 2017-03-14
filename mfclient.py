@@ -626,7 +626,7 @@ class mf_client:
         return reply
 
 #------------------------------------------------------------
-    def _xml_recurse(self, elem):
+    def _xml_recurse(self, elem, text=""):
         """
         Helper method for traversing XML and generating formatted output
         """
@@ -635,21 +635,35 @@ class mf_client:
             attrib_text += "%s=%s " % (key,value)
 
         if len(attrib_text) > 0:
-            print ' '*self.indent + '%s = %s    { %s}' % (elem.tag, elem.text, attrib_text)
+            text += ' '*self.indent + '%s = %s    { %s}\n' % (elem.tag, elem.text, attrib_text)
         else:
-            print ' '*self.indent + '%s = %s' % (elem.tag, elem.text)
+            text += ' '*self.indent + '%s = %s\n' % (elem.tag, elem.text)
 
         self.indent += 4
         for child in elem.getchildren():
-            self._xml_recurse(child)
+            text = self._xml_recurse(child, text)
         self.indent -= 4
+
+        return text
+
+#------------------------------------------------------------
+    def _xml_to_string(self, xml_tree):
+        """
+        Helper method for converting XML to a formatted string 
+        """
+        return self._xml_recurse(xml_tree)
 
 #------------------------------------------------------------
     def xml_print(self, xml_tree):
         """
         Helper method for displaying XML nicely, as much as is possible
         """
-        self._xml_recurse(xml_tree)
+# CURRENT - trim some of the XML noise
+        elem = self.xml_find(xml_tree, "result")
+        if elem is not None:
+            print self._xml_recurse(elem)
+        else:
+            print self._xml_recurse(xml_tree)
 
 #------------------------------------------------------------
     def xml_error(self, xml_tree):
@@ -1094,14 +1108,13 @@ class mf_manager:
 # fail if there is already a managed transfer (there can only be one!)
         if not manage_lock.acquire(block=False):
             raise TypeError
+
 # init monitoring
         self.start_time = time.time()
-
+        self.bytes_total = total_bytes
+        self.summary = []
         bytes_sent.value = 0
         bytes_recv.value = 0
-
-        self.summary = []
-        self.bytes_total = total_bytes
 
 # CURRENT - ref:http://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python 
 # force control-C to be ignored by process pool
@@ -1118,7 +1131,7 @@ class mf_manager:
         self.task = self.pool.map_async(function, arguments, callback=self.summary.extend)
         self.pool.close()
 
-# use this if exception occurred (eg control-C) during transfer to cleanup process pool
+# cleanup - normal or interrupted
     def cleanup(self):
         """
         Invoke to properly terminate the process pool (eg if user cancels via control-C)
@@ -1140,13 +1153,11 @@ class mf_manager:
         """
         global bytes_sent
         elapsed = time.time() - self.start_time
-# current - avoid div by 0
         try:
             rate = bytes_sent.value / elapsed
+            rate /= 1000000.0
         except:
             rate = 0.0
-
-        rate /= 1000000.0
         return rate
 
     def byte_recv_rate(self):
@@ -1155,13 +1166,11 @@ class mf_manager:
         """
         global bytes_recv
         elapsed = time.time() - self.start_time
-# current - avoid div by 0
         try:
             rate = bytes_recv.value / elapsed
+            rate /= 1000000.0
         except:
             rate = 0.0
-
-        rate /= 1000000.0
         return rate
 
     def bytes_sent(self):
@@ -1182,10 +1191,4 @@ class mf_manager:
         """
         BOOLEAN test for transfer completion
         """
-# TODO - modify this - if (new) offline list is not empty -> we're not done after all
-# also a secondary timer (enforce we don't hammer the server) for any new tasks to be added to the pool
-        if self.task.ready():
-            self.pool.join()
-            manage_lock.release()
-            return True
-        return False
+        return self.task.ready()
