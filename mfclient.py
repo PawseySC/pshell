@@ -592,7 +592,19 @@ class mf_client:
 # accumulate XML chunks
                 if chunk is not None:
 #                    print "Chunk: [%s]" % chunk
+# NEW - if a chunk (element) has an xmlns - need to do some extra work
+#                    match = re.match("<.+:.+>", chunk)
+#                    match = re.match("<\w+:.+>", chunk)
+# need to match things like mf-image:label as well as ivec:dfn-image
+                    match = re.match("<[-\w]+:[-\w]+>", chunk)
+                    if match:
+                        a,b = chunk.split(":")
+                        xmlns = a[1:]
+                        element = b[:-1]
+                        chunk = '<%s:%s xmlns:%s="metadata-document">' % (xmlns, element, xmlns)
+
                     xml += chunk
+
                     chunk = None
                     start = i
 
@@ -654,14 +666,16 @@ class mf_client:
         return self._xml_recurse(xml_tree)
 
 #------------------------------------------------------------
-    def xml_print(self, xml_tree):
+    def xml_print(self, xml_tree, trim=True):
         """
         Helper method for displaying XML nicely, as much as is possible
         """
-# CURRENT - trim some of the XML noise
-        elem = self.xml_find(xml_tree, "result")
-        if elem is not None:
-            print self._xml_recurse(elem)
+# trim some of the XML noise
+        if trim is True:
+            elem = self.xml_find(xml_tree, "result")
+            elem = self.xml_find(elem, "response")
+            for child in elem.getchildren():
+                print self._xml_recurse(child)
         else:
             print self._xml_recurse(xml_tree)
 
@@ -1039,6 +1053,9 @@ class mf_client:
             xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.set">' % self.session
             xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
             asset_id = self._post_multipart_buffered(xml_string, filepath)
+
+# TODO - if XML metadata is on -> read <filename>.xml & (if exists) -> populate asset_id metadata
+# TODO - skip put on files with .xml if this is enabled
 
         return asset_id
 

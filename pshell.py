@@ -39,6 +39,7 @@ class parser(cmd.Cmd):
     need_auth = True
     intro = " === pshell: type 'help' for a list of commands ==="
     transfer_processes = 4
+    terminal_height = 25
 
 # --- initial setup of prompt
     def preloop(self):
@@ -416,30 +417,15 @@ class parser(cmd.Cmd):
         print "List files stored on the remote server.\n"
         print "Pagination can be controlled by the optional page and size arguments."
         print "Navigation in paginated output can be achieved by directly inputing page numbers or /<pattern> or q to quit.\n"
-        print "Usage: ls <folder> <-p page> <-s size>\n"
+        print "Usage: ls <file pattern or folder name>\n"
         print "Examples: ls /projects/my project/some folder"
         print "          ls *.txt\n"
 
-# TODO - default page size -> .mf_config
     def do_ls(self, line):
-
-# process flags (if any)
+# page is done by pagination controller
         page = 1
-        size = 20
-        list_args = re.findall(r'-\S+\s+\S+', line)
-        for arg in list_args:
-            if arg.startswith("-p "):
-                page = int(arg[2:])
-            if arg.startswith("-s "):
-                size = int(arg[2:])
-# NEW - clamp
-        page = max(1, page)
-        size = max(1, size)
-
-# strip out flags - look for folder/filename patterns
-        line = re.sub(r'-\S+\s+\S+', '', line)
-        line = line.strip()
-
+# size is calculated from terminal minus 3 for command + header + footer 
+        size = max(1, self.terminal_height - 3)
         asset_filter = None
 
         if len(line) == 0:
@@ -461,6 +447,8 @@ class parser(cmd.Cmd):
 
             pagination_footer = None
 
+# FIXME - something like "ls -al" will give an ugly stack trace
+# would prefer a message like "bad syntax - run help ls for assistance" 
             if asset_filter is not None:
                 reply = self.mf_client.run("www.list", [("namespace", cwd), ("page", page), ("size", size), ("filter", asset_filter)])
             else:
@@ -496,8 +484,12 @@ class parser(cmd.Cmd):
                             print "[Folder] %s" % child.text
 # for each asset
             for elem in reply.iter('asset'):
-                state = " "
+                state = "?"
+                asset_id = "?"
                 for child in elem:
+# NEW - can't really avoid ID interaction in the long run I think ...
+                    if child.tag == "id":
+                        asset_id = child.text
                     if child.tag == "name":
                         filename = child.text
                     if child.tag == "size":
@@ -508,11 +500,13 @@ class parser(cmd.Cmd):
                             filesize = 0
                     if child.tag == "state":
                         if "online" in child.text:
-                            filestate = " online  | "
+                            filestate = "online |"
                         else:
-                            filestate = " %.9s | " % child.text
+                            filestate = "%.9s |" % child.text
 # file item
-                print "%s |%s%-s" % (self.human_size(int(filesize)), filestate, filename)
+#                print "%s |%s%-s" % (self.human_size(int(filesize)), filestate, filename)
+# TODO - tidy up
+                print " %-9s | %s %s | %s" % (asset_id, filestate, self.human_size(int(filesize)), filename)
 
 # no pagination required?
             if canonical_last == 1:
@@ -652,6 +646,62 @@ class parser(cmd.Cmd):
 # TODO - would be nice if there was an os independent way of clearing to the end of a line
         sys.stdout.write("\r"+text)
         sys.stdout.flush()
+
+
+# NEW - set metadata for an asset
+# syntax get (int id) (string namespace/xpath) (string value)
+# todo - make sure we're ok if value is int etc etc
+# --
+    def help_peek(self):
+        print "Read a metadata value for an asset."
+        print "Usage: peek <asset Id> <optional metadata address>"
+        print "Example:\n peek 1234\n peek 1234 content/csum\n peek 1234 csiro:seismic/location"
+
+    def do_peek(self, line):
+
+        match = re.match("\d+", line)
+        if match is None:
+            raise Exception("Expected first argument to be an integer")
+
+        asset_id = line[:match.end()]
+        address = line[1+match.end():].strip()
+
+        if len(address) == 0:
+            xml_command = 'asset.get :id %s' % asset_id
+        else:
+            xml_command = 'asset.get :id %s :xpath %s' % (asset_id, address)
+
+        reply = self.mf_client._xml_aterm_run(xml_command)
+
+# TODO - process to extract the value = ??? response
+        self.mf_client.xml_print(reply, trim=True)
+
+
+    def help_poke(self):
+        print "Insert a value into the metadata for an asset."
+        print "Usage: poke <asset Id> <metadata address> <value>"
+        print "Examples:\npoke 1234 csiro:seismic/location 'Perth'"
+
+    def do_poke(self, line):
+
+# simplified split - may have to rethink if xpath/xmlns can have spaces in it (eg quote protection?)
+        asset_id, address, value = re.split('\s', line, maxsplit=2)
+
+        match = address.find("/")
+        if match != -1:
+            xmlns=address[:match]
+            xpath=address[match+1:]
+        else:
+            raise Exception("Expected namespace/xpath as second argument")
+
+        xml_command = 'asset.set :id %s :meta < :%s < :%s "%s" > >' % (asset_id, xmlns, xpath, value)
+
+#        reply = self.mf_client._xml_aterm_run(xml_command, post=False)
+        reply = self.mf_client._xml_aterm_run(xml_command)
+
+# TODO - process to extract the value = ??? response
+        self.mf_client.xml_print(reply)
+
 
 # --
     def help_get(self):
@@ -1051,7 +1101,7 @@ class parser(cmd.Cmd):
 
     def do_processes(self, line):
         try:
-            p = max(1, min(int(line), 8))
+            p = max(1, min(int(line), 16))
             self.transfer_processes = p
         except:
             pass
@@ -1349,6 +1399,18 @@ def main():
     if args.debug:
         debug = True
 
+
+# CURRENT - extract size - use this for auto pagination
+# won't work for windows (of course)
+# TODO - make this work with windows
+    try:
+        import fcntl, termios, struct  
+        size = struct.unpack('hh', fcntl.ioctl(0, termios.TIOCGWINSZ, '1234'))
+    except:
+        print "Warning: couldn't determine terminal size"
+        size = (80,25)
+
+
 # mediaflux client
     try:
         mf_client = mfclient.mf_client(protocol=protocol, port=port, server=server, session=session, enforce_encrypted_login=encrypt, debug=debug)
@@ -1394,6 +1456,8 @@ def main():
     my_parser.config_filepath = config_filepath
     my_parser.config = config
     my_parser.need_auth = need_auth
+    # NEW
+    my_parser.terminal_height = size[0]
 
 # TAB completion
 # FIXME - no readline in Windows ...
