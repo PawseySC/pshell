@@ -325,7 +325,7 @@ class parser(cmd.Cmd):
 
 # --- file info
     def help_file(self):
-        print "Return metadata information on a remote file\n"
+        print "\nReturn metadata information on a remote file\n"
         print "Usage: file <filename>\n"
 
     def do_file(self, line):
@@ -413,8 +413,7 @@ class parser(cmd.Cmd):
 
 # ---
     def help_ls(self):
-        print "List files stored on the remote server.\n"
-        print "Pagination can be controlled by the optional page and size arguments."
+        print "\nList files stored on the remote server."
         print "Navigation in paginated output can be achieved by directly inputing page numbers or /<pattern> or q to quit.\n"
         print "Usage: ls <file pattern or folder name>\n"
         print "Examples: ls /projects/my project/some folder"
@@ -680,10 +679,12 @@ class parser(cmd.Cmd):
             self.mf_client.log("WARNING", "Metadata population failed: %s" % str(e))
 
 # TODO - allow customization of metadata extension file?
-# CURRENT - put + meta data
     def help_import(self):
-        print "Upload a file or files with associated metadata"
-        print "For every file called <filename.ext> a file called <filename.ext.meta> is expected with xmlns/xpath metadata"
+        print "\nUpload files or folders with associated metadata"
+        print "For every file called <filename.ext> a file called <filename.ext.meta> is treated as containing metadata\n"
+        print "Usage: import <file or folder>\n"
+        print "Examples: import myfile.jpg"
+        print "          import myfolder/\n"
 
 # --- 
     def do_import(self, line):
@@ -778,10 +779,10 @@ class parser(cmd.Cmd):
 
 # --
     def help_get(self):
-        print "Download remote files to current local folder\n"
+        print "\nDownload remote files to the current local folder\n"
         print "Usage: get <remote files or folders>\n"
         print "Examples: get /projects/My Project/images"
-        print "      get *.txt\n"
+        print "          get *.txt\n"
 
     def do_get(self, line):
         list_asset_filepath = []
@@ -920,10 +921,10 @@ class parser(cmd.Cmd):
 
 # --
     def help_put(self):
-        print "Upload local files or folders to the current folder on the remote server\n"
+        print "\nUpload local files or folders to the current folder on the remote server\n"
         print "Usage: put <file or folder>\n"
         print "Examples: put /home/sean/*.jpg"
-        print "      put /home/sean/myfolder/\n"
+        print "          put /home/sean/myfolder/\n"
 
     def do_put(self, line):
 # build upload list pairs
@@ -988,7 +989,7 @@ class parser(cmd.Cmd):
 
 # --
     def help_cd(self):
-        print "Change the current remote folder.\n"
+        print "\nChange the current remote folder\n"
         print "Usage: cd <folder>\n"
 
     def do_cd(self, line):
@@ -1001,7 +1002,7 @@ class parser(cmd.Cmd):
 
 # --
     def help_pwd(self):
-        print "Display the current remote folder.\n"
+        print "\nDisplay the current remote folder\n"
         print "Usage: pwd\n"
 
     def do_pwd(self, line):
@@ -1009,7 +1010,7 @@ class parser(cmd.Cmd):
 
 # --
     def help_mkdir(self):
-        print "Create a remote folder\n"
+        print "\nCreate a remote folder\n"
         print "Usage: mkdir <folder>\n"
 
     def do_mkdir(self, line):
@@ -1026,10 +1027,10 @@ class parser(cmd.Cmd):
 
 # --
     def help_rm(self):
-        print "Delete remote file(s)\n"
+        print "\nDelete remote file(s)\n"
         print "Usage: rm <file or pattern>\n"
         print "Examples: rm *.jpg"
-        print "      rm /projects/myproject/somefile\n"
+        print "          rm /projects/myproject/somefile\n"
 
     def do_rm(self, line):
 # build query corresponding to input
@@ -1062,7 +1063,7 @@ class parser(cmd.Cmd):
 
 # --
     def help_rmdir(self):
-        print "Remove a remote folder\n"
+        print "\nRemove a remote folder\n"
         print "Usage: rmdir <folder>\n"
 
     def do_rmdir(self, line):
@@ -1077,7 +1078,7 @@ class parser(cmd.Cmd):
 
 # -- local commands
     def help_debug(self):
-        print "Turn debugging output on/off\n"
+        print "\nTurn debugging output on/off\n"
         print "Usage: debug <on/off>\n"
 
     def do_debug(self, line):
@@ -1090,7 +1091,7 @@ class parser(cmd.Cmd):
 
 # --
     def help_lpwd(self):
-        print "Display local folder\n"
+        print "\nDisplay local folder\n"
         print "Usage: lpwd\n"
 
     def do_lpwd(self, line):
@@ -1098,7 +1099,7 @@ class parser(cmd.Cmd):
 
 # --
     def help_lcd(self):
-        print "Change local folder\n"
+        print "\nChange local folder\n"
         print "Usage: lcd <folder>\n"
 
     def do_lcd(self, line):
@@ -1107,7 +1108,7 @@ class parser(cmd.Cmd):
 
 # --
     def help_lls(self):
-        print "List contents of local folder\n"
+        print "\nList contents of local folder\n"
         print "Usage: lls <folder>\n"
 
     def do_lls(self, line):
@@ -1149,7 +1150,7 @@ class parser(cmd.Cmd):
 
 # --- 
     def help_whoami(self):
-        print "Report the current authenticated user or delegate and associated roles\n"
+        print "\nReport the current authenticated user or delegate and associated roles\n"
         print "Usage: whoami\n"
 
     def do_whoami(self, line):
@@ -1168,7 +1169,7 @@ class parser(cmd.Cmd):
 
 # --- 
     def help_processes(self):
-        print ("Set the number of concurrent processes to use when transferring files.")
+        print ("\nSet the number of concurrent processes to use when transferring files.")
         print ("If no number is supplied, reports the current value.")
         print ("Usage: processes <number>\n")
 
@@ -1182,7 +1183,7 @@ class parser(cmd.Cmd):
 
 # -- connection commands
     def help_logout(self):
-        print "Terminate the current session to the server\n"
+        print "\nTerminate the current session to the server\n"
         print "Usage: logout\n"
 
     def do_logout(self, line):
@@ -1191,7 +1192,7 @@ class parser(cmd.Cmd):
 
 # --- 
     def help_login(self):
-        print "Initiate login to the current remote server\n"
+        print "\nInitiate login to the current remote server\n"
         print "Usage: login\n"
 
     def do_login(self, line):
@@ -1220,12 +1221,12 @@ class parser(cmd.Cmd):
 
 # --
     def help_delegate(self):
-        print "Create a delegated credential, stored in your local home folder, that will be automatically reused to authenticate to the remote server.\n"
-        print "An optional argument can be supplied to set the credential lifetime, or set to off to destroy all delegated credentials for your account.\n"
+        print "\nCreate a credential, stored in your local home folder, for automatic authentication to the remote server."
+        print "An optional argument can be supplied to set the lifetime, or off to destroy all your delegated credentials.\n"
         print "Usage: delegate <days/off>\n"
         print "Examples: delegate"
-        print "      delegate 7"
-        print "      delegate off\n"
+        print "          delegate 7"
+        print "          delegate off\n"
 
     def do_delegate(self, line):
 # argument parse
@@ -1311,9 +1312,9 @@ class parser(cmd.Cmd):
 
 # ---
     def help_compare(self):
-        print "Compares a local and a remote folder and reports any differences"
+        print "\nCompares a local and a remote folder and reports any differences"
         print "The local and remote folders must have the same name and appear in the current local and remote working directories"
-        print "Usage: compare folder\n"
+        print "Usage: compare <folder>\n"
         print "Examples: compare mystuff\n"
 
 # compare folder tree structure ... how?
@@ -1367,13 +1368,13 @@ class parser(cmd.Cmd):
 
 # --
     def help_quit(self):
-        print "Exit without terminating the session\n"
+        print "\nExit without terminating the session\n"
     def do_quit(self, line):
         exit(0)
 
 # --
     def help_exit(self):
-        print "Exit without terminating the session\n"
+        print "\nExit without terminating the session\n"
     def do_exit(self, line):
         exit(0)
 
