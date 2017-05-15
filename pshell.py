@@ -648,6 +648,7 @@ class parser(cmd.Cmd):
 
 # CURRENT - meta populator
     def import_metadata(self, asset_id, filepath):
+#        print "import_metadata() [%s] : [%s]" % (asset_id, filepath)
         try:
             config = ConfigParser.ConfigParser()
             config.read(filepath)
@@ -671,13 +672,12 @@ class parser(cmd.Cmd):
                     for option in config.options(section):
                         xml_command += ' :%s %s' % (option, config.get(section, option))
                     xml_command += ' > >'
-
 # DEBUG
 #                print "import_metadata(): [%s]" % xml_command
                 reply = self.mf_client._xml_aterm_run(xml_command)
 
         except Exception as e:
-            self.mf_client.log("ERROR", "Metadata population failed: %s" % str(e))
+            self.mf_client.log("WARNING", "Metadata population failed: %s" % str(e))
 
 # TODO - allow customization of metadata extension file?
 # CURRENT - put + meta data
