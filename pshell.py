@@ -173,7 +173,6 @@ class parser(cmd.Cmd):
         save_state = self.mf_client.debug
         self.mf_client.debug = False
         candidate_list = self.complete_asset(line[4:end_index], start_index-4)
-# FIXME - get on a namespace downloads individually, download as ZIP?
         candidate_list += self.complete_namespace(line[4:end_index], start_index-4)
         self.mf_client.debug = save_state
         return candidate_list
@@ -647,60 +646,134 @@ class parser(cmd.Cmd):
         sys.stdout.write("\r"+text)
         sys.stdout.flush()
 
+# CURRENT - meta populator
+    def import_metadata(self, asset_id, filepath):
+        try:
+            config = ConfigParser.ConfigParser()
+            config.read(filepath)
+# section -> xmlns
+# TODO - how to handle to special case of first class asset properties (eg WGS84 geoshapes)
+            for section in config.sections():
 
-# NEW - set metadata for an asset
-# syntax get (int id) (string namespace/xpath) (string value)
-# todo - make sure we're ok if value is int etc etc
-# --
-    def help_peek(self):
-        print "Read a metadata value for an asset."
-        print "Usage: peek <asset Id> <optional metadata address>"
-        print "Example:\n peek 1234\n peek 1234 content/csum\n peek 1234 csiro:seismic/location"
+                if "geoshape" in section:
+#                    print "section = [%s]" % section
+                    xml_command = 'asset.set :id %r' % asset_id
+                    tmp = section.split('/')
+                    for item in tmp:
+                        xml_command += " :%s <" % item
+                    for option in config.options(section):
+                        xml_command += ' :%s %s' % (option, config.get(section, option))
+                    for item in tmp:
+                        xml_command += ' >'
+                else:
+#                    print "section = [%s]" % section
+                    xml_command = 'asset.set :id %r :meta < :%s <' % (asset_id, section)
+                    for option in config.options(section):
+                        xml_command += ' :%s %s' % (option, config.get(section, option))
+                    xml_command += ' > >'
 
-    def do_peek(self, line):
+# DEBUG
+#                print "import_metadata(): [%s]" % xml_command
+                reply = self.mf_client._xml_aterm_run(xml_command)
 
-        match = re.match("\d+", line)
-        if match is None:
-            raise Exception("Expected first argument to be an integer")
+        except Exception as e:
+            self.mf_client.log("ERROR", "Metadata population failed: %s" % str(e))
 
-        asset_id = line[:match.end()]
-        address = line[1+match.end():].strip()
+# TODO - allow customization of metadata extension file?
+# CURRENT - put + meta data
+    def help_import(self):
+        print "Upload a file or files with associated metadata"
+        print "For every file called <filename.ext> a file called <filename.ext.meta> is expected with xmlns/xpath metadata"
 
-        if len(address) == 0:
-            xml_command = 'asset.get :id %s' % asset_id
+# --- 
+    def do_import(self, line):
+
+# build upload list pairs
+        upload_list = []
+        meta_list = []
+        if os.path.isdir(line):
+            self.print_over("Walking directory tree...")
+# FIXME - handle input of '/'
+            line = os.path.abspath(line)
+            parent = os.path.normpath(os.path.join(line, ".."))
+            for root, directory_list, name_list in os.walk(line):
+# convert a local relative path - which could contain either windows or *nix path separators - to a remote path, which must be *nix style
+                local_relpath = os.path.relpath(path=root, start=parent)
+# split on LOCAL separator (whatever that may be) then join on remote *nix separator
+                relpath_list = local_relpath.split(os.sep)
+                remote_relpath = "/".join(relpath_list)
+                remote = posixpath.join(self.cwd, remote_relpath)
+                for name in name_list:
+                    if name.lower().endswith('.meta'):
+                        meta_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
+                    else:
+                        upload_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
         else:
-            xml_command = 'asset.get :id %s :xpath %s' % (asset_id, address)
+            self.print_over("Building file list... ")
+            for name in glob.glob(line):
+                if name.lower().endswith('.meta'):
+                    meta_list.append((self.cwd, os.path.join(os.getcwd(), name)))
+                else:
+                    upload_list.append((self.cwd, os.path.join(os.getcwd(), name)))
 
-        reply = self.mf_client._xml_aterm_run(xml_command)
+# TODO  - for all files in meta_list - strip .xml extension and if NOT in upload_list -> treat as normal upload, else -> it's metadata
+# DEBUG - window's path 
+#        for dest,src in upload_list:
+#            print "import: %s -> %s" % (src, dest)
+#        for dest,src in meta_list:
+#            print "meta: %s -> %s" % (src, dest)
 
-# TODO - process to extract the value = ??? response
-        self.mf_client.xml_print(reply, trim=True)
+# TODO - duplicate code from do_put()
+        start_time = time.time()
+        manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
+        self.mf_client.log("DEBUG", "Starting transfer...")
+        self.print_over("Total files=%d" % len(upload_list))
+        print ", transferring...  "
+        try:
+            while True:
+                if manager.bytes_total > 0:
+                    progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
+                else:
+                    progress = 0.0
 
+                self.print_over("Progress: %3.0f%% at %.1f MB/s  " % (progress, manager.byte_sent_rate()))
 
-    def help_poke(self):
-        print "Insert a value into the metadata for an asset."
-        print "Usage: poke <asset Id> <metadata address> <value>"
-        print "Examples:\npoke 1234 csiro:seismic/location 'Perth'"
+                if manager.is_done():
+                    break
+                time.sleep(2)
+# TODO - use this sleep time to populate metadata (if any?)
+# ie manager.summary -> list of completed ... remove from meta_list after update
+#done =  (26730, '/projects/Data Team/test', '/Users/sean/dev/mfclient/test/script')
+# use last item in summary list? ie extend() is being used so treat it like a stack
+# can pop() from the list but this means it won't be available for summary info
+#                for item in manager.summary:
+#                    print "done = ", item
+                    # id , filepath to XML
 
-    def do_poke(self, line):
+        except KeyboardInterrupt:
+            self.mf_client.log("WARNING", "put interrupted by user")
+            return
 
-# simplified split - may have to rethink if xpath/xmlns can have spaces in it (eg quote protection?)
-        asset_id, address, value = re.split('\s', line, maxsplit=2)
+        except Exception as e:
+            self.mf_client.log("ERROR", str(e))
+            return
 
-        match = address.find("/")
-        if match != -1:
-            xmlns=address[:match]
-            xpath=address[match+1:]
-        else:
-            raise Exception("Expected namespace/xpath as second argument")
+        finally:
+            if manager is not None:
+                manager.cleanup()
 
-        xml_command = 'asset.set :id %s :meta < :%s < :%s "%s" > >' % (asset_id, xmlns, xpath, value)
+# final summary
+# TODO - include info on failures?
+        self.print_over("Uploaded files=%d" % len(upload_list))
+        elapsed = max(1.0, time.time() - start_time)
+        rate = manager.bytes_sent() / (1000000*elapsed)
+        print ", average rate=%.1f MB/s  " % rate
 
-#        reply = self.mf_client._xml_aterm_run(xml_command, post=False)
-        reply = self.mf_client._xml_aterm_run(xml_command)
-
-# TODO - process to extract the value = ??? response
-        self.mf_client.xml_print(reply)
+# TODO - pop some of these in the upload cycle if it helps the efficiency (measure!)
+# TODO - customize extension to use?
+        for item in manager.summary:
+            metadata_filename = item[2] + ".meta"
+            self.import_metadata(item[0], metadata_filename)
 
 
 # --

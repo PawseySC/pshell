@@ -1054,9 +1054,6 @@ class mf_client:
             xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
             asset_id = self._post_multipart_buffered(xml_string, filepath)
 
-# TODO - if XML metadata is on -> read <filename>.xml & (if exists) -> populate asset_id metadata
-# TODO - skip put on files with .xml if this is enabled
-
         return asset_id
 
 #------------------------------------------------------------
