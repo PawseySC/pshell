@@ -1410,10 +1410,11 @@ def main():
         exit(-1)
 
 # server config (section heading) to use
-    p = argparse.ArgumentParser(description='pshell help')
-    p.add_argument('-c', dest='config', default='pawsey', help='The server in $HOME/.mf_config to connect to')
-    p.add_argument('-i', dest='script', help='Input script file containing commands')
+    p = argparse.ArgumentParser(description="pshell help")
+    p.add_argument("-c", dest='config', default="pawsey", help="The server in $HOME/.mf_config to connect to")
+    p.add_argument("-i", dest='script', help="Input script file containing commands")
     p.add_argument("-d", dest='debug', help="Turn debugging on", action="store_true")
+    p.add_argument("command", nargs="?", default="")
 
     args = p.parse_args()
     current = args.config
@@ -1532,7 +1533,6 @@ def main():
     my_parser.config_filepath = config_filepath
     my_parser.config = config
     my_parser.need_auth = need_auth
-    # NEW
     my_parser.terminal_height = size[0]
 
 # TAB completion
@@ -1547,7 +1547,7 @@ def main():
     except:
         mf_client.log("WARNING", "No readline module; tab completion unavailable")
 
-# process script or go interactive
+# run script lines
     if script:
         my_parser.interactive = False
         with open(script) as f:
@@ -1558,6 +1558,14 @@ def main():
                 except Exception as e:
                     print str(e)
                     exit(-1)
+# run single command
+    elif len(args.command) != 0:
+        try:
+            my_parser.onecmd(args.command)
+        except Exception as e:
+            print str(e)
+            exit(-1)
+# run interactively
     else:
         my_parser.loop_interactively()
 
