@@ -498,16 +498,16 @@ class parser(cmd.Cmd):
                             filesize = 0
                     if child.tag == "state":
                         if "online" in child.text:
-                            filestate = "online |"
+                            filestate = "online  |"
                         else:
                             filestate = "%.9s |" % child.text
 # file item
 #                print "%s |%s%-s" % (self.human_size(int(filesize)), filestate, filename)
 # TODO - tidy up
-                print " %-9s | %s %s | %s" % (asset_id, filestate, self.human_size(int(filesize)), filename)
+                print " %-10s | %s %s | %s" % (asset_id, filestate, self.human_size(int(filesize)), filename)
 
-# no pagination required?
-            if canonical_last == 1:
+# if no pagination is required - we're done, unless a filter is active
+            if canonical_last == 1 and asset_filter is None:
                 break
 
 # pagination controls
@@ -522,6 +522,8 @@ class parser(cmd.Cmd):
                         break
                     elif response.startswith("/"):
                         asset_filter = response[1:]
+                        if len(asset_filter) == 0:
+                            asset_filter = None
                         show_header = True
                         page = 1
                     else:
