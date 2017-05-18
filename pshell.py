@@ -1560,6 +1560,7 @@ def main():
                     exit(-1)
 # run single command
     elif len(args.command) != 0:
+        my_parser.interactive = False
         try:
             my_parser.onecmd(args.command)
         except Exception as e:
