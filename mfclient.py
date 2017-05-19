@@ -51,9 +51,8 @@ def put_jump(mfclient, data):
         asset_id = mfclient.put(data[0], data[1])
     except Exception as e:
         mfclient.log("ERROR", "[pid=%d] put_jump(%s): %s" % (os.getpid(), data[1], str(e)))
-# TODO - parse Exception and return condensed error message instead of fail
 # NB: return form should be suitable for retry of this transfer primitive
-        return ("Fail", data[0], data[1])
+        return (-1, data[0], data[1])
 
     return (int(asset_id), data[0], data[1])
 
@@ -75,7 +74,7 @@ def get_jump(mfclient, data):
     except Exception as e:
         mfclient.log("ERROR", "[pid=%d] get_jump(): %s" % (os.getpid(), str(e)))
 # NB: return form should be suitable for retry of this transfer primitive
-        return ("Fail", data[0], data[1])
+        return (-1, data[0], data[1])
 
     return (0, data[0], data[1])
 
@@ -1150,7 +1149,7 @@ class mf_manager:
         """
         Invoke to properly terminate the process pool (eg if user cancels via control-C)
         """
-        print "\nCleaning up..."
+#        print "\nCleaning up..."
         self.pool.terminate()
         self.pool.join()
         manage_lock.release()

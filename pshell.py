@@ -765,19 +765,20 @@ class parser(cmd.Cmd):
             if manager is not None:
                 manager.cleanup()
 
-# final summary
-# TODO - include info on failures?
-        self.print_over("Uploaded files=%d" % len(upload_list))
-        elapsed = max(1.0, time.time() - start_time)
-        rate = manager.bytes_sent() / (1000000*elapsed)
-        print ", average rate=%.1f MB/s  " % rate
-
 # TODO - pop some of these in the upload cycle if it helps the efficiency (measure!)
 # TODO - customize extension to use?
+        fail = 0
         for item in manager.summary:
-            metadata_filename = item[2] + ".meta"
-            self.import_metadata(item[0], metadata_filename)
-
+            if item[0] < 0:
+                fail += 1
+            else:
+                metadata_filename = item[2] + ".meta"
+                self.import_metadata(item[0], metadata_filename)
+# final report
+        if fail != 0:
+            raise Exception("\nFailed to upload %d file(s)." % fail)
+        else:
+            print "Completed.\n"
 
 # --
     def help_get(self):
@@ -914,12 +915,22 @@ class parser(cmd.Cmd):
                 if manager is not None:
                     manager.cleanup()
 
+# final report
+        fail = 0
+        for status,remote_ns,local_filepath in manager.summary:
+            if status < 0:
+                fail += 1
+        if fail != 0:
+            raise Exception("\nFailed to download %d file(s)." % fail)
+        else:
+            print "Completed.\n"
+
 # NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
-        self.print_over("Downloaded files=%d" % len(done))
-        elapsed = max(1.0, time.time() - start_time)
-        rate = total_recv / (1000000.0*elapsed)
-        print ", average rate=%.1f MB/s  " % rate
-        return
+#        self.print_over("Downloaded files=%d" % len(done))
+#        elapsed = max(1.0, time.time() - start_time)
+#        rate = total_recv / (1000000.0*elapsed)
+#        print ", average rate=%.1f MB/s  " % rate
+#        return
 
 # --
     def help_put(self):
@@ -982,12 +993,15 @@ class parser(cmd.Cmd):
             if manager is not None:
                 manager.cleanup()
 
-# final summary
-# TODO - include info on failures?
-        self.print_over("Uploaded files=%d" % len(upload_list))
-        elapsed = max(1.0, time.time() - start_time)
-        rate = manager.bytes_sent() / (1000000*elapsed)
-        print ", average rate=%.1f MB/s  " % rate
+# final report
+        fail = 0
+        for status,remote_ns,local_filepath in manager.summary:
+            if status < 0:
+                fail += 1
+        if fail != 0:
+            raise Exception("\nFailed to upload %d file(s)." % fail)
+        else:
+            print "Completed.\n"
 
 # --
     def help_cd(self):
@@ -1068,15 +1082,13 @@ class parser(cmd.Cmd):
         print "\nRemove a remote folder\n"
         print "Usage: rmdir <folder>\n"
 
+# NB: we want an error from server on failure so we can produce a non 0 exit code if required
     def do_rmdir(self, line):
         ns_target = self.absolute_remote_filepath(line)
-        if self.mf_client.namespace_exists(ns_target):
-            if self.ask("Remove folder: %s (y/n) " % ns_target):
-                self.mf_client.run("asset.namespace.destroy", [("namespace", ns_target)])
-            else:
-                print "Aborted"
+        if self.ask("Remove folder: %s (y/n) " % ns_target):
+            self.mf_client.run("asset.namespace.destroy", [("namespace", ns_target)])
         else:
-            print "No such folder: %s" % ns_target
+            print "Aborted"
 
 # -- local commands
     def help_debug(self):
@@ -1114,10 +1126,6 @@ class parser(cmd.Cmd):
         print "Usage: lls <folder>\n"
 
     def do_lls(self, line):
-
-# no flags???
-#         line = re.sub(r'-\S+', '', line)
-
 # convert to absolute path for consistency
         if not os.path.isabs(line):
             path = os.path.normpath(os.path.join(os.getcwd(), line))
