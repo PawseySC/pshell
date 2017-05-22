@@ -7,9 +7,9 @@ import sys
 import glob
 import math
 import time
-# NEW - shell like pattern matching
 import fnmatch
 import getpass
+import zipfile
 import argparse
 import datetime
 import ConfigParser
@@ -113,13 +113,8 @@ class parser(cmd.Cmd):
 
         return ns_list
 
-
-# CURRENT - testing helper 
-#    def do_test(self, line):
-
 # --- helper: attempt to complete an asset
     def complete_asset(self, partial_asset_path, start):
-
 # construct an absolute namespace (required for any remote lookups)
         if posixpath.isabs(partial_asset_path):
             candidate_ns = posixpath.normpath(partial_asset_path)
@@ -293,7 +288,7 @@ class parser(cmd.Cmd):
         return(self.cwd.replace("'", "\\'"))
 
 # CURRENT - asset.query with namespaces enclosed by ' - must have ' double escaped ... asset.namespace.exists namespaces - must be just single escaped 
-# CURRENT - but asset.namespace.list should have no escaping ... thanks Arcitecta
+# CURRENT - but asset.namespace.list should have no escaping 
     def escape_single_quotes(self, namespace):
         return(namespace.replace("'", "\\'"))
 
@@ -532,7 +527,6 @@ class parser(cmd.Cmd):
                             pagination_complete = True
 
 # --
-
     def poll_total(self, base_query):
         total = dict()
 
@@ -564,7 +558,6 @@ class parser(cmd.Cmd):
         total['total-bytes'] = count_bytes
 
         return total
-
 
 # prepare state - online + offline init
 # return list of (online) files to download
@@ -1375,7 +1368,6 @@ class parser(cmd.Cmd):
 
         print "=== Compare complete ==="
 
-
 # --
     def help_quit(self):
         print "\nExit without terminating the session\n"
@@ -1405,13 +1397,6 @@ class parser(cmd.Cmd):
                 print str(e)
 
 def main():
-
-# CURRENT - can include additional data files in the zip bundle (eg CA certs) 
-#     import zipfile
-#     me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
-#     f = me.open('certificate.pem')
-#     print f.read()
-
 # TODO - probably should make it compatible with 3.x as well (sigh)
     if sys.hexversion < 0x02070000:
         print("ERROR: requires Python 2.7.x, using: ", sys.version)
@@ -1423,15 +1408,16 @@ def main():
     p.add_argument("-i", dest='script', help="Input script file containing commands")
     p.add_argument("-d", dest='debug', help="Turn debugging on", action="store_true")
     p.add_argument("command", nargs="?", default="")
-
     args = p.parse_args()
     current = args.config
     script = args.script
+    encrypt = True
+    debug = False
+    session = ""
+    token = None
+    config_changed = False
 
-# use config if exists, else create a dummy one
-    config = ConfigParser.ConfigParser()
-# hydrographic NAS box gives a dud path for ~
-# NEW - test readwrite and if fail -> use CWD
+# ascertain local path for config, fallback to CWD if system gives a dud path for ~ 
     config_filepath = os.path.expanduser("~/.mf_config")
     try:
         open(config_filepath, 'a').close()
@@ -1439,51 +1425,38 @@ def main():
         print "Bad home [%s] ... falling back to current folder" % config_filepath
         config_filepath = os.path.join(os.getcwd(), ".mf_config")
 
+# use local config, if exists, else the bundle default
+    config = ConfigParser.ConfigParser()
     config.read(config_filepath)
-
-    encrypt = True
-    debug = False
-    session = ""
-    token = None
-    config_changed = False
-
     if config.has_section(current):
-#         print "Reading config [%s]" % config_filepath
-        try:
-            server = config.get(current, 'server')
-            protocol = config.get(current, 'protocol')
-            port = config.get(current, 'port')
-        except:
-            print "ERROR: config file [%s] has insufficiently specified server" % config_filepath
-            exit(-1)
-
-        if config.has_option(current, 'encrypt'):
-            encrypt = config.getboolean(current, 'encrypt')
-        if config.has_option(current, 'debug'):
-            debug = config.getboolean(current, 'debug')
-        if config.has_option(current, 'session'):
-            session = config.get(current, 'session')
-        if config.has_option(current, 'token'):
-            token = config.get(current, 'token')
+        print "Reading config [%s]" % config_filepath
     else:
-        if current != 'pawsey':
-            print "Server configuration for %s not found in %s" % (current, config_filepath)
-            exit(-1)
-
-        print "Creating default config [%s]" % config_filepath
-        config.add_section(current)
-        server = "data.pawsey.org.au"
-        protocol = "https"
-        port = 443
-        config.set(current, 'server', server)
-        config.set(current, 'protocol', protocol)
-        config.set(current, 'port', port)
+        print "Reading defaults from bundle..."
+        me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
+        f = me.open('.mf_config')
+        config.readfp(f)
         config_changed = True
+# process config
+    try:
+        server = config.get(current, 'server')
+        protocol = config.get(current, 'protocol')
+        port = config.get(current, 'port')
+    except:
+        print "ERROR: config file [%s] has insufficiently specified server" % config_filepath
+        exit(-1)
+
+    if config.has_option(current, 'encrypt'):
+        encrypt = config.getboolean(current, 'encrypt')
+    if config.has_option(current, 'debug'):
+        debug = config.getboolean(current, 'debug')
+    if config.has_option(current, 'session'):
+        session = config.get(current, 'session')
+    if config.has_option(current, 'token'):
+        token = config.get(current, 'token')
 
 # new - commandline debug true overrides config
     if args.debug:
         debug = True
-
 
 # CURRENT - extract size - use this for auto pagination
 # won't work for windows (of course)
@@ -1494,7 +1467,6 @@ def main():
     except:
         print "Warning: couldn't determine terminal size"
         size = (80,25)
-
 
 # mediaflux client
     try:

@@ -671,8 +671,15 @@ class mf_client:
         """
 # trim some of the XML noise
         if trim is True:
+# try to tunnel past header crap, unless there was an error
             elem = self.xml_find(xml_tree, "result")
-            elem = self.xml_find(elem, "response")
+            if elem is not None:
+                elem = self.xml_find(elem, "response")
+# TODO - better error processing
+            if elem is None:
+                print self.xml_error(xml_tree)
+                return
+
             for child in elem.getchildren():
                 print self._xml_recurse(child)
         else:
