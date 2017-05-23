@@ -1417,32 +1417,40 @@ def main():
     token = None
     config_changed = False
 
-# ascertain local path for config, fallback to CWD if system gives a dud path for ~ 
+# ascertain local path for storing the config, fallback to CWD if system gives a dud path for ~ 
     config_filepath = os.path.expanduser("~/.mf_config")
     try:
         open(config_filepath, 'a').close()
     except:
         print "Bad home [%s] ... falling back to current folder" % config_filepath
         config_filepath = os.path.join(os.getcwd(), ".mf_config")
-
-# use local config, if exists, else the bundle default
+# build config
     config = ConfigParser.ConfigParser()
     config.read(config_filepath)
-    if config.has_section(current):
-        print "Reading config [%s]" % config_filepath
-    else:
-        print "Reading defaults from bundle..."
-        me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
-        f = me.open('.mf_config')
-        config.readfp(f)
-        config_changed = True
-# process config
+# use config in ~ if it exists
     try:
+        if config.has_section(current):
+            print "Reading config [%s]" % config_filepath
+        else:
+            try:
+# config in zip bundle
+                me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
+                f = me.open('.mf_config')
+                print "Reading default config from bundle..."
+            except:
+# config in CWD
+                f = open('.mf_config')
+                print "Reading default config from CWD..."
+# read non ~ config as defaults
+            config.readfp(f)
+            config_changed = True
+# get main config vars
         server = config.get(current, 'server')
         protocol = config.get(current, 'protocol')
         port = config.get(current, 'port')
-    except:
-        print "ERROR: config file [%s] has insufficiently specified server" % config_filepath
+# no .mf_config in ~ or zip bundle or cwd => die
+    except Exception as e:
+        print "ERROR: failed to find a valid config file: %s" % str(e)
         exit(-1)
 
     if config.has_option(current, 'encrypt'):
