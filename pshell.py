@@ -504,6 +504,10 @@ class parser(cmd.Cmd):
 # if no pagination is required - we're done, unless a filter is active
             if canonical_last == 1 and asset_filter is None:
                 break
+# non-interactive - assume a quit after 1st page
+            if self.interactive is False:
+                print pagination_footer
+                break
 
 # pagination controls
             response = self.pagination_controller(pagination_footer)
@@ -1404,10 +1408,10 @@ def main():
 
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
-    p.add_argument("-c", dest='config', default="pawsey", help="The server in $HOME/.mf_config to connect to")
-    p.add_argument("-i", dest='script', help="Input script file containing commands")
-    p.add_argument("-d", dest='debug', help="Turn debugging on", action="store_true")
-    p.add_argument("command", nargs="?", default="")
+    p.add_argument("-c", dest='config', default="pawsey", help="the server in $HOME/.mf_config to connect to")
+    p.add_argument("-i", dest='script', help="input text file containing commands")
+    p.add_argument("-d", dest='debug', help="turns debugging on", action="store_true")
+    p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
     current = args.config
     script = args.script
