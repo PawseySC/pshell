@@ -811,8 +811,10 @@ class parser(cmd.Cmd):
 # this requires different escaping to an asset.query
         if self.mf_client.namespace_exists(line):
             base_query = "namespace>='%s'" % candidate
+            base_namespace = posixpath.normpath(posixpath.join(line, ".."))
         else:
             base_query = "namespace='%s' and name='%s'" % (namespace, basename)
+            base_namespace = posixpath.normpath(namespace)
 
 # get content statistics and init for transfer polling loop
         stats = self.poll_total(base_query)
@@ -864,7 +866,7 @@ class parser(cmd.Cmd):
 # wait (if required) and start transfers as soon as possible
                 manager = None
                 while manager is None:
-                    online = self.get_online_set(base_query, base_namespace=namespace)
+                    online = self.get_online_set(base_query, base_namespace=base_namespace)
 # FIXME - python 2.6 causes compile error on this -> which means the runtime print "you need version > 2.7" isn't displayed
 #                     current = {k:v for k,v in online.iteritems() if k not in done}
 # CURRENT - this seems to resolve the issue
