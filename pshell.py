@@ -565,7 +565,7 @@ class parser(cmd.Cmd):
 
 # prepare state - online + offline init
 # return list of (online) files to download
-    def get_online_set(self, base_query):
+    def get_online_set(self, base_query, base_namespace):
 
         online = dict()
         list_local_path = {}
@@ -595,10 +595,13 @@ class parser(cmd.Cmd):
                     if child.tag == "namespace":
                         namespace = child.text
 # remote = *nix , local = windows or *nix
-                        remote_relpath = posixpath.relpath(path=namespace, start=self.cwd)
+# NEW - the relative path should be computed from the starting namespace 
+#                        remote_relpath = posixpath.relpath(path=namespace, start=self.cwd)
+                        remote_relpath = posixpath.relpath(path=namespace, start=base_namespace)
                         relpath_list = remote_relpath.split("/")
                         local_relpath = os.sep.join(relpath_list)
                         path = os.path.join(os.getcwd(), local_relpath)
+                        self.mf_client.log("DEBUG", "local=%s : remote=%s" % (local_relpath, remote_relpath))
 
 # add valid download entry
                 if asset_id is not None and filename is not None:
@@ -775,7 +778,7 @@ class parser(cmd.Cmd):
         if fail != 0:
             raise Exception("\nFailed to upload %d file(s)." % fail)
         else:
-            print "Completed.\n"
+            print "\nCompleted."
 
 # --
     def help_get(self):
@@ -861,7 +864,7 @@ class parser(cmd.Cmd):
 # wait (if required) and start transfers as soon as possible
                 manager = None
                 while manager is None:
-                    online = self.get_online_set(base_query)
+                    online = self.get_online_set(base_query, base_namespace=namespace)
 # FIXME - python 2.6 causes compile error on this -> which means the runtime print "you need version > 2.7" isn't displayed
 #                     current = {k:v for k,v in online.iteritems() if k not in done}
 # CURRENT - this seems to resolve the issue
@@ -920,7 +923,7 @@ class parser(cmd.Cmd):
         if fail != 0:
             raise Exception("\nFailed to download %d file(s)." % fail)
         else:
-            print "Completed.\n"
+            print "\nCompleted."
 
 # NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
 #        self.print_over("Downloaded files=%d" % len(done))
@@ -998,7 +1001,7 @@ class parser(cmd.Cmd):
         if fail != 0:
             raise Exception("\nFailed to upload %d file(s)." % fail)
         else:
-            print "Completed.\n"
+            print "\nCompleted."
 
 # --
     def help_cd(self):
