@@ -1,7 +1,9 @@
 cp pshell.py __main__.py
+cp data/.mf_config .
 zip pshell.zip __main__.py mfclient.py .mf_config
 echo "#!/usr/bin/env python" > pshell
 cat pshell.zip >> pshell
 chmod u+x pshell
 rm pshell.zip
 rm __main__.py
+rm .mf_config
