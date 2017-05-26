@@ -1448,8 +1448,12 @@ def main():
                 print "Reading default config from bundle..."
             except:
 # config in CWD
-                f = open('.mf_config')
-                print "Reading default config from CWD..."
+#                f = open('.mf_config')
+#                print "Reading default config from CWD..."
+# config from pshell install directory
+                f = open(os.path.join(os.path.dirname(__file__), 'data', '.mf_config'))
+                print "Reading default config from site package..."
+
 # read non ~ config as defaults
             config.readfp(f)
             config_changed = True
