@@ -624,7 +624,7 @@ class mf_client:
 
 # wrap service call & authentication XML - cross fingers, and POST
 # special case for logon 
-# TODO - hide/obscure the session as well ...
+# hide/obscure the session as well ...
         if service_call == "system.logon":
             xml = '<request><service name="%s"><args>%s</args></service></request>' % (service_call, xml)
         else:
@@ -713,6 +713,7 @@ class mf_client:
         """
         XML navigation helper as I couldn't get the built in XML method root.find() to work properly
         """
+# TODO - this may no longer be required - see pshell: def delegate_actor_expiry() for python xpath example
         for elem in xml_tree.iter():
             if elem.tag == tag:
                 return elem
@@ -734,9 +735,9 @@ class mf_client:
 #------------------------------------------------------------
     def logout(self):
         """
-        NOTE: system.logoff is currently bugged (mediaflux version 4.3.067) and doesn't actually destroy the session
+        Destroy the current session (NB: delegate can auto-create a new session if available)
         """
-        self.run("system.logoff")
+        self._xml_aterm_run("system.logoff")
         self.session=""
 
 #------------------------------------------------------------
@@ -758,13 +759,21 @@ class mf_client:
             else:
                 self.log("DEBUG", "Permitting unencrypted login; I hope you know what you're doing.")
 
-# attempt token authentication first (if supplied)
         if token is not None:
-            xml = self._xml_request("system.logon", [("token", token)])
+            reply = self._xml_aterm_run("system.logon :token %s" % token)
         else:
-            xml = self._xml_request("system.logon", [("domain", domain), ("user", user), ("password", password)])
+            reply = self._xml_aterm_run("system.logon :domain %s :user %s :password %s" % (domain, user, password))
 
-        reply = self._post(xml)
+# attempt token authentication first (if supplied)
+#        if token is not None:
+#            xml = self._xml_request("system.logon", [("token", token)])
+#            print "hello"
+#        else:
+#            xml = self._xml_request("system.logon", [("domain", domain), ("user", user), ("password", password)])
+#
+#        reply = self._post(xml)
+
+# TODO - replace with a single xpath lookup (see  pshell.py: delegate_actor_expiry())
         for elem in reply.iter():
             if elem.tag == 'session':
                 self.session=elem.text
@@ -781,7 +790,7 @@ class mf_client:
              A BOOLEAN value depending on the current authentication status of the Mediaflux connection
         """
         try:
-            result = self.run("actor.self.describe")
+            result = self._xml_aterm_run("actor.self.describe")
             return True
         except Exception as e:
             self.session = ""
@@ -789,54 +798,6 @@ class mf_client:
             self.log("DEBUG", str(e))
 
         return False
-
-#------------------------------------------------------------
-    def delegate(self, lifetime_days=None, token_length=16):
-        """
-        Create a secure token that can be used in place of interactive authentication
-
-        Input:
-            lifetime_days: an INTEGER specifying lifetime, or None
-            token_length: the length of the delegate token to create
-
-        Returns:
-            A STRING representing the token
-
-        Raises:
-            An error on failure
-        """
-# query current authenticated identity
-        try:
-            result = self.run("actor.self.describe")
-            for elem in result.iter():
-                if elem.tag == 'actor':
-                    actor = elem.attrib.get('name', elem.text)
-                    i = actor.find(":")
-                    domain = actor[0:i]
-                    user = actor[i+1:]
-        except Exception as e:
-# NB: on test server -> max license error will fail here on 1st time setup
-            self.log("ERROR", str(e))
-            raise Exception("Failed to get valid identity")
-
-# FIXME - mediaflux seems to be ignoring the max-token-length value
-# expiry date (if any)
-        if lifetime_days is None:
-            self.log("DEBUG", "Delegating forever")
-            args = [ ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("max-token-length", token_length) ]
-        else:
-            d = datetime.datetime.now() + datetime.timedelta(days=lifetime_days)
-            expiry = d.strftime("%d-%b-%Y %H:%M:%S")
-            self.log("DEBUG", "Delegating until: %s" % expiry)
-            args = [ ("to", expiry), ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("max-token-length", token_length) ]
-
-# create secure token (delegate) and assign current authenticated identity to the token
-        result = self.run("secure.identity.token.create", args)
-        for elem in result.iter():
-            if elem.tag == 'token':
-                return elem.text
-
-        raise Exception("Failed to create secure token for current identity")
 
 #------------------------------------------------------------
     def namespace_exists(self, namespace):
@@ -874,7 +835,8 @@ class mf_client:
         namespace = None
 
 # find root project namespace
-        result = self.run("asset.get", [("id", "%r" % asset_id), ("xpath", "namespace") ])
+        result = self._xml_aterm_run("asset.get :id %r :xpath namespace" % asset_id)
+
         elem = self.xml_find(result, "value")
         if elem is not None:
             tmp = elem.text
@@ -887,7 +849,9 @@ class mf_client:
 #        print "namespace: %s" % namespace
 
 # get project token
-        result = self.run("asset.namespace.application.settings.get", [("namespace", namespace), ("app", app)])
+#        result = self.run("asset.namespace.application.settings.get", [("namespace", namespace), ("app", app)])
+        result = self._xml_aterm_run("asset.namespace.application.settings.get :namespace %s :app %s" % (namespace, app))
+
         elem = self.xml_find(result, tag)
         if elem is not None:
             token = elem.text
@@ -912,6 +876,7 @@ class mf_client:
         return (current & 0xFFFFFFFF)
 
 #------------------------------------------------------------
+# TODO - replace completely with xml_aterm_run() 
     def run(self, service_call, argument_tuple_list=[]):
         """
         Generic mechanism for executing a service call on the current Mediaflux server

@@ -508,12 +508,10 @@ class parser(cmd.Cmd):
                             filesize = 0
                     if child.tag == "state":
                         if "online" in child.text:
-                            filestate = "online  |"
+                            filestate = "online    |"
                         else:
-                            filestate = "%.9s |" % child.text
+                            filestate = "%-9s |" % child.text
 # file item
-#                print "%s |%s%-s" % (self.human_size(int(filesize)), filestate, filename)
-# TODO - tidy up
                 print " %-10s | %s %s | %s" % (asset_id, filestate, self.human_size(int(filesize)), filename)
 
 # if no pagination is required - we're done, unless a filter is active
@@ -557,7 +555,9 @@ class parser(cmd.Cmd):
 
         count_files = 0
         count_bytes = 0
-        result = self.mf_client.run("asset.content.status.statistics", [("where", base_query)])
+#        result = self.mf_client.run("asset.content.status.statistics", [("where", base_query)])
+        result = self.mf_client._xml_aterm_run('asset.content.status.statistics :where "%s"' % base_query)
+
         for elem in result.iter("statistics"):
             state = elem.attrib.get('state', elem.text)
 
@@ -587,9 +587,10 @@ class parser(cmd.Cmd):
         online = dict()
         list_local_path = {}
 
-        query = [("where", base_query + " and content online"),("as","iterator"),("action","get-values"),("xpath ename=\"id\"","id"),("xpath ename=\"namespace\"","namespace"),("xpath ename=\"filename\"","name")]
-        result = self.mf_client.run("asset.query", query)
-#         self.mf_client.xml_print(result)
+#        query = [("where", base_query + " and content online"),("as","iterator"),("action","get-values"),("xpath ename=\"id\"","id"),("xpath ename=\"namespace\"","namespace"),("xpath ename=\"filename\"","name")]
+#        result = self.mf_client.run("asset.query", query)
+        result = self.mf_client._xml_aterm_run('asset.query :where "%s and content online" :as iterator :action get-values :xpath -ename id id :xpath -ename namespace namespace :xpath -ename filename name"' % base_query)
+#        self.mf_client.xml_print(result)
 
         elem = self.mf_client.xml_find(result, "iterator")
         iterator = elem.text
@@ -599,7 +600,9 @@ class parser(cmd.Cmd):
         while iterate:
             self.mf_client.log("DEBUG", "Online iterator chunk")
 # get file list for this sub-set
-            result = self.mf_client.run("asset.query.iterate", [("id", iterator), ("size", iterate_size)])
+#            result = self.mf_client.run("asset.query.iterate", [("id", iterator), ("size", iterate_size)])
+            result = self.mf_client._xml_aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
+
             for elem in result.iter("asset"):
                 asset_id = None
                 filename = None
@@ -1106,7 +1109,8 @@ class parser(cmd.Cmd):
     def do_rmdir(self, line):
         ns_target = self.absolute_remote_filepath(line)
         if self.ask("Remove folder: %s (y/n) " % ns_target):
-            self.mf_client.run("asset.namespace.destroy", [("namespace", ns_target)])
+#            self.mf_client.run("asset.namespace.destroy", [("namespace", ns_target)])
+            self.mf_client._xml_aterm_run("asset.namespace.destroy :namespace %s" % ns_target)
         else:
             print "Aborted"
 
@@ -1316,7 +1320,9 @@ class parser(cmd.Cmd):
             raise Exception("Failed to get valid identity")
 
 # create secure token (delegate) and assign current authenticated identity to the token
-        result = self.mf_client.run("secure.identity.token.create", [ ("to", expiry), ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("min-token-length", 16) ])
+#        result = self.mf_client.run("secure.identity.token.create", [ ("to", expiry), ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("min-token-length", 16) ])
+        result = self.mf_client._xml_aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16' % (expiry, actor, domain))
+
         for elem in result.iter():
             if elem.tag == 'token':
 # remove current session ID (real user)
@@ -1330,9 +1336,14 @@ class parser(cmd.Cmd):
     def get_remote_set(self, remote_namespace):
         remote_files = set()
         prefix = len(remote_namespace)
-        base_query = "namespace >='%s'" % remote_namespace
-        query = [("where", base_query),("as","iterator"),("action","get-path")]
-        result = self.mf_client.run("asset.query", query)
+
+#        base_query = "namespace >='%s'" % remote_namespace
+#        query = [("where", base_query),("as","iterator"),("action","get-path")]
+#        result = self.mf_client.run("asset.query", query)
+
+        result = self.mf_client._xml_aterm_run("asset.query :where \"namespace>='%s'\" :as iterator :action get-path" % remote_namespace)
+
+
         elem = self.mf_client.xml_find(result, "iterator")
         iterator = elem.text
         iterate_size = 100
@@ -1340,7 +1351,8 @@ class parser(cmd.Cmd):
         while iterate:
             self.mf_client.log("DEBUG", "Remote iterator chunk")
 # get file list for this sub-set
-            result = self.mf_client.run("asset.query.iterate", [("id", iterator), ("size", iterate_size)])
+#            result = self.mf_client.run("asset.query.iterate", [("id", iterator), ("size", iterate_size)])
+            result = self.mf_client._xml_aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
 
             for elem in result.iter("path"):
                 relpath = elem.text[prefix+1:]
@@ -1398,11 +1410,11 @@ class parser(cmd.Cmd):
         except Exception as e:
             print "Error: %s" % str(e)
 
-        print "=== Remote files with no local match ==="
+        print "=== Missing local files ==="
         for item in remote_files - local_files:
             print "%s" % item
 
-        print "=== Local files with no remote match ==="
+        print "=== Missing remote files ==="
         for item in local_files - remote_files:
             print "%s" % item
 
