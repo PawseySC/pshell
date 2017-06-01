@@ -5,4 +5,4 @@ port = 443
 encrypt = True
 debug = False
 domain = ivec
-namespace = /projects/Demo
+namespace = /projects

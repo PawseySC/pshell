@@ -96,7 +96,9 @@ class parser(cmd.Cmd):
 #         print "cn: target_ns: [%s]" % target_ns
 
 # generate listing in target namespace for completion matches
-        result = self.mf_client.run("asset.namespace.list", [("namespace", target_ns)])
+#        result = self.mf_client.run("asset.namespace.list", [("namespace", target_ns)])
+        result = self.mf_client._xml_aterm_run("asset.namespace.list :namespace %s" % target_ns)
+
         ns_list = []
         for elem in result.iter('namespace'):
             if elem.text is not None:
@@ -140,13 +142,15 @@ class parser(cmd.Cmd):
                 return None
 
         target_ns = self.escape_single_quotes(target_ns)
-
-#         print "ca: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix)
+#        print "ca: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix)
+#        self.mf_client.debug = True
 
         if pattern is not None:
-            result = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s*'" % (target_ns, pattern)), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
+#            result = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s*'" % (target_ns, pattern)), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
+            result = self.mf_client._xml_aterm_run("asset.query :where \"namespace='%s' and name ='%s*'\" :action get-values :xpath -ename name name" % (target_ns, pattern))
         else:
-            result = self.mf_client.run("asset.query", [("where", "namespace='%s'" % target_ns), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
+#            result = self.mf_client.run("asset.query", [("where", "namespace='%s'" % target_ns), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
+            result = self.mf_client._xml_aterm_run("asset.query :where \"namespace='%s'\" :action get-values :xpath -ename name name" % target_ns)
 
 #         self.mf_client.xml_print(result)
 
@@ -307,7 +311,8 @@ class parser(cmd.Cmd):
         if len(pattern) == 0:
             pattern = "*"
 
-        result = self.mf_client.run("asset.namespace.list", [("namespace", namespace)])
+#        result = self.mf_client.run("asset.namespace.list", [("namespace", namespace)])
+        result = self.mf_client._xml_aterm_run("asset.namespace.list :namespace %s" % namespace)
 
         for elem in result.iter('namespace'):
             if elem.text is not None:
@@ -324,7 +329,9 @@ class parser(cmd.Cmd):
         print "Usage: file <filename>\n"
 
     def do_file(self, line):
-        result = self.mf_client.run("asset.get", [("id", "path=%s" % self.absolute_remote_filepath(line))]) 
+#        result = self.mf_client.run("asset.get", [("id", "path=%s" % self.absolute_remote_filepath(line))]) 
+        result = self.mf_client._xml_aterm_run("asset.get :id \"path=%s\"" % self.absolute_remote_filepath(line))
+
         self.mf_client.xml_print(result)
 
 
@@ -427,25 +434,33 @@ class parser(cmd.Cmd):
 # if absolute path exists as a namespace -> query this, else query via an asset pattern match
             cwd = self.absolute_remote_filepath(line)
             if not self.mf_client.namespace_exists(cwd):
-                asset_filter = posixpath.basename(cwd)
+                asset_filter = self.escape_single_quotes(posixpath.basename(cwd))
                 cwd = self.escape_single_quotes(posixpath.dirname(cwd))
 
-#        print "Remote folder: %s" % cwd
 # query attempt
+#        print "Remote folder: [%s]" % cwd
+#        print "asset filter: [%s]" % asset_filter
 
         pagination_complete = False
         show_header = True
 
         while pagination_complete is False:
-
             pagination_footer = None
 
-# FIXME - something like "ls -al" will give an ugly stack trace
-# would prefer a message like "bad syntax - run help ls for assistance" 
-            if asset_filter is not None:
-                reply = self.mf_client.run("www.list", [("namespace", cwd), ("page", page), ("size", size), ("filter", asset_filter)])
-            else:
-                reply = self.mf_client.run("www.list", [("namespace", cwd), ("page", page), ("size", size)])
+            try:
+                if asset_filter is not None:
+#                   reply = self.mf_client.run("www.list", [("namespace", cwd), ("page", page), ("size", size), ("filter", asset_filter)])
+                    print "====================="
+                    reply = self.mf_client._xml_aterm_run("www.list :namespace %s :page %s :size %s :filter %s" % (cwd, page, size, asset_filter))
+                    print "====================="
+                else:
+#                   reply = self.mf_client.run("www.list", [("namespace", cwd), ("page", page), ("size", size)])
+                    reply = self.mf_client._xml_aterm_run("www.list :namespace %s :page %s :size %s" % (cwd, page, size))
+
+# trap things like "ls -al" and "ls'" - which will give an ugly stack trace
+            except Exception as e:
+                self.mf_client.log("ERROR", "Bad command syntax.")
+                return
 
             for elem in reply.iter('parent'):
                 for child in elem:
@@ -523,6 +538,8 @@ class parser(cmd.Cmd):
                         asset_filter = response[1:]
                         if len(asset_filter) == 0:
                             asset_filter = None
+                        else:
+                            asset_filter = self.escape_single_quotes(asset_filter)
                         show_header = True
                         page = 1
                     else:
@@ -1034,7 +1051,8 @@ class parser(cmd.Cmd):
     def do_mkdir(self, line):
         ns_target = self.absolute_remote_filepath(line)
         try:
-            self.mf_client.run("asset.namespace.create", [("namespace", ns_target)])
+#            self.mf_client.run("asset.namespace.create", [("namespace", ns_target)])
+            self.mf_client._xml_aterm_run('asset.namespace.create :namespace %s' % ns_target)
         except Exception as e:
 # don't raise an exception if the namespace already exists - just warn
             if "already exists" in str(e):
@@ -1160,6 +1178,16 @@ class parser(cmd.Cmd):
 #         reply = self.mf_client._xml_aterm_run("secure.shell.execute :command ls :host magnus.pawsey.org.au :private-key < :name sean :key \"%s\" >" % pkey)
 #         self.mf_client.xml_print(reply)
 
+# --- helper
+    def delegate_actor_expiry(self, name):
+# NB: can't specify the actor as that requires blanket admin perms ...
+        result = self.mf_client._xml_aterm_run("secure.identity.token.describe")
+        elem = result.find(".//identity/[actor='%s']/validity/to" % name)
+        if elem is not None:
+            return elem.text
+
+        return "unknown"
+
 # --- 
     def help_whoami(self):
         print "\nReport the current authenticated user or delegate and associated roles\n"
@@ -1167,13 +1195,18 @@ class parser(cmd.Cmd):
 
     def do_whoami(self, line):
         try:
-            result = self.mf_client.run("actor.self.describe")
+#            result = self.mf_client.run("actor.self.describe")
+            result = self.mf_client._xml_aterm_run("actor.self.describe")
             for elem in result.iter('actor'):
                 name = elem.attrib['name']
                 if ":" in name:
                     print "actor = %s" % name
                 else:
-                    print "actor = delegate"
+                    expiry = self.delegate_actor_expiry(name)
+                    print "actor = delegate (expiry %s)" % expiry
+
+# TODO - if delegate - can do secure.identity.token.describe 
+# and extract the ctime = and validity information to report create/expiry dates
             for elem in result.iter('role'):
                 print "  role = %s" % elem.text
         except:
@@ -1247,8 +1280,8 @@ class parser(cmd.Cmd):
             if line == "off":
                 try:
 #                     self.mf_client.run("secure.identity.token.destroy.all")
-# wtf arcitecta - we just rename these things on a whim?
-                    self.mf_client.run("secure.identity.token.all.destroy")
+# NB: mediaflux version changed the API at some point
+                    self.mf_client._xml_aterm_run("secure.identity.token.all.destroy")
                     print "Delegate credentials removed."
                 except:
                     print "No delegate credentials found."
@@ -1272,7 +1305,7 @@ class parser(cmd.Cmd):
         print "Delegating until: " + expiry
 # query current authenticated identity
         try:
-            result = self.mf_client.run("actor.self.describe")
+            result = self.mf_client._xml_aterm_run("actor.self.describe")
             for elem in result.iter():
                 if elem.tag == 'actor':
                     actor = elem.attrib.get('name', elem.text)
