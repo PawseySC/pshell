@@ -186,42 +186,6 @@ class mf_client:
         return tree
 
 #------------------------------------------------------------
-# TODO - revisit this - can use a file descriptor as input (rather than data from memory) so can cope with large files
-# TODO - can you control the buffer/chunked file reading?
-    def _post_multipart(self, xml, filepath):
-        """
-        Primitive file upload method - NOTE - please use post_multipart_buffered instead
-        Sends a multipart POST to the server; consisting of the initial XML and a single attached file
-        """
-# helper
-        def escape_quote(s):
-            return s.replace('"', '\\"')
-
-        boundary = ''.join(random.choice(string.digits + string.ascii_letters) for i in range(30))
-        lines = []
-
-# service call part (is the name meaningfull to mediaflux?)
-        lines.extend(( '--{0}'.format(boundary), 'Content-Disposition: form-data; name="request"', '', str(xml),))
-
-        filename = os.path.basename(filepath)
-        mimetype = mimetypes.guess_type(filepath) or 'application/octet-stream'
-
-        f = open(filepath,'rb')
-        content = f.read()
-
-# file data part (are the name, filename values meaningful to mediaflux?)
-# actual filename will be the relevant part in the xml string representing the asset.create service call
-        lines.extend(( '--{0}'.format(boundary), 'Content-Disposition: form-data; name="request"; filename="{0}"'.format(escape_quote(filename)), 'Content-Type: {0}'.format(mimetype), '', content, ))
-        lines.extend(( '--{0}--'.format(boundary), '',))
-
-        body = '\r\n'.join(lines)
-        headers = { 'Content-Type': 'multipart/form-data; boundary={0}'.format(boundary), 'Content-Length': str(len(body)), } 
-
-        request = urllib2.Request(self.post_url, data=body, headers=headers)
-        r = urllib2.urlopen(request, timeout=self.timeout)
-        return r.read()
-
-#------------------------------------------------------------
     def _post_multipart_buffered(self, xml, filepath):
         """
         Primitive for doing buffered upload on a single file. Used by the put() method
@@ -421,13 +385,16 @@ class mf_client:
         match = re.match('^\S+', xml_condensed)
         if match:
             element = match.group(0)
-            start = start_data = match.end()
+            start = match.end()
         else:
             raise Exception("Missing element name in: [%s]" % xml_condensed)
 
-        qcount = dqcount = 0
+        qcount = 0
+        dqcount = 0
         length = len(xml_condensed)
-        start_attrib = start_value = 0
+        start_attrib = 0
+        start_value = 0
+        start_data = start
         xml = "<%s" % element
 
         try:
@@ -468,6 +435,7 @@ class mf_client:
                 xml += '="%s"></%s>' % (value.strip('"'), element)
             else:
                 text = xml_condensed[start_data+1:]
+#                print "text1 = [%s]" % text
                 text = text.strip('"')
                 text = self._xml_sanitise(text)
 #                print "text = [%s]" % text
@@ -482,49 +450,9 @@ class mf_client:
         return xml
 
 #------------------------------------------------------------
-    def _xml_request(self, service_call, arguments):
+    def aterm_run(self, aterm_line, post=True):
         """ 
-        Helper method for constructing the XML request to send to the Mediaflux server
-
-        Args:
-            service_call: a STRING representing the Mediaflux service call to run on the server
-               arguments: a LIST of STRING pairs (name, value) representing the service call's arguments
-                          Note that attributes should currently be embedded in the name string
-
-        Returns:
-            A STRING containing the XML, suitable for sending via post() to the Mediaflux server
-        """
-# special case for logon
-        if service_call == "system.logon":
-            xml = '<request><service name="%s"><args>' % service_call
-            tail = '</args></service></request>'
-            logon = True
-        else:
-            xml = '<request><service name="service.execute" session="%s"><args><service name="%s">' % (self.session, service_call)
-            tail = '</service></args></service></request>'
-            logon = False
-
-# add argument dictionary items
-        for key, value in arguments:
-# strip any attributes for terminating tag
-            key_element = key.split(" ")[0]
-            value = self._xml_sanitise(value)
-            xml += "<{0}>{1}</{2}>".format(key, value, key_element)
-# complete the xml
-        xml += tail
-
-# FIXME - very noisy - make it debug level 2?
-# don't print a logon XML post -> it might contain a password
-        if not logon:
-            tmp = re.sub(r'session=[^>]*', 'session="..."', xml)
-            self.log("DEBUG", "XML: %s" % tmp)
-
-        return xml
-
-#------------------------------------------------------------
-    def _xml_aterm_run(self, aterm_line, post=True):
-        """ 
-        Method for serializing aterm's compressed XML syntax and sending to the Mediaflux server 
+        Method for parsing aterm's compressed XML syntax and sending to the Mediaflux server 
 
         Args:
              aterm_line: raw input text that is assumed to be in aterm syntax
@@ -554,13 +482,14 @@ class mf_client:
 # process the compressed XML
         try:
             for i in range(argument_start, length):
-
 # if any quoted string flags are active - skip any further processing
-                if aterm_line[i] == "'":
-                    if qcount:
-                        qcount=0
-                    else:
-                        qcount=1
+#                if aterm_line[i] == "'":
+#                    if qcount:
+#                        qcount=0
+#                    else:
+#                        qcount=1
+# NEW - only " allowed as a special to pass in literal strings - prevents strings like "blah's ... " from NEVER ending due to the '
+# I think this is ok, as " seems to be the standard literal character for aterm commands
                 if aterm_line[i] == '"':
                     if dqcount:
                         dqcount=0
@@ -571,6 +500,7 @@ class mf_client:
 
 # Arcitecta's shorthand root element start
                 if (aterm_line[i] == ':' and aterm_line[i-1] == ' '):
+# FIXME - bug here -> sometimes more than one expanded element will get passed
                     chunk = self._xml_expand(aterm_line[start+1:i-1])
                     start = i
 
@@ -658,13 +588,6 @@ class mf_client:
         return text
 
 #------------------------------------------------------------
-    def _xml_to_string(self, xml_tree):
-        """
-        Helper method for converting XML to a formatted string 
-        """
-        return self._xml_recurse(xml_tree)
-
-#------------------------------------------------------------
     def xml_print(self, xml_tree, trim=True):
         """
         Helper method for displaying XML nicely, as much as is possible
@@ -737,7 +660,7 @@ class mf_client:
         """
         Destroy the current session (NB: delegate can auto-create a new session if available)
         """
-        self._xml_aterm_run("system.logoff")
+        self.aterm_run("system.logoff")
         self.session=""
 
 #------------------------------------------------------------
@@ -759,25 +682,17 @@ class mf_client:
             else:
                 self.log("DEBUG", "Permitting unencrypted login; I hope you know what you're doing.")
 
-        if token is not None:
-            reply = self._xml_aterm_run("system.logon :token %s" % token)
-        else:
-            reply = self._xml_aterm_run("system.logon :domain %s :user %s :password %s" % (domain, user, password))
-
 # attempt token authentication first (if supplied)
-#        if token is not None:
-#            xml = self._xml_request("system.logon", [("token", token)])
-#            print "hello"
-#        else:
-#            xml = self._xml_request("system.logon", [("domain", domain), ("user", user), ("password", password)])
-#
-#        reply = self._post(xml)
+        if token is not None:
+            reply = self.aterm_run("system.logon :token %s" % token)
+        else:
+            reply = self.aterm_run("system.logon :domain %s :user %s :password %s" % (domain, user, password))
 
-# TODO - replace with a single xpath lookup (see  pshell.py: delegate_actor_expiry())
-        for elem in reply.iter():
-            if elem.tag == 'session':
-                self.session=elem.text
-                return
+# extract session key
+        elem = reply.find(".//session")
+        if elem is not None:
+            self.session=elem.text
+            return
 
         raise Exception("Login failed")
 
@@ -790,7 +705,7 @@ class mf_client:
              A BOOLEAN value depending on the current authentication status of the Mediaflux connection
         """
         try:
-            result = self._xml_aterm_run("actor.self.describe")
+            result = self.aterm_run("actor.self.describe")
             return True
         except Exception as e:
             self.session = ""
@@ -804,15 +719,12 @@ class mf_client:
         """
         Wrapper around the generic service call mechanism (for testing namespace existence) that parses the result XML and returns a BOOLEAN
         """
-# NB: this service call requires different escaping compared to an asset.query
-        namespace = namespace.replace("'", "\'")
-        xml = self._xml_request("asset.namespace.exists", [("namespace", namespace)])
-        reply = self._post(xml)
+        reply = self.aterm_run('asset.namespace.exists :namespace "%s"' % namespace)
+        elem = reply.find(".//exists")
+        if elem is not None:
+            if elem.text == "true":
+                return True
 
-        for elem in reply.iter():
-            if elem.tag == "exists":
-                if elem.text == "true":
-                    return True
         return False
 
 #------------------------------------------------------------
@@ -835,7 +747,7 @@ class mf_client:
         namespace = None
 
 # find root project namespace
-        result = self._xml_aterm_run("asset.get :id %r :xpath namespace" % asset_id)
+        result = self.aterm_run("asset.get :id %r :xpath namespace" % asset_id)
 
         elem = self.xml_find(result, "value")
         if elem is not None:
@@ -850,7 +762,7 @@ class mf_client:
 
 # get project token
 #        result = self.run("asset.namespace.application.settings.get", [("namespace", namespace), ("app", app)])
-        result = self._xml_aterm_run("asset.namespace.application.settings.get :namespace %s :app %s" % (namespace, app))
+        result = self.aterm_run("asset.namespace.application.settings.get :namespace %s :app %s" % (namespace, app))
 
         elem = self.xml_find(result, tag)
         if elem is not None:
@@ -874,27 +786,6 @@ class mf_client:
                 current = zlib.crc32(buffer, current)
         fd.close()
         return (current & 0xFFFFFFFF)
-
-#------------------------------------------------------------
-# TODO - replace completely with xml_aterm_run() 
-    def run(self, service_call, argument_tuple_list=[]):
-        """
-        Generic mechanism for executing a service call on the current Mediaflux server
-
-        Args:
-                   service_call: a STRING representing the named service call
-            argument_tuple_list: a LIST of STRING pairs (name, value) supplying the service call arguments
-                                 If attributes are required, they must be embedded in the name string
-
-        Returns:
-            The XML document response from the Mediaflux server
-
-        Raises:
-            An error on failure
-        """
-        xml = self._xml_request(service_call, argument_tuple_list)
-        reply = self._post(xml)
-        return reply
 
 #------------------------------------------------------------
     def get(self, asset_id, filepath, overwrite=False):
@@ -992,7 +883,7 @@ class mf_client:
         asset_id = -1
 # query the remote server for file details (if any)
         try:
-            result = self._xml_aterm_run('asset.get :id "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
+            result = self.aterm_run('asset.get :id "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
         except Exception as e:
             self.log("DEBUG", "Not found - creating: [%s]" % remotepath)
             xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.set">' % self.session

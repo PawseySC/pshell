@@ -96,8 +96,7 @@ class parser(cmd.Cmd):
 #         print "cn: target_ns: [%s]" % target_ns
 
 # generate listing in target namespace for completion matches
-#        result = self.mf_client.run("asset.namespace.list", [("namespace", target_ns)])
-        result = self.mf_client._xml_aterm_run("asset.namespace.list :namespace %s" % target_ns)
+        result = self.mf_client.aterm_run("asset.namespace.list :namespace %s" % target_ns)
 
         ns_list = []
         for elem in result.iter('namespace'):
@@ -146,11 +145,9 @@ class parser(cmd.Cmd):
 #        self.mf_client.debug = True
 
         if pattern is not None:
-#            result = self.mf_client.run("asset.query", [("where", "namespace='%s' and name='%s*'" % (target_ns, pattern)), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
-            result = self.mf_client._xml_aterm_run("asset.query :where \"namespace='%s' and name ='%s*'\" :action get-values :xpath -ename name name" % (target_ns, pattern))
+            result = self.mf_client.aterm_run("asset.query :where \"namespace='%s' and name ='%s*'\" :action get-values :xpath -ename name name" % (target_ns, pattern))
         else:
-#            result = self.mf_client.run("asset.query", [("where", "namespace='%s'" % target_ns), ("action", "get-values"), ("xpath ename=\"name\"", "name") ])
-            result = self.mf_client._xml_aterm_run("asset.query :where \"namespace='%s'\" :action get-values :xpath -ename name name" % target_ns)
+            result = self.mf_client.aterm_run("asset.query :where \"namespace='%s'\" :action get-values :xpath -ename name name" % target_ns)
 
 #         self.mf_client.xml_print(result)
 
@@ -233,7 +230,7 @@ class parser(cmd.Cmd):
 # ---
     def default(self, line):
 # unrecognized - assume it's an aterm command
-        reply = self.mf_client._xml_aterm_run(line)
+        reply = self.mf_client.aterm_run(line)
         self.mf_client.xml_print(reply)
         return
 
@@ -311,8 +308,7 @@ class parser(cmd.Cmd):
         if len(pattern) == 0:
             pattern = "*"
 
-#        result = self.mf_client.run("asset.namespace.list", [("namespace", namespace)])
-        result = self.mf_client._xml_aterm_run("asset.namespace.list :namespace %s" % namespace)
+        result = self.mf_client.aterm_run("asset.namespace.list :namespace %s" % namespace)
 
         for elem in result.iter('namespace'):
             if elem.text is not None:
@@ -329,8 +325,7 @@ class parser(cmd.Cmd):
         print "Usage: file <filename>\n"
 
     def do_file(self, line):
-#        result = self.mf_client.run("asset.get", [("id", "path=%s" % self.absolute_remote_filepath(line))]) 
-        result = self.mf_client._xml_aterm_run("asset.get :id \"path=%s\"" % self.absolute_remote_filepath(line))
+        result = self.mf_client.aterm_run("asset.get :id \"path=%s\"" % self.absolute_remote_filepath(line))
 
         self.mf_client.xml_print(result)
 
@@ -438,7 +433,7 @@ class parser(cmd.Cmd):
                 cwd = self.escape_single_quotes(posixpath.dirname(cwd))
 
 # query attempt
-#        print "Remote folder: [%s]" % cwd
+        print "Remote folder: [%s]" % cwd
 #        print "asset filter: [%s]" % asset_filter
 
         pagination_complete = False
@@ -449,17 +444,14 @@ class parser(cmd.Cmd):
 
             try:
                 if asset_filter is not None:
-#                   reply = self.mf_client.run("www.list", [("namespace", cwd), ("page", page), ("size", size), ("filter", asset_filter)])
-                    print "====================="
-                    reply = self.mf_client._xml_aterm_run("www.list :namespace %s :page %s :size %s :filter %s" % (cwd, page, size, asset_filter))
-                    print "====================="
+                    reply = self.mf_client.aterm_run('www.list :namespace "%s" :page %s :size %s :filter %s' % (cwd, page, size, asset_filter))
                 else:
-#                   reply = self.mf_client.run("www.list", [("namespace", cwd), ("page", page), ("size", size)])
-                    reply = self.mf_client._xml_aterm_run("www.list :namespace %s :page %s :size %s" % (cwd, page, size))
+                    reply = self.mf_client.aterm_run('www.list :namespace "%s" :page %s :size %s' % (cwd, page, size))
 
 # trap things like "ls -al" and "ls'" - which will give an ugly stack trace
             except Exception as e:
                 self.mf_client.log("ERROR", "Bad command syntax.")
+                print str(e)
                 return
 
             for elem in reply.iter('parent'):
@@ -491,9 +483,14 @@ class parser(cmd.Cmd):
                     if child.tag == "name":
                             print "[Folder] %s" % child.text
 # for each asset
+#            self.mf_client.xml_print(reply)
+
             for elem in reply.iter('asset'):
-                state = "?"
                 asset_id = "?"
+                filestate = "unknown   |"
+                filesize = self.human_size(0)
+                filename = "?"
+
                 for child in elem:
 # NEW - can't really avoid ID interaction in the long run I think ...
                     if child.tag == "id":
@@ -501,18 +498,16 @@ class parser(cmd.Cmd):
                     if child.tag == "name":
                         filename = child.text
                     if child.tag == "size":
-                        filesize = child.text
-# FIXME - size overwrites the size for the www.list argument ...
-# hmmm, asset with no content ... 
-                        if filesize is None:
-                            filesize = 0
+                        if child.text is not None:
+                            filesize = self.human_size(int(child.text))
                     if child.tag == "state":
-                        if "online" in child.text:
-                            filestate = "online    |"
-                        else:
-                            filestate = "%-9s |" % child.text
+                        if child.text is not None:
+                            if "online" in child.text:
+                                filestate = "online    |"
+                            else:
+                                filestate = "%-9s |" % child.text
 # file item
-                print " %-10s | %s %s | %s" % (asset_id, filestate, self.human_size(int(filesize)), filename)
+                print " %-10s | %s %s | %s" % (asset_id, filestate, filesize, filename)
 
 # if no pagination is required - we're done, unless a filter is active
             if canonical_last == 1 and asset_filter is None:
@@ -555,8 +550,7 @@ class parser(cmd.Cmd):
 
         count_files = 0
         count_bytes = 0
-#        result = self.mf_client.run("asset.content.status.statistics", [("where", base_query)])
-        result = self.mf_client._xml_aterm_run('asset.content.status.statistics :where "%s"' % base_query)
+        result = self.mf_client.aterm_run('asset.content.status.statistics :where "%s"' % base_query)
 
         for elem in result.iter("statistics"):
             state = elem.attrib.get('state', elem.text)
@@ -587,9 +581,7 @@ class parser(cmd.Cmd):
         online = dict()
         list_local_path = {}
 
-#        query = [("where", base_query + " and content online"),("as","iterator"),("action","get-values"),("xpath ename=\"id\"","id"),("xpath ename=\"namespace\"","namespace"),("xpath ename=\"filename\"","name")]
-#        result = self.mf_client.run("asset.query", query)
-        result = self.mf_client._xml_aterm_run('asset.query :where "%s and content online" :as iterator :action get-values :xpath -ename id id :xpath -ename namespace namespace :xpath -ename filename name"' % base_query)
+        result = self.mf_client.aterm_run('asset.query :where "%s and content online" :as iterator :action get-values :xpath -ename id id :xpath -ename namespace namespace :xpath -ename filename name"' % base_query)
 #        self.mf_client.xml_print(result)
 
         elem = self.mf_client.xml_find(result, "iterator")
@@ -600,8 +592,7 @@ class parser(cmd.Cmd):
         while iterate:
             self.mf_client.log("DEBUG", "Online iterator chunk")
 # get file list for this sub-set
-#            result = self.mf_client.run("asset.query.iterate", [("id", iterator), ("size", iterate_size)])
-            result = self.mf_client._xml_aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
+            result = self.mf_client.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
 
             for elem in result.iter("asset"):
                 asset_id = None
@@ -616,7 +607,6 @@ class parser(cmd.Cmd):
                         namespace = child.text
 # remote = *nix , local = windows or *nix
 # NEW - the relative path should be computed from the starting namespace 
-#                        remote_relpath = posixpath.relpath(path=namespace, start=self.cwd)
                         remote_relpath = posixpath.relpath(path=namespace, start=base_namespace)
                         relpath_list = remote_relpath.split("/")
                         local_relpath = os.sep.join(relpath_list)
@@ -695,7 +685,7 @@ class parser(cmd.Cmd):
                     xml_command += ' > >'
 # DEBUG
 #                print "import_metadata(): [%s]" % xml_command
-                reply = self.mf_client._xml_aterm_run(xml_command)
+                reply = self.mf_client.aterm_run(xml_command)
 
         except Exception as e:
             self.mf_client.log("WARNING", "Metadata population failed: %s" % str(e))
@@ -872,7 +862,7 @@ class parser(cmd.Cmd):
             user_msg += ", migrating files=%d, please be patient ...  " % unavailable_files
 # recall all offline files 
             xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" >' % base_query
-            self.mf_client._xml_aterm_run(xml_command)
+            self.mf_client.aterm_run(xml_command)
         else:
             user_msg += ", transferring ...  "
 
@@ -1055,7 +1045,7 @@ class parser(cmd.Cmd):
         ns_target = self.absolute_remote_filepath(line)
         try:
 #            self.mf_client.run("asset.namespace.create", [("namespace", ns_target)])
-            self.mf_client._xml_aterm_run('asset.namespace.create :namespace %s' % ns_target)
+            self.mf_client.aterm_run('asset.namespace.create :namespace %s' % ns_target)
         except Exception as e:
 # don't raise an exception if the namespace already exists - just warn
             if "already exists" in str(e):
@@ -1080,7 +1070,7 @@ class parser(cmd.Cmd):
 
 # count
         try:
-            result = self.mf_client._xml_aterm_run("asset.query :where %s :action count" % base_query)
+            result = self.mf_client.aterm_run("asset.query :where %s :action count" % base_query)
         except Exception as e:
             print str(e)
             return
@@ -1095,7 +1085,7 @@ class parser(cmd.Cmd):
                     print "No match"
                     return
                 if self.ask("Remove %d files: (y/n) " % count):
-                    self.mf_client._xml_aterm_run("asset.query :where %s :action pipe :service -name asset.destroy" % base_query)
+                    self.mf_client.aterm_run("asset.query :where %s :action pipe :service -name asset.destroy" % base_query)
                 else:
                     print "Aborted"
                 return
@@ -1110,7 +1100,7 @@ class parser(cmd.Cmd):
         ns_target = self.absolute_remote_filepath(line)
         if self.ask("Remove folder: %s (y/n) " % ns_target):
 #            self.mf_client.run("asset.namespace.destroy", [("namespace", ns_target)])
-            self.mf_client._xml_aterm_run("asset.namespace.destroy :namespace %s" % ns_target)
+            self.mf_client.aterm_run("asset.namespace.destroy :namespace %s" % ns_target)
         else:
             print "Aborted"
 
@@ -1179,13 +1169,13 @@ class parser(cmd.Cmd):
 # --- working example of PKI via mediaflux
 #     def do_mls(self, line):
 #         pkey = open('/Users/sean/.ssh/id_rsa', 'r').read()
-#         reply = self.mf_client._xml_aterm_run("secure.shell.execute :command ls :host magnus.pawsey.org.au :private-key < :name sean :key \"%s\" >" % pkey)
+#         reply = self.mf_client.aterm_run("secure.shell.execute :command ls :host magnus.pawsey.org.au :private-key < :name sean :key \"%s\" >" % pkey)
 #         self.mf_client.xml_print(reply)
 
 # --- helper
     def delegate_actor_expiry(self, name):
 # NB: can't specify the actor as that requires blanket admin perms ...
-        result = self.mf_client._xml_aterm_run("secure.identity.token.describe")
+        result = self.mf_client.aterm_run("secure.identity.token.describe")
         elem = result.find(".//identity/[actor='%s']/validity/to" % name)
         if elem is not None:
             return elem.text
@@ -1199,8 +1189,7 @@ class parser(cmd.Cmd):
 
     def do_whoami(self, line):
         try:
-#            result = self.mf_client.run("actor.self.describe")
-            result = self.mf_client._xml_aterm_run("actor.self.describe")
+            result = self.mf_client.aterm_run("actor.self.describe")
             for elem in result.iter('actor'):
                 name = elem.attrib['name']
                 if ":" in name:
@@ -1285,7 +1274,7 @@ class parser(cmd.Cmd):
                 try:
 #                     self.mf_client.run("secure.identity.token.destroy.all")
 # NB: mediaflux version changed the API at some point
-                    self.mf_client._xml_aterm_run("secure.identity.token.all.destroy")
+                    self.mf_client.aterm_run("secure.identity.token.all.destroy")
                     print "Delegate credentials removed."
                 except:
                     print "No delegate credentials found."
@@ -1309,7 +1298,7 @@ class parser(cmd.Cmd):
         print "Delegating until: " + expiry
 # query current authenticated identity
         try:
-            result = self.mf_client._xml_aterm_run("actor.self.describe")
+            result = self.mf_client.aterm_run("actor.self.describe")
             for elem in result.iter():
                 if elem.tag == 'actor':
                     actor = elem.attrib.get('name', elem.text)
@@ -1320,8 +1309,7 @@ class parser(cmd.Cmd):
             raise Exception("Failed to get valid identity")
 
 # create secure token (delegate) and assign current authenticated identity to the token
-#        result = self.mf_client.run("secure.identity.token.create", [ ("to", expiry), ("role type=\"user\"", actor), ("role type=\"domain\"", domain), ("min-token-length", 16) ])
-        result = self.mf_client._xml_aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16' % (expiry, actor, domain))
+        result = self.mf_client.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16' % (expiry, actor, domain))
 
         for elem in result.iter():
             if elem.tag == 'token':
@@ -1337,12 +1325,7 @@ class parser(cmd.Cmd):
         remote_files = set()
         prefix = len(remote_namespace)
 
-#        base_query = "namespace >='%s'" % remote_namespace
-#        query = [("where", base_query),("as","iterator"),("action","get-path")]
-#        result = self.mf_client.run("asset.query", query)
-
-        result = self.mf_client._xml_aterm_run("asset.query :where \"namespace>='%s'\" :as iterator :action get-path" % remote_namespace)
-
+        result = self.mf_client.aterm_run("asset.query :where \"namespace>='%s'\" :as iterator :action get-path" % remote_namespace)
 
         elem = self.mf_client.xml_find(result, "iterator")
         iterator = elem.text
@@ -1351,8 +1334,7 @@ class parser(cmd.Cmd):
         while iterate:
             self.mf_client.log("DEBUG", "Remote iterator chunk")
 # get file list for this sub-set
-#            result = self.mf_client.run("asset.query.iterate", [("id", iterator), ("size", iterate_size)])
-            result = self.mf_client._xml_aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
+            result = self.mf_client.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
 
             for elem in result.iter("path"):
                 relpath = elem.text[prefix+1:]

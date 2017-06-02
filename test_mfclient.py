@@ -15,41 +15,6 @@ import ConfigParser
 # global mfclient instance to avoid logging in for every single test
 mf_client = None
 
-##################
-# service call API
-##################
-class mfclient_service_calls(unittest.TestCase):
-
-    def setUp(self):
-        global mf_client
-        self.mf_client = mf_client
-
-# basic execution of a mediaflux service call with no arguments or attributes
-    def test_no_arguments(self):
-        result = self.mf_client.run("actor.self.describe")
-        found = False
-        for elem in result.iter():
-            if elem.tag == "actor":
-                found = True
-        self.assertTrue(found, "Expected to get <actor> element back from actor.self.describe")
-
-# mediaflux service call with argument 
-    def test_with_argument(self):
-        result = self.mf_client.run("asset.namespace.exists", [("namespace", "/mflux")])
-        for elem in result.iter():
-            if elem.tag == "exists":
-                self.assertEqual(elem.text, "true", "Expected directory /mflux to exist on server")
-
-# service call with arguments and attribute
-    def test_arguments_attributes(self):
-        result = self.mf_client.run("asset.query", [ ("where", "namespace>='/mflux'"), ("size", "1"), ("action", "get-values"), ("xpath ename=\"code\"", "id") ])
-        found = False
-        for elem in result.iter():
-            if elem.tag == "code":
-                found = True
-        self.assertTrue(found, "Expected to get <code> element back from asset.query results")
-
-
 ################
 # authentication 
 ################
@@ -75,122 +40,14 @@ class mfclient_authentication(unittest.TestCase):
         except Exception as e:
             pass
 
-
-################################
-# handling of special characters
-################################
-class mfclient_special_characters(unittest.TestCase):
+################
+# special functionality 
+################
+class mfclient_calls(unittest.TestCase):
 
     def setUp(self):
         global mf_client
         self.mf_client = mf_client
-
-# namespace (folder) tests
-    def test_sanitise_namespace(self):
-        global namespace
-
-        c = "_^#%-&{}<>[]()*? $!`\":;,.@+`|=~1234567890\\"
-        tmp_name = 'namespace' + c
-        tmp_remote = posixpath.join(namespace, tmp_name)
-        self.mf_client.run("asset.namespace.create", [("namespace", tmp_remote)])
-# assert verified creation
-        self.assertTrue(self.mf_client.namespace_exists(tmp_remote), "Failed to create [%s] on server" % tmp_remote)
-        self.mf_client.run("asset.namespace.destroy", [("namespace", tmp_remote)])
-# assert verified destroy
-        self.assertFalse(self.mf_client.namespace_exists(tmp_remote), "Failed to destroy [%s] on server" % tmp_remote)
-
-# asset (filename) tests
-    def test_sanitise_assets(self):
-        global namespace
-
-        c = "_^#%-&{}<>[]()*? $!`\":;,.@+`|=~1234567890\\"
-        tmp_name = 'asset' + c
-        tmp_remote = posixpath.join(namespace, tmp_name)
-        self.mf_client.run("asset.create", [("namespace", namespace), ("name", tmp_name)])
-        xml_tree = self.mf_client.run("asset.exists", [("id", "path=%s"%tmp_remote)])
-        result = self.mf_client.xml_find(xml_tree, "exists")
-# assert verified creation
-        self.assertEqual(result.text, "true", "Failed to test existance of [%s] on server" % tmp_remote)
-        self.mf_client.run("asset.destroy", [("id", "path=%s"%tmp_remote)])
-        xml_tree = self.mf_client.run("asset.exists", [("id", "path=%s"%tmp_remote)])
-        result = self.mf_client.xml_find(xml_tree, "exists")
-# assert verified destroy
-        self.assertEqual(result.text, "false", "Failed to cleanup of [%s] on server" % tmp_remote)
-
-
-################
-# data transfers
-################
-class mfclient_transfers(unittest.TestCase):
-
-    def setUp(self):
-        global mf_client
-        self.mf_client = mf_client
-
-# NOTE: this test will fail if you auth as system manager - which has root permissions
-    def test_put_no_permission(self):
-        tmp_remote = "/www"
-# local upload
-        src_filepath = os.path.realpath(__file__) 
-        try:
-            asset_id = self.mf_client.put(tmp_remote, src_filepath)
-            raise Exception("Expected no permission put() to fail!")
-        except Exception as e:
-            pass
-
-    def test_put_no_overwrite(self):
-        global namespace
-        tmp_remote = namespace + "/tmp"
-# remote setup
-        self.assertFalse(self.mf_client.namespace_exists(tmp_remote), "Temporary namespace already exists on server")
-        self.mf_client.run("asset.namespace.create", [("namespace", tmp_remote)])
-# local upload
-        src_filepath = os.path.realpath(__file__) 
-        asset_id = self.mf_client.put(tmp_remote, src_filepath, overwrite=False)
-# failure test
-        try:
-            asset_id = self.mf_client.put(tmp_remote, src_filepath, overwrite=False)
-            raise Exception("FAIL: put() should not overwrite!")
-        except Exception as e:
-            pass
-# cleanup
-        self.mf_client.run("asset.destroy", [("id", asset_id)])
-        self.mf_client.run("asset.namespace.destroy", [("namespace", tmp_remote)])
-
-# TEST - upload this script (we know it exists) then download and compare
-    def test_put_checksum(self):
-        global namespace
-        tmp_local = "/tmp"
-        tmp_remote = namespace + "/tmp"
-# remote setup
-        self.assertFalse(self.mf_client.namespace_exists(tmp_remote), "Please remove temporary namespace: %s" % tmp_remote)
-        self.mf_client.run("asset.namespace.create", [("namespace", tmp_remote)])
-# local setup
-        self.assertTrue(os.path.isdir(tmp_local), "Need a temporary local directory for testing transfers")
-        src_filepath = os.path.realpath(__file__) 
-# compute local checksums
-        local_csum = self.mf_client.get_local_checksum(__file__)
-
-        self.assertTrue(os.path.isfile(src_filepath), "Need a local file for testing transfers")
-        dest_filepath = os.path.join(tmp_local, os.path.basename(src_filepath))
-        self.assertFalse(os.path.isfile(dest_filepath), "Please remove local copy: %s" % dest_filepath)
-# upload file 
-        asset_id = self.mf_client.put(tmp_remote, src_filepath)
-
-# download file
-        self.mf_client.get(int(asset_id), dest_filepath)
-        self.assertTrue(os.path.isfile(dest_filepath), "get failed")
-# compute/retrieve checksums
-        result = self.mf_client.run("asset.get", [("id", asset_id), ("xpath", "content/csum") ])
-        elem = self.mf_client.xml_find(result, "value")
-        remote_csum = elem.text
-
-# assert checksums are identical
-        self.assertEqual(int(local_csum), int(remote_csum, 16), "Source file crc32 (%r) does not match after transfers (%r)" % (local_csum, remote_csum))
-# cleanup
-        self.mf_client.run("asset.destroy", [("id", asset_id)])
-        self.mf_client.run("asset.namespace.destroy", [("namespace", tmp_remote)])
-        os.remove(dest_filepath)
 
 # TEST - retrieve wget'able URL from the server for a single asset
     def test_wget_url(self):
@@ -203,40 +60,14 @@ class mfclient_transfers(unittest.TestCase):
         code = req.getcode()
         self.assertEqual(code, 200, "Did not receive OK from server")
 
-############
-# fixed bugs
-############
-class mfclient_fixes(unittest.TestCase):
-
-    def setUp(self):
-        global mf_client
-        self.mf_client = mf_client
-
-    def test_mimetype_guess(self):
-        global namespace
-        local_filepath = os.path.realpath(__file__) 
-# make a copy of this script and give it an extension that will result in more than one tuple returned for mimetype guess
-        local_gzip = os.path.join(os.path.dirname(local_filepath), "test.jpg.gz")
-        shutil.copyfile(local_filepath, local_gzip)
-# trigger exception if mimetype guess fails
-        asset_id = self.mf_client.put(namespace, local_gzip)
-# cleanup
-        self.mf_client.run("asset.destroy", [("id", asset_id)])
-        os.remove(local_gzip)
-
-# make a copy of this script and give it an extension that will result in None for mimetype guess
-        local_none = os.path.join(os.path.dirname(local_filepath), "test.x1")
-        shutil.copyfile(local_filepath, local_none)
-# trigger exception if mimetype guess fails
-        asset_id = self.mf_client.put(namespace, local_none)
-# cleanup
-        self.mf_client.run("asset.destroy", [("id", asset_id)])
-        os.remove(local_none)
-
+    def test_namespace_exist(self):
+        self.assertEqual(self.mf_client.namespace_exists("/projects/Data Team"), True)
+        self.assertEqual(self.mf_client.namespace_exists("/idon'texist"), False)
 
 ################################################
 # serverless aterm style XML serialisation tests
 ################################################
+# a lot of these don't require a MF login/server -> the way of the future for tests??? 
 class mfclient_aterm_syntax(unittest.TestCase):
 
     def setUp(self):
@@ -245,52 +76,89 @@ class mfclient_aterm_syntax(unittest.TestCase):
 
     def test_aterm_asset_get(self):
         line = 'asset.get :id 123 :format extended'
-        reply = self.mf_client._xml_aterm_run(line, post=False)
+        reply = self.mf_client.aterm_run(line, post=False)
         self.assertEqual(reply, '<id>123</id><format>extended</format>')
 
     def test_aterm_actor_grant(self):
         line = 'actor.grant :perm < :access access :resource -type service asset.* > :name request-review :type role'
-        reply = self.mf_client._xml_aterm_run(line, post=False)
+        reply = self.mf_client.aterm_run(line, post=False)
         self.assertEqual(reply, '<perm><access>access</access><resource type="service">asset.*</resource></perm><name>request-review</name><type>role</type>')
 
     def test_aterm_acl_grant(self):
         line = 'asset.namespace.acl.grant :namespace /www :acl < :actor -type user "public:public" :access < :namespace access :asset access > >'
-        reply = self.mf_client._xml_aterm_run(line, post=False)
+        reply = self.mf_client.aterm_run(line, post=False)
         self.assertEqual(reply, '<namespace>/www</namespace><acl><actor type="user">public:public</actor><access><namespace>access</namespace><asset>access</asset></access></acl>')
 
     def test_aterm_asset_query(self):
         line = 'asset.query :where "namespace>=/www" :action pipe :service -name asset.label.add < :label "PUBLISHED" >'
-        reply = self.mf_client._xml_aterm_run(line, post=False)
+        reply = self.mf_client.aterm_run(line, post=False)
         self.assertEqual(reply, '<where>namespace&gt;=/www</where><action>pipe</action><service name="asset.label.add"><label>PUBLISHED</label></service>')
 
     def test_aterm_service_add(self):
         line = 'system.service.add :name custom.service :replace-if-exists true :access ACCESS :definition < :element -name arg1 -type string :element -name arg2 -type string -min-occurs 0 -default " " :element -name arg3 -type boolean -min-occurs 0 -default false > :execute \"return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]\"'
-        reply = self.mf_client._xml_aterm_run(line, post=False)
+        reply = self.mf_client.aterm_run(line, post=False)
         self.assertEqual(reply, '<name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string"></element><element name="arg2" type="string" min-occurs="0" default=" "></element><element name="arg3" type="boolean" min-occurs="0" default="false"></element></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute>')
 
     def test_aterm_semicolon_value(self):
         line = 'actor.grant :name public:public :type user :role -type role read-only'
-        reply = self.mf_client._xml_aterm_run(line, post=False)
+        reply = self.mf_client.aterm_run(line, post=False)
         self.assertEqual(reply, '<name>public:public</name><type>user</type><role type="role">read-only</role>')
 
     def test_aterm_whitespace_text(self):
         line = 'asset.namespace.rename :name test3 :namespace /projects/Data Team/sean/test2'
-        reply = self.mf_client._xml_aterm_run(line, post=False)
+        reply = self.mf_client.aterm_run(line, post=False)
         self.assertEqual(reply, "<name>test3</name><namespace>/projects/Data Team/sean/test2</namespace>")
 
     def test_aterm_quoted_query(self):
         line = "asset.query :where \"namespace='/www' and name='system-alert'\" :action get-name"
-        reply = self.mf_client._xml_aterm_run(line, post=False)
+        reply = self.mf_client.aterm_run(line, post=False)
         self.assertEqual(reply, "<where>namespace='/www' and name='system-alert'</where><action>get-name</action>")
+
+    def test_aterm_sanitise_asset(self):
+        c = "_^#%-&{}<>[]()*? $!'\":;,.@+`|=~1234567890\\"
+        tmp_name = 'asset' + c
+
+        reply = self.mf_client.aterm_run('asset.create :namespace "%s" :name "%s"' % (namespace, tmp_name), post=False)
+        self.assertEqual(reply, "<namespace>/projects/Data Team</namespace><name>asset_^#%-&amp;{}&lt;&gt;[]()*? $!'&quot;:;,.@+`|=~1234567890\</name>")
+
+    def test_aterm_sanitise_namespace(self):
+        c = "_^#%-&{}<>[]()*? $!'\":;,.@+`|=~1234567890\\"
+        tmp_name = 'namespace' + c
+        tmp_remote = posixpath.join(namespace, tmp_name)
+
+        reply = self.mf_client.aterm_run("asset.namespace.create :namespace \"%s\"" % tmp_remote, post=False)
+        self.assertEqual(reply, "<namespace>/projects/Data Team/namespace_^#%-&amp;{}&lt;&gt;[]()*? $!'&quot;:;,.@+`|=~1234567890\</namespace>")
+
+        reply = self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % tmp_remote, post=False)
+        self.assertEqual(reply, "<namespace>/projects/Data Team/namespace_^#%-&amp;{}&lt;&gt;[]()*? $!'&quot;:;,.@+`|=~1234567890\</namespace>")
+
+    def test_aterm_www_list_sanitise(self):
+        reply = self.mf_client.aterm_run('www.list :namespace "/projects/Data Team/sean\'s dir" :page 1 :size 30', post=False)
+        self.assertEqual(reply, "<namespace>/projects/Data Team/sean's dir</namespace><page>1</page><size>30</size>")
+
 
 # CURRENT - this won't work (line continuations) ... worth fixing?
 #    def test_maybe(self):
 #        line = 'system.service.add :name "project.describe" :replace-if-exists true :description "Custom project description for the web portal." :access ACCESS :object-meta-access ACCESS \
 #                    :definition < :element -name name -type string > \
 #                    :execute "return [xvalue result [asset.script.execute :id %d :arg -name name [xvalue name $args]]]"'
-#        self.mf_client._xml_aterm_run(line, post=False)
+#        self.mf_client.aterm_run(line, post=False)
 
 
+# convenience wrapper for squishing bugs
+class mfclient_bugs(unittest.TestCase):
+    def setUp(self):
+        global mf_client
+        self.mf_client = mf_client
+
+    def test_multi(self):
+        line = 'asset.get :id 123 :format extended'
+        reply = self.mf_client.aterm_run(line, post=False)
+        print ""
+        print reply
+
+
+######
 # main
 ######
 if __name__ == '__main__':
@@ -341,13 +209,11 @@ if __name__ == '__main__':
         f.close()
 
 # classes to test
-#    test_class_list = [mfclient_fixes]
-#    test_class_list = [mfclient_aterm_syntax]
-#    test_class_list = [mfclient_special_characters]
-# for when Jeffrey removes the backing store on test... (transfer tests will all fail)
-#    test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_aterm_syntax]
-    test_class_list = [mfclient_service_calls, mfclient_authentication, mfclient_special_characters, mfclient_transfers, mfclient_fixes, mfclient_aterm_syntax]
+#    test_class_list = [mfclient_authentication]
+#    test_class_list = [mfclient_bugs]
+#    test_class_list = [mfclient_authentication, mfclient_aterm_syntax, mfclient_calls]
 
+    test_class_list = [mfclient_aterm_syntax, mfclient_calls]
 
 # build suite
     suite_list = []
