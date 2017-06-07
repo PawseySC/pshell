@@ -94,10 +94,12 @@ class mfclient_aterm_syntax(unittest.TestCase):
         reply = self.mf_client.aterm_run(line, post=False)
         self.assertEqual(reply, '<where>namespace&gt;=/www</where><action>pipe</action><service name="asset.label.add"><label>PUBLISHED</label></service>')
 
+# FIXME - in practise, might have to escape the [] chars as they are special in TCL (but this should be done internal to the string itself)
     def test_aterm_service_add(self):
         line = 'system.service.add :name custom.service :replace-if-exists true :access ACCESS :definition < :element -name arg1 -type string :element -name arg2 -type string -min-occurs 0 -default " " :element -name arg3 -type boolean -min-occurs 0 -default false > :execute \"return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]\"'
         reply = self.mf_client.aterm_run(line, post=False)
-        self.assertEqual(reply, '<name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string"></element><element name="arg2" type="string" min-occurs="0" default=" "></element><element name="arg3" type="boolean" min-occurs="0" default="false"></element></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute>')
+        self.assertEqual(reply, '<name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string"></element><element default=" " min-occurs="0" name="arg2" type="string"></element><element default="false" min-occurs="0" name="arg3" type="boolean"></element></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute>')
+
 
     def test_aterm_semicolon_value(self):
         line = 'actor.grant :name public:public :type user :role -type role read-only'
@@ -115,34 +117,27 @@ class mfclient_aterm_syntax(unittest.TestCase):
         self.assertEqual(reply, "<where>namespace='/www' and name='system-alert'</where><action>get-name</action>")
 
     def test_aterm_sanitise_asset(self):
-        c = "_^#%-&{}<>[]()*? $!'\":;,.@+`|=~1234567890\\"
+        c = r"_^#%-&{}<>[]()*? $!':;,.@+`|=~1234567890\\"
         tmp_name = 'asset' + c
-
         reply = self.mf_client.aterm_run('asset.create :namespace "%s" :name "%s"' % (namespace, tmp_name), post=False)
-        self.assertEqual(reply, "<namespace>/projects/Data Team</namespace><name>asset_^#%-&amp;{}&lt;&gt;[]()*? $!'&quot;:;,.@+`|=~1234567890\</name>")
+        self.assertEqual(reply, "<namespace>/projects/Data Team</namespace><name>asset_^#%-&amp;{}&lt;&gt;[]()*? $!':;,.@+`|=~1234567890\\</name>")
 
     def test_aterm_sanitise_namespace(self):
-        c = "_^#%-&{}<>[]()*? $!'\":;,.@+`|=~1234567890\\"
+        c = r"_^#%-&{}<>[]()*? $!':;,.@+`|=~1234567890\\"
         tmp_name = 'namespace' + c
         tmp_remote = posixpath.join(namespace, tmp_name)
-
+# create
         reply = self.mf_client.aterm_run("asset.namespace.create :namespace \"%s\"" % tmp_remote, post=False)
-        self.assertEqual(reply, "<namespace>/projects/Data Team/namespace_^#%-&amp;{}&lt;&gt;[]()*? $!'&quot;:;,.@+`|=~1234567890\</namespace>")
+        self.assertEqual(reply, "<namespace>/projects/Data Team/namespace_^#%-&amp;{}&lt;&gt;[]()*? $!':;,.@+`|=~1234567890\\</namespace>")
+# create with additional argument document
+        reply = self.mf_client.aterm_run('asset.namespace.create :namespace "%s" :quota < :allocation "10 TB" >' % tmp_remote, post=False)
+        self.assertEqual(reply, "<namespace>/projects/Data Team/namespace_^#%-&amp;{}&lt;&gt;[]()*? $!':;,.@+`|=~1234567890\\</namespace><quota><allocation>10 TB</allocation></quota>")
 
-        reply = self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % tmp_remote, post=False)
-        self.assertEqual(reply, "<namespace>/projects/Data Team/namespace_^#%-&amp;{}&lt;&gt;[]()*? $!'&quot;:;,.@+`|=~1234567890\</namespace>")
 
     def test_aterm_www_list_sanitise(self):
         reply = self.mf_client.aterm_run('www.list :namespace "/projects/Data Team/sean\'s dir" :page 1 :size 30', post=False)
         self.assertEqual(reply, "<namespace>/projects/Data Team/sean's dir</namespace><page>1</page><size>30</size>")
 
-
-# CURRENT - this won't work (line continuations) ... worth fixing?
-#    def test_maybe(self):
-#        line = 'system.service.add :name "project.describe" :replace-if-exists true :description "Custom project description for the web portal." :access ACCESS :object-meta-access ACCESS \
-#                    :definition < :element -name name -type string > \
-#                    :execute "return [xvalue result [asset.script.execute :id %d :arg -name name [xvalue name $args]]]"'
-#        self.mf_client.aterm_run(line, post=False)
 
 
 # convenience wrapper for squishing bugs
@@ -152,10 +147,7 @@ class mfclient_bugs(unittest.TestCase):
         self.mf_client = mf_client
 
     def test_multi(self):
-        line = 'asset.get :id 123 :format extended'
-        reply = self.mf_client.aterm_run(line, post=False)
-        print ""
-        print reply
+        reply = self.mf_client.aterm_run('asset.namespace.create :namespace "/projects/Data Team/namespace_^#%-&{}<>[]()*? $!\'\":;,.@+`|=~1230\\"', post=False)
 
 
 ######
@@ -165,6 +157,7 @@ if __name__ == '__main__':
 
 # get the test server to connect to
 # TODO - would be nice to isolate from this requirement in theory but, in practise, difficult
+# TODO - have a flag that lets you run offline OR online mode 
     config = ConfigParser.ConfigParser()
     config_filepath = os.path.join(os.path.expanduser("~"), ".mf_config")
     config_table = config.read(config_filepath)
@@ -184,7 +177,7 @@ if __name__ == '__main__':
 
 # acquire a mediaflux connection
     try:
-        mf_client = mfclient.mf_client(config.get(current, 'protocol'), config.get(current, 'port'), config.get(current, 'server'), session=session, enforce_encrypted_login=False)
+        mf_client = mfclient.mf_client(config.get(current, 'protocol'), config.get(current, 'port'), config.get(current, 'server'), session=session, enforce_encrypted_login=False, dummy=True)
         print "\n----------------------------------------------------------------------"
         print "Testing against: protocol=%r server=%r port=%r" % (mf_client.protocol, mf_client.server, mf_client.port)
         print "----------------------------------------------------------------------\n"
@@ -193,27 +186,29 @@ if __name__ == '__main__':
         exit(-1)
 
 # re-use existing session or log in again
-    if not mf_client.authenticated():
-        print "Domain: %s" % domain
-        user = raw_input("Username: ")
-        password = getpass.getpass("Password: ")
-        try:
-            mf_client.login(domain=domain, user=user, password=password)
-        except Exception as e:
-            print str(e)
-            exit(-1)
+#    if not mf_client.authenticated():
+#        print "Domain: %s" % domain
+#        user = raw_input("Username: ")
+#        password = getpass.getpass("Password: ")
+#        try:
+#            mf_client.login(domain=domain, user=user, password=password)
+#        except Exception as e:
+#            print str(e)
+#            exit(-1)
 # save session
-        config.set(current, 'session', mf_client.session)
-        f = open(config_filepath, "w")
-        config.write(f)
-        f.close()
+#        config.set(current, 'session', mf_client.session)
+#        f = open(config_filepath, "w")
+#        config.write(f)
+#        f.close()
 
 # classes to test
 #    test_class_list = [mfclient_authentication]
-#    test_class_list = [mfclient_bugs]
 #    test_class_list = [mfclient_authentication, mfclient_aterm_syntax, mfclient_calls]
 
-    test_class_list = [mfclient_aterm_syntax, mfclient_calls]
+#    test_class_list = [mfclient_aterm_syntax, mfclient_calls]
+#    test_class_list = [mfclient_bugs]
+    test_class_list = [mfclient_aterm_syntax]
+
 
 # build suite
     suite_list = []

@@ -99,7 +99,7 @@ class mf_client:
     All unexpected failures are handled by raising exceptions
     """
 
-    def __init__(self, protocol, port, server, session="", timeout=120, enforce_encrypted_login=True, debug=False):
+    def __init__(self, protocol, port, server, session="", timeout=120, enforce_encrypted_login=True, debug=False, dummy=False):
         """
         Create a Mediaflux server connection instance. Raises an exception on failure.
 
@@ -110,7 +110,8 @@ class mf_client:
                             session: a STRING supplying the session ID which, if it exists, enables re-use of an existing authenticated session 
                             timeout: an INTEGER specifying the connection timeout
             enforce_encrypted_login: a BOOLEAN that should only be False on a safe internal dev/test network
-                                  debug: a BOOLEAN which controls output of troubleshooting information 
+                              debug: a BOOLEAN which controls output of troubleshooting information 
+                              dummy: a BOOLEAN used for testing only (no actual server connection)
 
         Returns:
             A reachable mediaflux server object that has not been tested for its authentication status
@@ -125,6 +126,7 @@ class mf_client:
         self.timeout = timeout
         self.session = session
         self.debug = debug
+        self.debug_level = 0
         self.base_url="{0}://{1}".format(protocol, server)
         self.post_url= self.base_url + "/__mflux_svc__"
         self.data_url = self.base_url + "/mflux/content.mfjp"
@@ -135,6 +137,8 @@ class mf_client:
         self.put_buffer=8192
 # XML pretty print hack
         self.indent = 0
+        if dummy:
+            return
 # check is server is reachable
         s = socket.socket()
 # initial connection test exception
@@ -171,17 +175,25 @@ class mf_client:
 # NB: timeout exception if server is unreachable
         request = urllib2.Request(self.post_url, data=xml_string, headers={'Content-Type': 'text/xml'})
         response = urllib2.urlopen(request, timeout=self.timeout)
-
         xml = response.read()
         tree = xml_processor.fromstring(xml)
-        if tree.tag != "response":
-            raise Exception("No response from server")
 
-# TODO - skip this step to avoid double parse of the XML?
-# this would mean every _post() call would have to do its own handling
-        error = self.xml_error(tree)
-        if error:
-            raise Exception("Error from server: %s" % error)
+# attempt to extract a useful error message
+        elem = tree.find(".//reply/error")
+        if elem is not None:
+#            for match in re.finditer(r"failed.+", xml):
+#                pass
+            match = re.search(r"failed[\s\S]?Context:", xml)
+
+            if match:
+                error_message = match.group(0)
+            else:
+                elem = tree.find(".//reply/message")
+                if elem is not None:
+                    error_message = elem.text[:600]
+                else:
+                    error_message = "operation failed"
+            raise Exception("Error from server: %s" % error_message)
 
         return tree
 
@@ -331,125 +343,6 @@ class mf_client:
         return text
 
 #------------------------------------------------------------
-    def _xml_element_attributes_strip(self, element):
-        """
-        Helper method to strip an element of any attributes
-        """
-        k = element.find(' ')
-        if k != -1:
-            element_strip = element[:k]
-        else:
-            element_strip = element
-
-        return element_strip
-
-#------------------------------------------------------------
-    def _xml_element_attributes_format(self, element):
-        """
-        Helper method to format attributes '-attribute value' -> 'attribute="value"'
-        """
-
-#        print "unformatted: [%s]" % element
-        list_attributes = element.split()
-
-# build the element string
-        count=0
-        for item in list_attributes:
-            if count == 0:
-                element_string = item
-            else:
-                if count % 2 == 0:
-                    element_string += '="%s"' % item
-                else:
-                    element_string += " %s" % item[1:]
-            count += 1
-
-#        print "formatted: [%s]" % element_string
-        return element_string
-
-#------------------------------------------------------------
-    def _xml_expand(self, xml_condensed):
-        """
-        Helper method to expand a single element sequence written in Arcitecta's condensed XML format
-        Expected input is of the form:
-        element -optional1 attribute1 -optional2 attribute2 optional_text_data
-        Which is mapped to:
-        <element optional1="attribute1" optional2="attribute2">optional_text_data</element>
-        """
-
-        if len(xml_condensed) == 0:
-            return xml_condensed
-
-#        print "\n_xml_expand(input): [%s]" % xml_condensed
-
-        match = re.match('^\S+', xml_condensed)
-        if match:
-            element = match.group(0)
-            start = match.end()
-        else:
-            raise Exception("Missing element name in: [%s]" % xml_condensed)
-
-        qcount = 0
-        dqcount = 0
-        length = len(xml_condensed)
-        start_attrib = 0
-        start_value = 0
-        start_data = start
-        xml = "<%s" % element
-
-        try:
-            for i in range(start, length):
-# if any quoted string flags are active - skip any further processing
-                if xml_condensed[i] == "'":
-                    if qcount:
-                        qcount=0
-                    else:
-                        qcount=1
-                if xml_condensed[i] == '"':
-                    if dqcount:
-                        dqcount=0
-                    else:
-                        dqcount=1
-                if qcount or dqcount:
-                    continue
-# attribute start
-                if xml_condensed[i] == '-' and xml_condensed[i-1] == ' ':
-                    start_attrib = i
-# end of token candidate
-                if xml_condensed[i] == ' ':
-                    if start_attrib:
-                        attrib = xml_condensed[start_attrib+1:i]
-                        xml += ' %s' % attrib
-                        start_value = i
-                        start_attrib = 0
-                    elif start_value:
-                        value = xml_condensed[start_value+1:i]
-# enforce only a single surrounding pair of quotes, regardless of whether input has them or not
-                        xml += '="%s"' % value.strip('"')
-                        start_value = 0
-                        start_data = i
-
-            if start_value:
-                value = xml_condensed[start_value+1:]
-#                print "value = [%s]" % value
-                xml += '="%s"></%s>' % (value.strip('"'), element)
-            else:
-                text = xml_condensed[start_data+1:]
-#                print "text1 = [%s]" % text
-                text = text.strip('"')
-                text = self._xml_sanitise(text)
-#                print "text = [%s]" % text
-                xml += '>%s</%s>' % (text, element)
-
-        except Exception as e:
-            self.log("DEBUG", "XML parse error: %s" % str(e))
-            raise Exception("Bad command syntax.")
-
-#        print "_xml_expand(output): [%s]\n" % xml
-
-        return xml
-
-#------------------------------------------------------------
     def aterm_run(self, aterm_line, post=True):
         """ 
         Method for parsing aterm's compressed XML syntax and sending to the Mediaflux server 
@@ -459,111 +352,81 @@ class mf_client:
                post: if False will just return the argument part of the serialized XML, if True will post and return reply
 
         Returns:
-            A STRING containing the server reply
+            A STRING containing the server reply (if post is TRUE, if false - just the XML for test comparisons)
         """
 
-#        print "\ninput: [%s]" % aterm_line
+# TODO - might have to double double escape single quotes to fix things like
+# pshell> rm sean's files
+        self.log("DEBUG", "XML  in: %s" % repr(aterm_line), level=1)
 
-# pull the service call
-        match = re.match('^\S+', aterm_line)
-        if match:
-            service_call = match.group(0)
-            argument_start = match.end()
-        else:
-            raise Exception("Missing service call in: [%s]" % aterm_line)
+# CURRENT
+#        aterm_line.replace("\\\'", "?")
+#        self.log("DEBUG", "XML  in: %s" % aterm_line, level=1)
 
-        qcount = dqcount = 0
-        length = len(aterm_line)
-        stack=[]
-        xml = ""
-        chunk = None
-        start = argument_start
+# break up into double quote-protected tokens for processing
+# no posix - protect escaped characters which need to be passed through
+#        lexer = shlex.shlex(aterm_line, posix=False)
+        lexer = shlex.shlex(aterm_line, posix=True)
+        lexer.whitespace_split = True
 
-# process the compressed XML
-        try:
-            for i in range(argument_start, length):
-# if any quoted string flags are active - skip any further processing
-#                if aterm_line[i] == "'":
-#                    if qcount:
-#                        qcount=0
-#                    else:
-#                        qcount=1
-# NEW - only " allowed as a special to pass in literal strings - prevents strings like "blah's ... " from NEVER ending due to the '
-# I think this is ok, as " seems to be the standard literal character for aterm commands
-                if aterm_line[i] == '"':
-                    if dqcount:
-                        dqcount=0
+# CURRENT
+        lexer.quotes = '"'
+
+        xml_root = xml_processor.Element(None)
+        xml_node = xml_root
+        child = None
+        stack = []
+
+# first token is the service call, the rest are child arguments
+        service_call = lexer.get_token()
+        token = lexer.get_token()
+        while token:
+            if token[0] == ':':
+                child = xml_processor.SubElement(xml_node, '%s' % token[1:])
+                self.log("DEBUG", "XML elem [%s]" % token[1:], level=1)
+            elif token[0] == '<':
+                stack.append(xml_node)
+                xml_node = child
+            elif token[0] == '>':
+                xml_node = stack.pop()
+            elif token[0] == '-':
+                key = token[1:]
+                value = lexer.get_token()
+                child.set(key, value)
+                self.log("DEBUG", "XML prop [%r = %r]" % (key, value), level=1)
+            else:
+# FIXME - potentially some issues here with data strings with multiple spaces (ie whitespace split & only add one back)
+                if child.text is not None:
+                    child.text += " " + token
+                else:
+                    if token.startswith('"') and token.endswith('"'):
+                        child.text = token[1:-1]
                     else:
-                        dqcount=1
-                if qcount or dqcount:
-                    continue
+                        child.text = token
+                self.log("DEBUG", "XML text [%s]" % child.text, level=1)
+# while tokens ...
+            token = lexer.get_token()
 
-# Arcitecta's shorthand root element start
-                if (aterm_line[i] == ':' and aterm_line[i-1] == ' '):
-# FIXME - bug here -> sometimes more than one expanded element will get passed
-                    chunk = self._xml_expand(aterm_line[start+1:i-1])
-                    start = i
+# testing hook
+        if post is not True:
+            tmp = xml_processor.tostring(xml_root, method="html")
+            self.log("DEBUG", "XML out: %s" % tmp, level=1)
+            return tmp
 
-# push nested XML element reference
-                if aterm_line[i] == '<':
-                    element = self._xml_element_attributes_format(aterm_line[start+1:i-1])
-                    chunk = "<%s>" % element
-                    stack.append(element)
-#                    print "Push:  [%s]" % element
-
-# pop nested XML element reference
-                if aterm_line[i] == '>':
-                    chunk = self._xml_expand(aterm_line[start+1:i-1])
-                    element = stack.pop()
-                    element_noattrib = self._xml_element_attributes_strip(element)
-                    chunk += "</%s>" % element_noattrib
-
-# accumulate XML chunks
-                if chunk is not None:
-#                    print "Chunk: [%s]" % chunk
-# NEW - if a chunk (element) has an xmlns - need to do some extra work
-#                    match = re.match("<.+:.+>", chunk)
-#                    match = re.match("<\w+:.+>", chunk)
-# need to match things like mf-image:label as well as ivec:dfn-image
-                    match = re.match("<[-\w]+:[-\w]+>", chunk)
-                    if match:
-                        a,b = chunk.split(":")
-                        xmlns = a[1:]
-                        element = b[:-1]
-                        chunk = '<%s:%s xmlns:%s="metadata-document">' % (xmlns, element, xmlns)
-
-                    xml += chunk
-
-                    chunk = None
-                    start = i
-
-# final piece (if any)
-            chunk = self._xml_expand(aterm_line[start+1:])
-            xml += chunk
-#            print "Final: [%s]" % chunk
-
-        except Exception as e:
-            self.log("DEBUG", "XML parse error: %s" % str(e))
-            raise Exception("Bad command syntax.")
-
-#        print "output: [%s]" % xml
-
-# intended for no-session testing (see test_mflcient)
-        if post == False:
-            return xml
-
-# wrap service call & authentication XML - cross fingers, and POST
-# special case for logon 
-# hide/obscure the session as well ...
-        if service_call == "system.logon":
-            xml = '<request><service name="%s"><args>%s</args></service></request>' % (service_call, xml)
-        else:
-            xml = '<request><service name="service.execute" session="%s"><args><service name="%s">%s</service></args></service></request>' % (self.session, service_call, xml)
-            tmp = re.sub(r'session=[^>]*', 'session="..."', xml)
-            self.log("DEBUG", "XML: %s" % tmp)
-
-        reply = self._post(xml)
-
+# wrap with session/service call 
+        xml = xml_processor.Element("request")
+        child = xml_processor.SubElement(xml, "service")
+        child.set("name", service_call)
+        if service_call != "system.logon":
+            child.set("session", self.session)
+        args = xml_processor.SubElement(child, "args")
+        args.append(xml_root)
+        xml_text = xml_processor.tostring(xml)
+# debug
+        tmp = re.sub(r'session=[^>]*', 'session="..."', xml_text)
+        self.log("DEBUG", "XML out: %s" % tmp, level=1)
+# post
+        reply = self._post(xml_text)
         return reply
 
 #------------------------------------------------------------
@@ -592,64 +455,42 @@ class mf_client:
         """
         Helper method for displaying XML nicely, as much as is possible
         """
-# trim some of the XML noise
+# seek for "normal" response
+        elem = None
         if trim is True:
-# try to tunnel past header crap, unless there was an error
-            elem = self.xml_find(xml_tree, "result")
-            if elem is not None:
-                elem = self.xml_find(elem, "response")
-# TODO - better error processing
-            if elem is None:
-                print self.xml_error(xml_tree)
-                return
-
-            for child in elem.getchildren():
-                print self._xml_recurse(child)
+            elem = xml_tree.find(".//result")
+# seek for error message
+        if elem is None:
+            elem = xml_tree.find(".//message")
+# still nothing? give up and print the whole thing
+        if elem is None:
+            elem = xml_tree
+        if elem is not None:
+            print self._xml_recurse(elem)
         else:
-            print self._xml_recurse(xml_tree)
-
-#------------------------------------------------------------
-    def xml_error(self, xml_tree):
-        """
-        Helper method for extracting the error message (if any) from a Mediaflux XML server response
-        """
-        error=False
-        message=None
-        for elem in xml_tree.iter():
-            if elem.tag == 'error':
-                error=True
-# NEW - the case where error message is embedded in the tag itself (eg rm on assets when actor is ro)
-                line_list = elem.text.split('\n')
-                for line in line_list:
-                    if "error" in line:
-                        i = line.rfind(':')
-                        if i != -1:
-                            message = line[i+1:]
-                        else:
-                            message = line
-            if elem.tag == 'message' and error:
-                message = elem.text
-        return message
+            print "Empty XML document"
+        return
 
 #------------------------------------------------------------
     def xml_find(self, xml_tree, tag):
         """
         XML navigation helper as I couldn't get the built in XML method root.find() to work properly
         """
-# TODO - this may no longer be required - see pshell: def delegate_actor_expiry() for python xpath example
+# TODO - this may no longer be required - see the <xml tree>.find(".//<element>") examples
         for elem in xml_tree.iter():
             if elem.tag == tag:
                 return elem
         return None
 
 #------------------------------------------------------------
-    def log(self, prefix, message):
+    def log(self, prefix, message, level=0):
         """
         Timestamp based message logging.
         """
         if "DEBUG" in prefix:
-            if not self.debug:
+            if self.debug is False or level > self.debug_level:
                 return
+
         ts = time.time()
         st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
         message = st + " >>> " + message
@@ -758,10 +599,7 @@ class mf_client:
         if namespace is None:
             raise Exception("Failed to find project namespace for asset [%r]" % asset_id)
 
-#        print "namespace: %s" % namespace
-
 # get project token
-#        result = self.run("asset.namespace.application.settings.get", [("namespace", namespace), ("app", app)])
         result = self.aterm_run("asset.namespace.application.settings.get :namespace %s :app %s" % (namespace, app))
 
         elem = self.xml_find(result, tag)

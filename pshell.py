@@ -152,11 +152,15 @@ class parser(cmd.Cmd):
 #         self.mf_client.xml_print(result)
 
         asset_list = []
-        for elem in result.iter('name'):
+
+        for elem in result.iter("name"):
             if elem.text is not None:
                 asset_list.append(posixpath.join(prefix,elem.text))
 
-#         print "ca: ", asset_list
+#       elem = result.find(".//name")
+
+
+#        print "ca: ", asset_list
 
         return asset_list
 
@@ -318,7 +322,6 @@ class parser(cmd.Cmd):
 # TODO - general method for retrieving an iterator for remote files
 #    def remote_files_get(self, pattern):
 
-
 # --- file info
     def help_file(self):
         print "\nReturn metadata information on a remote file\n"
@@ -326,9 +329,7 @@ class parser(cmd.Cmd):
 
     def do_file(self, line):
         result = self.mf_client.aterm_run("asset.get :id \"path=%s\"" % self.absolute_remote_filepath(line))
-
         self.mf_client.xml_print(result)
-
 
 # --- helper
 # immediately return any key pressed as a character
@@ -433,7 +434,7 @@ class parser(cmd.Cmd):
                 cwd = self.escape_single_quotes(posixpath.dirname(cwd))
 
 # query attempt
-        print "Remote folder: [%s]" % cwd
+#        print "Remote folder: [%s]" % cwd
 #        print "asset filter: [%s]" % asset_filter
 
         pagination_complete = False
@@ -581,7 +582,7 @@ class parser(cmd.Cmd):
         online = dict()
         list_local_path = {}
 
-        result = self.mf_client.aterm_run('asset.query :where "%s and content online" :as iterator :action get-values :xpath -ename id id :xpath -ename namespace namespace :xpath -ename filename name"' % base_query)
+        result = self.mf_client.aterm_run('asset.query :where "%s and content online" :as iterator :action get-values :xpath -ename id id :xpath -ename namespace namespace :xpath -ename filename name' % base_query)
 #        self.mf_client.xml_print(result)
 
         elem = self.mf_client.xml_find(result, "iterator")
@@ -1066,7 +1067,9 @@ class parser(cmd.Cmd):
         fullpath = self.absolute_remote_filepath(line)
         namespace = posixpath.dirname(fullpath)
         pattern = posixpath.basename(fullpath)
+# FIXME - this isn't doing anything (eg rm sean's file)
         base_query = "namespace='%s' and name='%s'" % (self.escape_single_quotes(namespace), self.escape_single_quotes(pattern))
+#        base_query = "namespace='%s' and name='%s'" % (namespace, pattern)
 
 # count
         try:
@@ -1110,12 +1113,15 @@ class parser(cmd.Cmd):
         print "Usage: debug <on/off>\n"
 
     def do_debug(self, line):
-        if "true" in line or "on" in line:
-            print "Turning DEBUG on"
+        match = re.search(r"\d+", line)
+        if match:
+            self.mf_client.debug_level = int(match.group(0))
             self.mf_client.debug = True
-        else:
-            print "Turning DEBUG off"
+        elif "true" in line or "on" in line:
+            self.mf_client.debug = True
+        elif "false" in line or "off" in line:
             self.mf_client.debug = False
+        print "Debug=%r : level=%r" % (self.mf_client.debug, self.mf_client.debug_level) 
 
 # --
     def help_lpwd(self):
