@@ -576,7 +576,7 @@ class mf_client:
         """
         Wrapper around the generic service call mechanism (for testing namespace existence) that parses the result XML and returns a BOOLEAN
         """
-        reply = self.aterm_run('asset.namespace.exists :namespace %s' % namespace)
+        reply = self.aterm_run('asset.namespace.exists :namespace "%s"' % namespace.replace('"', '\\\"'))
         elem = reply.find(".//exists")
         if elem is not None:
             if elem.text == "true":
