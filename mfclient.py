@@ -125,6 +125,7 @@ class mf_client:
         self.server = server
         self.timeout = timeout
         self.session = session
+        self.dummy = dummy
         self.debug = debug
         self.debug_level = 0
         self.base_url="{0}://{1}".format(protocol, server)
@@ -167,33 +168,51 @@ class mf_client:
                 except Exception as e:
                     print " WARNING: %s" % str(e)
 
+
+#------------------------------------------------------------
+# an impossible routine ...
+    def _xml_succint_error(self, xml):
+#        print " === error start\n%s\n === error stop" % xml
+        message = None
+
+# look for patterns..
+        match = re.search(r"Syntax error.*Error", xml, re.DOTALL)
+        if match:
+            message = match.group(0)[:-6]
+
+        match = re.search(r"failed:.*", xml)
+        if match:
+            message = match.group(0)[7:]
+
+        if message is not None:
+            return message
+
+#        print "MATCH FALLBACK"
+        return xml[:600]
+
 #------------------------------------------------------------
     def _post(self, xml_string):
         """
         Primitive for sending an XML message to the Mediaflux server
         """
+
+# TODO - sneaky tests for pshell
+        if self.dummy:
+            print "HOOKSHOT!"
+            raise Exception(xml_string)
+
 # NB: timeout exception if server is unreachable
         request = urllib2.Request(self.post_url, data=xml_string, headers={'Content-Type': 'text/xml'})
         response = urllib2.urlopen(request, timeout=self.timeout)
         xml = response.read()
         tree = xml_processor.fromstring(xml)
 
-# attempt to extract a useful error message
+# if error - attempt to extract a useful message
         elem = tree.find(".//reply/error")
         if elem is not None:
-#            for match in re.finditer(r"failed.+", xml):
-#                pass
-            match = re.search(r"failed[\s\S]?Context:", xml)
-
-            if match:
-                error_message = match.group(0)
-            else:
-                elem = tree.find(".//reply/message")
-                if elem is not None:
-                    error_message = elem.text[:600]
-                else:
-                    error_message = "operation failed"
-            raise Exception("Error from server: %s" % error_message)
+            elem = tree.find(".//message")
+            error_message = self._xml_succint_error(elem.text)
+            raise Exception(error_message)
 
         return tree
 
@@ -355,22 +374,15 @@ class mf_client:
             A STRING containing the server reply (if post is TRUE, if false - just the XML for test comparisons)
         """
 
-# TODO - might have to double double escape single quotes to fix things like
-# pshell> rm sean's files
-        self.log("DEBUG", "XML  in: %s" % repr(aterm_line), level=1)
+#        self.log("DEBUG", "XML  in: %s" % repr(aterm_line), level=1)
+        self.log("DEBUG", "XML  in: %s" % aterm_line, level=1)
 
-# CURRENT
-#        aterm_line.replace("\\\'", "?")
-#        self.log("DEBUG", "XML  in: %s" % aterm_line, level=1)
-
-# break up into double quote-protected tokens for processing
 # no posix - protect escaped characters which need to be passed through
-#        lexer = shlex.shlex(aterm_line, posix=False)
+# no posix - also means any escaped chars which are intented to be evaulated (eg escaped quotes in namespaces/assets) rather than passed through, breaks things
+# I think we have to have posix=True as it's closest to the way aterm processes input strings
         lexer = shlex.shlex(aterm_line, posix=True)
+#        lexer = shlex.shlex(aterm_line, posix=False)
         lexer.whitespace_split = True
-
-# CURRENT
-        lexer.quotes = '"'
 
         xml_root = xml_processor.Element(None)
         xml_node = xml_root
@@ -392,10 +404,13 @@ class mf_client:
             elif token[0] == '-':
                 key = token[1:]
                 value = lexer.get_token()
+# xml attribs automatically get double quotes - strip any that were used (eg to protect whitespace)
+                if value.startswith('"') and value.endswith('"'):
+                    value = value[1:-1]
                 child.set(key, value)
                 self.log("DEBUG", "XML prop [%r = %r]" % (key, value), level=1)
             else:
-# FIXME - potentially some issues here with data strings with multiple spaces (ie whitespace split & only add one back)
+# FIXME - potentially some issues here with data strings with multiple spaces (ie we are doing a whitespace split & only adding one back)
                 if child.text is not None:
                     child.text += " " + token
                 else:
@@ -404,6 +419,7 @@ class mf_client:
                     else:
                         child.text = token
                 self.log("DEBUG", "XML text [%s]" % child.text, level=1)
+
 # while tokens ...
             token = lexer.get_token()
 
@@ -560,7 +576,7 @@ class mf_client:
         """
         Wrapper around the generic service call mechanism (for testing namespace existence) that parses the result XML and returns a BOOLEAN
         """
-        reply = self.aterm_run('asset.namespace.exists :namespace "%s"' % namespace)
+        reply = self.aterm_run('asset.namespace.exists :namespace %s' % namespace)
         elem = reply.find(".//exists")
         if elem is not None:
             if elem.text == "true":

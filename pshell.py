@@ -46,7 +46,7 @@ class parser(cmd.Cmd):
         if self.need_auth:
             self.prompt = "%s:offline>" % self.config_name
         else:
-            self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+            self.prompt = "%s:%s>" % (self.config_name, self.cwd.decode('string_escape'))
 
 # --- not logged in -> don't even attempt to process remote commands
     def precmd(self, line):
@@ -61,7 +61,7 @@ class parser(cmd.Cmd):
         if self.need_auth:
             self.prompt = "%s:offline>" % self.config_name
         else:
-            self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+            self.prompt = "%s:%s>" % (self.config_name, self.cwd.decode('string_escape'))
         return cmd.Cmd.postcmd(self, stop, line)
 
 # --- helper: attempt to complete a namespace
@@ -299,9 +299,20 @@ class parser(cmd.Cmd):
 
 # --- helper: convert a relative/absolute mediaflux namespace/asset reference to minimal absolute form
     def absolute_remote_filepath(self, line):
+
+        # NEW
+        if line.startswith('"') and line.endswith('"'):
+            line = line[1:-1]
+
         if not posixpath.isabs(line):
             line = posixpath.join(self.cwd, line)
-        return posixpath.normpath(line)
+
+        fullpath = posixpath.normpath(line)
+
+        # NEW
+        #fullpath = fullpath.decode('string_escape')
+
+        return fullpath
 
 # CURRENT - general method for retrieving an iterator for remote folders
     def remote_namespaces_iter(self, pattern):
@@ -430,9 +441,15 @@ class parser(cmd.Cmd):
 # if absolute path exists as a namespace -> query this, else query via an asset pattern match
             cwd = self.absolute_remote_filepath(line)
             if not self.mf_client.namespace_exists(cwd):
-                asset_filter = self.escape_single_quotes(posixpath.basename(cwd))
-                cwd = self.escape_single_quotes(posixpath.dirname(cwd))
+                asset_filter = posixpath.basename(cwd)
+                cwd = posixpath.dirname(cwd)
 
+#                asset_filter = self.escape_single_quotes(posixpath.basename(cwd))
+#                cwd = self.escape_single_quotes(posixpath.dirname(cwd))
+
+# FIXME - these issues actually look like a www.list bug - when there is a " in the namespace
+# CURRENT - sean"s dir/ 
+#        cwd = cwd.replace('"', '\\"')
 # query attempt
 #        print "Remote folder: [%s]" % cwd
 #        print "asset filter: [%s]" % asset_filter
@@ -443,11 +460,12 @@ class parser(cmd.Cmd):
         while pagination_complete is False:
             pagination_footer = None
 
+# CURRENT - may need to escape quotes when passing to www.list ...
             try:
                 if asset_filter is not None:
-                    reply = self.mf_client.aterm_run('www.list :namespace "%s" :page %s :size %s :filter %s' % (cwd, page, size, asset_filter))
+                    reply = self.mf_client.aterm_run('www.list :namespace %s :page %s :size %s :filter %s' % (cwd, page, size, asset_filter))
                 else:
-                    reply = self.mf_client.aterm_run('www.list :namespace "%s" :page %s :size %s' % (cwd, page, size))
+                    reply = self.mf_client.aterm_run('www.list :namespace %s :page %s :size %s' % (cwd, page, size))
 
 # trap things like "ls -al" and "ls'" - which will give an ugly stack trace
             except Exception as e:
@@ -719,16 +737,16 @@ class parser(cmd.Cmd):
                 remote = posixpath.join(self.cwd, remote_relpath)
                 for name in name_list:
                     if name.lower().endswith('.meta'):
-                        meta_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
+                        meta_list.append((remote.decode('string_escape'), os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
                     else:
-                        upload_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
+                        upload_list.append((remote.decode('string_escape'), os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
         else:
             self.print_over("Building file list... ")
             for name in glob.glob(line):
                 if name.lower().endswith('.meta'):
-                    meta_list.append((self.cwd, os.path.join(os.getcwd(), name)))
+                    meta_list.append((self.cwd.decode('string_escape'), os.path.join(os.getcwd(), name)))
                 else:
-                    upload_list.append((self.cwd, os.path.join(os.getcwd(), name)))
+                    upload_list.append((self.cwd.decode('string_escape'), os.path.join(os.getcwd(), name)))
 
 # TODO  - for all files in meta_list - strip .xml extension and if NOT in upload_list -> treat as normal upload, else -> it's metadata
 # DEBUG - window's path 
@@ -805,8 +823,9 @@ class parser(cmd.Cmd):
 # FIXME - will fail for things like get Data Team/sean or get Data Team/sean/*.zip -> need to do some unix style path analysis 1st ...
 # prefix with CWD -> then unix extract path and basename
 # NB: use posixpath for mediaflux namespace manipulation
-        if not posixpath.isabs(line):
-            line = posixpath.join(self.cwd, line)
+#        if not posixpath.isabs(line):
+#            line = posixpath.join(self.cwd, line)
+        line = self.absolute_remote_filepath(line)
 
 # sanitise as asset.query is special
         double_escaped = self.escape_single_quotes(line)
@@ -967,10 +986,10 @@ class parser(cmd.Cmd):
                 relpath_list = local_relpath.split(os.sep)
                 remote_relpath = "/".join(relpath_list)
                 remote = posixpath.join(self.cwd, remote_relpath)
-                upload_list.extend( [(remote , os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list] )
+                upload_list.extend( [(remote.decode('string_escape'), os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list] )
         else:
             self.print_over("Building file list... ")
-            upload_list = [(self.cwd, os.path.join(os.getcwd(), filename)) for filename in glob.glob(line)]
+            upload_list = [(self.cwd.decode('string_escape'), os.path.join(os.getcwd(), filename)) for filename in glob.glob(line)]
 
 # DEBUG - window's path 
 #        for dest,src in upload_list:
@@ -1025,7 +1044,7 @@ class parser(cmd.Cmd):
         candidate = self.absolute_remote_filepath(line)
         if self.mf_client.namespace_exists(candidate):
             self.cwd = candidate
-            print "Remote: %s" % self.cwd
+            print "Remote: %s" % self.cwd.decode('string_escape')
         else:
             print "Invalid remote folder: %s" % candidate
 
@@ -1045,7 +1064,6 @@ class parser(cmd.Cmd):
     def do_mkdir(self, line):
         ns_target = self.absolute_remote_filepath(line)
         try:
-#            self.mf_client.run("asset.namespace.create", [("namespace", ns_target)])
             self.mf_client.aterm_run('asset.namespace.create :namespace %s' % ns_target)
         except Exception as e:
 # don't raise an exception if the namespace already exists - just warn
@@ -1067,13 +1085,11 @@ class parser(cmd.Cmd):
         fullpath = self.absolute_remote_filepath(line)
         namespace = posixpath.dirname(fullpath)
         pattern = posixpath.basename(fullpath)
-# FIXME - this isn't doing anything (eg rm sean's file)
         base_query = "namespace='%s' and name='%s'" % (self.escape_single_quotes(namespace), self.escape_single_quotes(pattern))
-#        base_query = "namespace='%s' and name='%s'" % (namespace, pattern)
 
 # count
         try:
-            result = self.mf_client.aterm_run("asset.query :where %s :action count" % base_query)
+            result = self.mf_client.aterm_run('asset.query :where "%s" :action count' % base_query)
         except Exception as e:
             print str(e)
             return
@@ -1088,7 +1104,7 @@ class parser(cmd.Cmd):
                     print "No match"
                     return
                 if self.ask("Remove %d files: (y/n) " % count):
-                    self.mf_client.aterm_run("asset.query :where %s :action pipe :service -name asset.destroy" % base_query)
+                    self.mf_client.aterm_run('asset.query :where "%s" :action pipe :service -name asset.destroy' % base_query)
                 else:
                     print "Aborted"
                 return
