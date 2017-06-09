@@ -5,38 +5,39 @@ import sys
 import unittest
 import subprocess
 
-################################################
+#########################
 # serverless pshell tests
-################################################
+#########################
 class pshell_syntax(unittest.TestCase):
-
-    def setUp(self):
-        print "setup"
 
     def test_cd(self):
         proc = subprocess.Popen(["pshell.py", "-c", "dummy", "cd /projects\"'"], stdout=subprocess.PIPE)
         for line in proc.stdout:
-            print line
+            if "request" in line:
+                self.assertEqual(line.strip(), '<request><service name="asset.namespace.exists" session=""><args><namespace>/projects"\'</namespace></args></service></request>')
 
-
-    def test_put(self):
-        proc = subprocess.Popen(["pshell.py", "-c", "dummy", "get *"], stdout=subprocess.PIPE)
+    def test_mkdir(self):
+        proc = subprocess.Popen(["pshell.py", "-c", "dummy", "mkdir /dir1/../dir2/namespace\"'"], stdout=subprocess.PIPE)
         for line in proc.stdout:
-            print line
+            if "request" in line:
+                self.assertEqual(line.strip(), '<request><service name="asset.namespace.create" session=""><args><namespace>/dir2/namespace"\'</namespace></args></service></request>')
 
+    def test_file(self):
+        proc = subprocess.Popen(["pshell.py", "-c", "dummy", r'file "/dir1/../dir2/test_!@#\""'], stdout=subprocess.PIPE)
+        for line in proc.stdout:
+            if "request" in line:
+                self.assertEqual(line.strip(), '<request><service name="asset.get" session=""><args><id>path=/dir2/test_!@#"</id></args></service></request>')
  
 
-
+########################################
 # convenience wrapper for squishing bugs
+########################################
 class pshell_bugs(unittest.TestCase):
     def setUp(self):
         print "setup"
 
-    def test_squish1(self):
+    def test_squish(self):
         print "TODO"
-
-
-
 
 
 ######
@@ -44,12 +45,14 @@ class pshell_bugs(unittest.TestCase):
 ######
 if __name__ == '__main__':
 
-
+    print "\n----------------------------------------------------------------------"
+    print "Running offline tests for: pshell"
+    print "----------------------------------------------------------------------\n"
 
 # classes to test
     test_class_list = [pshell_syntax]
 
-#    test_class_list = [mfclient_bugs]
+#    test_class_list = [pshell_bugs]
 
 
 # build suite

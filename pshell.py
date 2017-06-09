@@ -278,7 +278,6 @@ class parser(cmd.Cmd):
         print "Usage: file <filename>\n"
 
     def do_file(self, line):
-#        result = self.mf_client.aterm_run("asset.get :id \"path=%s\"" % self.absolute_remote_filepath(line))
         result = self.mf_client.aterm_run('asset.get :id "path=%s"' % self.absolute_remote_filepath(line))
         self.mf_client.xml_print(result)
 
@@ -384,9 +383,6 @@ class parser(cmd.Cmd):
                 asset_filter = posixpath.basename(cwd)
                 cwd = posixpath.dirname(cwd)
 
-#                asset_filter = self.escape_single_quotes(posixpath.basename(cwd))
-#                cwd = self.escape_single_quotes(posixpath.dirname(cwd))
-
 # FIXME - these issues actually look like a www.list bug - when there is a " in the namespace
 # CURRENT - sean"s dir/ 
 #        cwd = cwd.replace('"', '\\"')
@@ -435,8 +431,6 @@ class parser(cmd.Cmd):
                     if child.tag == "name":
                             print "[Folder] %s" % child.text
 # for each asset
-#            self.mf_client.xml_print(reply)
-
             for elem in reply.iter('asset'):
                 asset_id = "?"
                 filestate = "unknown   |"
@@ -1035,19 +1029,15 @@ class parser(cmd.Cmd):
             return
 
 # confirm remove
-# not sure why this find doesn't work
-#         elem = result.find("value")
-        for elem in result.iter():
-            if elem.tag == "value":
-                count = int(elem.text)
-                if count == 0:
-                    print "No match"
-                    return
-                if self.ask("Remove %d files: (y/n) " % count):
-                    self.mf_client.aterm_run('asset.query :where "%s" :action pipe :service -name asset.destroy' % base_query)
-                else:
-                    print "Aborted"
-                return
+        elem = result.find(".//value")
+        count = int(elem.text)
+        if count == 0:
+            print "No match"
+        else:
+            if self.ask("Remove %d files: (y/n) " % count):
+                self.mf_client.aterm_run('asset.query :where "%s" :action pipe :service -name asset.destroy' % base_query)
+            else:
+                print "Aborted"
 
 # -- rmdir 
     def help_rmdir(self):
@@ -1068,18 +1058,18 @@ class parser(cmd.Cmd):
 # -- local commands
     def help_debug(self):
         print "\nTurn debugging output on/off\n"
-        print "Usage: debug <on/off>\n"
+        print "Usage: debug <value>\n"
+        print "Examples:\n      debug on\n      debug off\n      debug 1\n"
 
     def do_debug(self, line):
         match = re.search(r"\d+", line)
         if match:
-            self.mf_client.debug_level = int(match.group(0))
-            self.mf_client.debug = True
+            self.mf_client.debug = int(match.group(0))
         elif "true" in line or "on" in line:
-            self.mf_client.debug = True
+            self.mf_client.debug = 1
         elif "false" in line or "off" in line:
-            self.mf_client.debug = False
-        print "Debug=%r : level=%r" % (self.mf_client.debug, self.mf_client.debug_level) 
+            self.mf_client.debug = 0
+        print "Debug=%r" % self.mf_client.debug 
 
 # --
     def help_lpwd(self):
@@ -1399,13 +1389,13 @@ def main():
     p = argparse.ArgumentParser(description="pshell help")
     p.add_argument("-c", dest='config', default="pawsey", help="the server in $HOME/.mf_config to connect to")
     p.add_argument("-i", dest='script', help="input text file containing commands")
-    p.add_argument("-d", dest='debug', help="turns debugging on", action="store_true")
+    p.add_argument("-d", dest='debug', default=0, help="activates debugging level")
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
     current = args.config
     script = args.script
     encrypt = True
-    debug = False
+    debug = 0
     dummy = False
     session = ""
     token = None
@@ -1416,7 +1406,6 @@ def main():
     try:
         open(config_filepath, 'a').close()
     except:
-#        print "Invalid home [%s] ... falling back to current folder" % config_filepath
         config_filepath = os.path.join(os.getcwd(), ".mf_config")
 # build config
     config = ConfigParser.ConfigParser()
@@ -1424,18 +1413,15 @@ def main():
 # use config in ~ if it exists
     try:
         if config.has_section(current):
-#            print "Reading config [%s]" % config_filepath
             pass
         else:
             try:
 # config in zip bundle
                 me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
                 f = me.open('.mf_config')
-#                print "Reading default config from bundle..."
             except:
 # config from pshell install directory
                 f = open(os.path.join(os.path.dirname(__file__), 'data', '.mf_config'))
-#                print "Reading default config from site package..."
 
 # read non ~ config as defaults
             config.readfp(f)
@@ -1453,8 +1439,6 @@ def main():
 
     if config.has_option(current, 'encrypt'):
         encrypt = config.getboolean(current, 'encrypt')
-    if config.has_option(current, 'debug'):
-        debug = config.getboolean(current, 'debug')
     if config.has_option(current, 'dummy'):
         dummy = config.getboolean(current, 'dummy')
     if config.has_option(current, 'session'):
@@ -1462,9 +1446,9 @@ def main():
     if config.has_option(current, 'token'):
         token = config.get(current, 'token')
 
-# new - commandline debug true overrides config
+# NEW - don't store debug level in config (command line flag or pshell command is enough)
     if args.debug:
-        debug = True
+        debug = args.debug
 
 # CURRENT - extract size - use this for auto pagination
 # won't work for windows (of course)

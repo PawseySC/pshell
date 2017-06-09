@@ -99,7 +99,7 @@ class mf_client:
     All unexpected failures are handled by raising exceptions
     """
 
-    def __init__(self, protocol, port, server, domain="system", session="", timeout=120, enforce_encrypted_login=True, debug=False, dummy=False):
+    def __init__(self, protocol, port, server, domain="system", session="", timeout=120, enforce_encrypted_login=True, debug=0, dummy=False):
         """
         Create a Mediaflux server connection instance. Raises an exception on failure.
 
@@ -111,7 +111,7 @@ class mf_client:
                             session: a STRING supplying the session ID which, if it exists, enables re-use of an existing authenticated session 
                             timeout: an INTEGER specifying the connection timeout
             enforce_encrypted_login: a BOOLEAN that should only be False on a safe internal dev/test network
-                              debug: a BOOLEAN which controls output of troubleshooting information 
+                              debug: an INTEGER which controls output of troubleshooting information 
                               dummy: a BOOLEAN used for testing only (no actual server connection)
 
         Returns:
@@ -129,7 +129,6 @@ class mf_client:
         self.session = session
         self.dummy = dummy
         self.debug = debug
-        self.debug_level = 0
         self.base_url="{0}://{1}".format(protocol, server)
         self.post_url= self.base_url + "/__mflux_svc__"
         self.data_url = self.base_url + "/mflux/content.mfjp"
@@ -151,7 +150,7 @@ class mf_client:
         s.close()
 
 # if required, attempt to display more connection info
-        if self.debug:
+        if self.debug > 0:
             print "  SERVER: %s://%s:%s" % (self.protocol, self.server, self.port)
             if self.protocol == "https":
 # first line of python version info is all we're interested in
@@ -376,8 +375,7 @@ class mf_client:
             A STRING containing the server reply (if post is TRUE, if false - just the XML for test comparisons)
         """
 
-#        self.log("DEBUG", "XML  in: %s" % repr(aterm_line), level=1)
-        self.log("DEBUG", "XML  in: %s" % aterm_line, level=1)
+        self.log("DEBUG", "XML  in: %s" % aterm_line, level=2)
 
 # no posix - protect escaped characters which need to be passed through
 # no posix - also means any escaped chars which are intented to be evaulated (eg escaped quotes in namespaces/assets) rather than passed through, breaks things
@@ -397,7 +395,7 @@ class mf_client:
         while token:
             if token[0] == ':':
                 child = xml_processor.SubElement(xml_node, '%s' % token[1:])
-                self.log("DEBUG", "XML elem [%s]" % token[1:], level=1)
+                self.log("DEBUG", "XML elem [%s]" % token[1:], level=2)
             elif token[0] == '<':
                 stack.append(xml_node)
                 xml_node = child
@@ -410,7 +408,7 @@ class mf_client:
                 if value.startswith('"') and value.endswith('"'):
                     value = value[1:-1]
                 child.set(key, value)
-                self.log("DEBUG", "XML prop [%r = %r]" % (key, value), level=1)
+                self.log("DEBUG", "XML prop [%r = %r]" % (key, value), level=2)
             else:
 # FIXME - potentially some issues here with data strings with multiple spaces (ie we are doing a whitespace split & only adding one back)
                 if child.text is not None:
@@ -420,7 +418,7 @@ class mf_client:
                         child.text = token[1:-1]
                     else:
                         child.text = token
-                self.log("DEBUG", "XML text [%s]" % child.text, level=1)
+                self.log("DEBUG", "XML text [%s]" % child.text, level=2)
 
 # while tokens ...
             token = lexer.get_token()
@@ -428,7 +426,7 @@ class mf_client:
 # testing hook
         if post is not True:
             tmp = xml_processor.tostring(xml_root, method="html")
-            self.log("DEBUG", "XML out: %s" % tmp, level=1)
+            self.log("DEBUG", "XML out: %s" % tmp, level=2)
             return tmp
 
 # wrap with session/service call 
@@ -442,7 +440,7 @@ class mf_client:
         xml_text = xml_processor.tostring(xml)
 # debug
         tmp = re.sub(r'session=[^>]*', 'session="..."', xml_text)
-        self.log("DEBUG", "XML out: %s" % tmp, level=1)
+        self.log("DEBUG", "XML out: %s" % tmp, level=2)
 # post
         reply = self._post(xml_text)
         return reply
@@ -490,12 +488,12 @@ class mf_client:
         return
 
 #------------------------------------------------------------
-    def log(self, prefix, message, level=0):
+    def log(self, prefix, message, level=1):
         """
         Timestamp based message logging.
         """
         if "DEBUG" in prefix:
-            if self.debug is False or level > self.debug_level:
+            if level > self.debug:
                 return
 
         ts = time.time()

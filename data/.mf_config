@@ -3,7 +3,6 @@ server = data.pawsey.org.au
 protocol = https
 port = 443
 encrypt = True
-debug = False
 domain = ivec
 namespace = /projects
 
@@ -11,7 +10,5 @@ namespace = /projects
 server = localhost
 protocol = http
 port = 80
-debug = True
 domain = system
 dummy = True
-session = 123

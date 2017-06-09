@@ -93,13 +93,15 @@ class mfclient_syntax(unittest.TestCase):
         self.assertEqual(reply, "<namespace>/projects/Data Team/sean's dir</namespace><page>1</page><size>30</size>")
 
 
+########################################
 # convenience wrapper for squishing bugs
+########################################
 class mfclient_bugs(unittest.TestCase):
     def setUp(self):
         global mf_client
         self.mf_client = mf_client
 
-    def test_sanitise_namespace_quotes(self):
+    def test_squish(self):
         self.mf_client.debug = True
         self.mf_client.debug_level = 1
 
@@ -107,7 +109,6 @@ class mfclient_bugs(unittest.TestCase):
         self.assertEqual(reply, '<namespace>namespace_"</namespace><quota><allocation>10 TB</allocation></quota>')
 
         print reply
-
 
 
 ######
@@ -119,7 +120,7 @@ if __name__ == '__main__':
     try:
         mf_client = mfclient.mf_client("http", "80", "localhost", dummy=True)
         print "\n----------------------------------------------------------------------"
-        print "Running offline tests"
+        print "Running offline tests for: mfclient module"
         print "----------------------------------------------------------------------\n"
     except Exception as e:
         print str(e)
