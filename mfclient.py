@@ -99,7 +99,7 @@ class mf_client:
     All unexpected failures are handled by raising exceptions
     """
 
-    def __init__(self, protocol, port, server, session="", timeout=120, enforce_encrypted_login=True, debug=False, dummy=False):
+    def __init__(self, protocol, port, server, domain="system", session="", timeout=120, enforce_encrypted_login=True, debug=False, dummy=False):
         """
         Create a Mediaflux server connection instance. Raises an exception on failure.
 
@@ -107,6 +107,7 @@ class mf_client:
                            protocol: a STRING which should be either "http" or "https"
                                port: a STRING which is usually "80" or "443"
                              server: a STRING giving the FQDN of the server
+                             domain: a STRING giving the authentication domain to use when authenticating
                             session: a STRING supplying the session ID which, if it exists, enables re-use of an existing authenticated session 
                             timeout: an INTEGER specifying the connection timeout
             enforce_encrypted_login: a BOOLEAN that should only be False on a safe internal dev/test network
@@ -123,6 +124,7 @@ class mf_client:
         self.protocol = protocol
         self.port = int(port)
         self.server = server
+        self.domain = domain
         self.timeout = timeout
         self.session = session
         self.dummy = dummy
@@ -488,17 +490,6 @@ class mf_client:
         return
 
 #------------------------------------------------------------
-    def xml_find(self, xml_tree, tag):
-        """
-        XML navigation helper as I couldn't get the built in XML method root.find() to work properly
-        """
-# TODO - this may no longer be required - see the <xml tree>.find(".//<element>") examples
-        for elem in xml_tree.iter():
-            if elem.tag == tag:
-                return elem
-        return None
-
-#------------------------------------------------------------
     def log(self, prefix, message, level=0):
         """
         Timestamp based message logging.
@@ -521,12 +512,12 @@ class mf_client:
         self.session=""
 
 #------------------------------------------------------------
-    def login(self, domain=None, user=None, password=None, token=None):
+    def login(self, user=None, password=None, token=None):
         """
         Authenticate to the current Mediaflux server and record the session ID on success
 
         Input:
-            domain, user, password: STRINGS specifying user login details
+            user, password: STRINGS specifying user login details
             token: STRING specifying a delegate credential
 
         Raises:
@@ -538,13 +529,11 @@ class mf_client:
                 raise Exception("Forbidding unencrypted password post")
             else:
                 self.log("DEBUG", "Permitting unencrypted login; I hope you know what you're doing.")
-
 # attempt token authentication first (if supplied)
         if token is not None:
             reply = self.aterm_run("system.logon :token %s" % token)
         else:
-            reply = self.aterm_run("system.logon :domain %s :user %s :password %s" % (domain, user, password))
-
+            reply = self.aterm_run("system.logon :domain %s :user %s :password %s" % (self.domain, user, password))
 # extract session key
         elem = reply.find(".//session")
         if elem is not None:
@@ -561,6 +550,8 @@ class mf_client:
         Returns:
              A BOOLEAN value depending on the current authentication status of the Mediaflux connection
         """
+        if self.dummy:
+            return True
         try:
             result = self.aterm_run("actor.self.describe")
             return True
@@ -599,14 +590,15 @@ class mf_client:
             An error on failure
         """
 
+# NOTE - if logged in with a delegate (token) then that could be used to form the URL
+# TODO - the tokens and thus the URLs have (or should have) expiry dates - how to communicate this?
         app = "wget"
-        tag = "token"
         namespace = None
 
 # find root project namespace
         result = self.aterm_run("asset.get :id %r :xpath namespace" % asset_id)
 
-        elem = self.xml_find(result, "value")
+        elem = result.find(".//value")
         if elem is not None:
             tmp = elem.text
             match = re.search(r"/projects/[^/]+", tmp)
@@ -618,7 +610,7 @@ class mf_client:
 # get project token
         result = self.aterm_run("asset.namespace.application.settings.get :namespace %s :app %s" % (namespace, app))
 
-        elem = self.xml_find(result, tag)
+        elem = result.find(".//token")
         if elem is not None:
             token = elem.text
         else:
@@ -747,11 +739,11 @@ class mf_client:
 
 # attempt checksum compare
         try:
-            elem = self.xml_find(result, "id")
+            elem = result.find(".//id")
             asset_id = int(elem.text)
-            elem = self.xml_find(result, "crc32")
+            elem = result.find(".//crc32")
             remote_crc32 = int(elem.text, 16)
-            elem = self.xml_find(result, "size")
+            elem = result.find(".//size")
             remote_size = int(elem.text)
             local_crc32 = self.get_local_checksum(filepath)
             if local_crc32 == remote_crc32:

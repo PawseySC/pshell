@@ -28,7 +28,7 @@ delegate_default = 7
 delegate_min = 1
 delegate_max = 365
 
-# NB: handle exceptions at this level
+# NB: we want errors from server on failure so we can produce a non 0 exit code, if required
 class parser(cmd.Cmd):
     config = None
     config_name = None
@@ -37,7 +37,6 @@ class parser(cmd.Cmd):
     cwd = '/projects'
     interactive = True
     need_auth = True
-    intro = " === pshell: type 'help' for a list of commands ==="
     transfer_processes = 4
     terminal_height = 25
 
@@ -46,7 +45,6 @@ class parser(cmd.Cmd):
         if self.need_auth:
             self.prompt = "%s:offline>" % self.config_name
         else:
-#            self.prompt = "%s:%s>" % (self.config_name, self.cwd.decode('string_escape'))
             self.prompt = "%s:%s>" % (self.config_name, self.cwd)
 
 # --- not logged in -> don't even attempt to process remote commands
@@ -62,7 +60,6 @@ class parser(cmd.Cmd):
         if self.need_auth:
             self.prompt = "%s:offline>" % self.config_name
         else:
-#            self.prompt = "%s:%s>" % (self.config_name, self.cwd.decode('string_escape'))
             self.prompt = "%s:%s>" % (self.config_name, self.cwd)
         return cmd.Cmd.postcmd(self, stop, line)
 
@@ -83,22 +80,16 @@ class parser(cmd.Cmd):
 # offset to use when extracting completion string from candidate matches
         xlat_offset = max(0, start-offset)
 
-#         print "\ncn: partial [%s] : prefix = [%r] : pattern = [%r] : insertion_start=%r : xlat_offset=%r" % (partial_ns, prefix, pattern, start, xlat_offset)
-
 # special case - we "know" .. is a namespace
         if pattern == "..":
             return [partial_ns[start:]+"/"]
 
 # construct an absolute namespace (required for any remote lookups)
-        if posixpath.isabs(partial_ns):
-            target_ns = posixpath.normpath(partial_ns[:offset])
-        else:
-            target_ns = posixpath.normpath(posixpath.join(self.cwd, partial_ns[:offset]))
-
-#         print "cn: target_ns: [%s]" % target_ns
+        target_ns = self.absolute_remote_filepath(partial_ns[:offset])
+        self.mf_client.log("DEBUG", "cn seek: target_ns: [%s] : prefix=[%r] : pattern=[%r] : start=%r : xlat=%r" % (target_ns, prefix, pattern, start, xlat_offset), level=2)
 
 # generate listing in target namespace for completion matches
-        result = self.mf_client.aterm_run("asset.namespace.list :namespace %s" % target_ns)
+        result = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % target_ns)
 
         ns_list = []
         for elem in result.iter('namespace'):
@@ -114,15 +105,15 @@ class parser(cmd.Cmd):
                 if item is not None:
                     ns_list.append(item)
 
+        self.mf_client.log("DEBUG", "cn found: %r" % ns_list, level=2)
+
         return ns_list
 
 # --- helper: attempt to complete an asset
     def complete_asset(self, partial_asset_path, start):
+
 # construct an absolute namespace (required for any remote lookups)
-        if posixpath.isabs(partial_asset_path):
-            candidate_ns = posixpath.normpath(partial_asset_path)
-        else:
-            candidate_ns = posixpath.normpath(posixpath.join(self.cwd, partial_asset_path))
+        candidate_ns = self.absolute_remote_filepath(partial_asset_path)
 
         if self.mf_client.namespace_exists(candidate_ns):
 # candidate is a namespace -> it's our target for listing
@@ -143,26 +134,20 @@ class parser(cmd.Cmd):
                 return None
 
         target_ns = self.escape_single_quotes(target_ns)
-#        print "ca: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix)
-#        self.mf_client.debug = True
+        self.mf_client.log("DEBUG", "ca seek: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix), level=2)
 
         if pattern is not None:
             result = self.mf_client.aterm_run("asset.query :where \"namespace='%s' and name ='%s*'\" :action get-values :xpath -ename name name" % (target_ns, pattern))
         else:
             result = self.mf_client.aterm_run("asset.query :where \"namespace='%s'\" :action get-values :xpath -ename name name" % target_ns)
 
-#         self.mf_client.xml_print(result)
-
+#       ALT? eg for elem in result.findall(".//name")
         asset_list = []
-
         for elem in result.iter("name"):
             if elem.text is not None:
                 asset_list.append(posixpath.join(prefix,elem.text))
 
-#       elem = result.find(".//name")
-
-
-#        print "ca: ", asset_list
+        self.mf_client.log("DEBUG", "ca found: %r" % asset_list, level=2)
 
         return asset_list
 
@@ -172,61 +157,42 @@ class parser(cmd.Cmd):
 
 # ---
     def complete_get(self, text, line, start_index, end_index):
-        save_state = self.mf_client.debug
-        self.mf_client.debug = False
         candidate_list = self.complete_asset(line[4:end_index], start_index-4)
         candidate_list += self.complete_namespace(line[4:end_index], start_index-4)
-        self.mf_client.debug = save_state
         return candidate_list
 
 # ---
 # NB: taking the approach that rm is for files (assets) only and rmdir is for folders (namespaces)
     def complete_rm(self, text, line, start_index, end_index):
-        save_state = self.mf_client.debug
-        self.mf_client.debug = False
         candidate_list = self.complete_asset(line[3:end_index], start_index-3)
+        candidate_list += self.complete_namespace(line[3:end_index], start_index-3)
         return candidate_list
 
 # ---
     def complete_file(self, text, line, start_index, end_index):
-        save_state = self.mf_client.debug
-        self.mf_client.debug = False
         candidate_list = self.complete_asset(line[5:end_index], start_index-5)
         candidate_list += self.complete_namespace(line[5:end_index], start_index-5)
-        self.mf_client.debug = save_state
         return candidate_list
 
 # ---
     def complete_ls(self, text, line, start_index, end_index):
-        save_state = self.mf_client.debug
-        self.mf_client.debug = False
-        candidate_list = self.complete_namespace(line[3:end_index], start_index-3)
-        candidate_list += self.complete_asset(line[3:end_index], start_index-3)
-        self.mf_client.debug = save_state
+        candidate_list = self.complete_asset(line[3:end_index], start_index-3)
+        candidate_list += self.complete_namespace(line[3:end_index], start_index-3)
         return candidate_list
 
 # ---
     def complete_cd(self, text, line, start_index, end_index):
-        save_state = self.mf_client.debug
-        self.mf_client.debug = False
         ns_list = self.complete_namespace(line[3:end_index], start_index-3)
-        self.mf_client.debug = save_state
         return ns_list
 
 # ---
     def complete_mkdir(self, text, line, start_index, end_index):
-        save_state = self.mf_client.debug
-        self.mf_client.debug = False
         ns_list = self.complete_namespace(line[6:end_index], start_index-6)
-        self.mf_client.debug = save_state
         return ns_list
 
 # ---
     def complete_rmdir(self, text, line, start_index, end_index):
-        save_state = self.mf_client.debug
-        self.mf_client.debug = False
         ns_list = self.complete_namespace(line[6:end_index], start_index-6)
-        self.mf_client.debug = save_state
         return ns_list
 
 # ---
@@ -290,16 +256,11 @@ class parser(cmd.Cmd):
             return True
         return False
 
-# --- helper: I think this is only required if passing self.cwd through an asset.query
-    def safe_cwd(self):
-        return(self.cwd.replace("'", "\\'"))
-
-# CURRENT - asset.query with namespaces enclosed by ' - must have ' double escaped ... asset.namespace.exists namespaces - must be just single escaped 
-# CURRENT - but asset.namespace.list should have no escaping 
+# --- helper
     def escape_single_quotes(self, namespace):
         return(namespace.replace("'", "\\'"))
 
-# --- helper: convert a relative/absolute mediaflux namespace/asset reference to minimal absolute form
+# --- helper: convert a relative/absolute mediaflux namespace/asset reference to minimal (non-quoted) absolute form
     def absolute_remote_filepath(self, line):
         if line.startswith('"') and line.endswith('"'):
             line = line[1:-1]
@@ -402,7 +363,7 @@ class parser(cmd.Cmd):
 # ---
     def help_ls(self):
         print "\nList files stored on the remote server."
-        print "Navigation in paginated output can be achieved by directly inputing page numbers or /<pattern> or q to quit.\n"
+        print "Navigation in paginated output can be achieved by entering a page number or /<pattern> or q to quit.\n"
         print "Usage: ls <file pattern or folder name>\n"
         print "Examples: ls /projects/my project/some folder"
         print "          ls *.txt\n"
@@ -446,9 +407,7 @@ class parser(cmd.Cmd):
 
 # trap things like "ls -al" and "ls'" - which will give an ugly stack trace
             except Exception as e:
-                self.mf_client.log("ERROR", "Bad command syntax.")
-                print str(e)
-                return
+                raise Exception(" Invalid command syntax; for more information type 'help ls'")
 
             for elem in reply.iter('parent'):
                 for child in elem:
@@ -466,12 +425,9 @@ class parser(cmd.Cmd):
                         canonical_namespaces = int(child.text)
 
 # print header 
-# TODO - total files = ?, x files pp, folder:
             if show_header:
                 print "%d items, %d items per page, remote folder: %s" % (canonical_assets+canonical_namespaces, canonical_size, canonical_folder)
                 show_header = False
-
-            pagination_footer = "Page %r of %r, file filter [%r]: " % (canonical_page, canonical_last, asset_filter)
 
 # for each namespace
             for elem in reply.iter('namespace'):
@@ -486,9 +442,7 @@ class parser(cmd.Cmd):
                 filestate = "unknown   |"
                 filesize = self.human_size(0)
                 filename = "?"
-
                 for child in elem:
-# NEW - can't really avoid ID interaction in the long run I think ...
                     if child.tag == "id":
                         asset_id = child.text
                     if child.tag == "name":
@@ -505,17 +459,23 @@ class parser(cmd.Cmd):
 # file item
                 print " %-10s | %s %s | %s" % (asset_id, filestate, filesize, filename)
 
-# if no pagination is required - we're done, unless a filter is active
-            if canonical_last == 1 and asset_filter is None:
-                break
+# if current display requires no pagination - auto exit in some cases 
+            if canonical_last == 1:
+                if asset_filter is None:
+                    break
+                if pagination_footer is None:
+                    break
+
+            pagination_footer = "Page %r of %r, file filter [%r]: " % (canonical_page, canonical_last, asset_filter)
+
 # non-interactive - assume a quit after 1st page
+# TODO - keep looping with a sleep(1) to produce all files?
             if self.interactive is False:
                 print pagination_footer
                 break
 
 # pagination controls
             response = self.pagination_controller(pagination_footer)
-#            print "response = [%r]" % response
             if response is not None:
                 try:
                     page = int(response)
@@ -578,9 +538,8 @@ class parser(cmd.Cmd):
         list_local_path = {}
 
         result = self.mf_client.aterm_run('asset.query :where "%s and content online" :as iterator :action get-values :xpath -ename id id :xpath -ename namespace namespace :xpath -ename filename name' % base_query)
-#        self.mf_client.xml_print(result)
 
-        elem = self.mf_client.xml_find(result, "iterator")
+        elem = result.find(".//iterator")
         iterator = elem.text
         iterate_size = 100
 
@@ -603,7 +562,6 @@ class parser(cmd.Cmd):
                         namespace = child.text
 # remote = *nix , local = windows or *nix
 # NEW - the relative path should be computed from the starting namespace 
-# FIXME - this is currently breaking when relpath is ../current -> ie need a normpath() somewhere to reduce it
                         remote_relpath = posixpath.relpath(path=namespace, start=base_namespace)
                         relpath_list = remote_relpath.split("/")
                         local_relpath = os.sep.join(relpath_list)
@@ -715,19 +673,15 @@ class parser(cmd.Cmd):
                 remote = posixpath.join(self.cwd, remote_relpath)
                 for name in name_list:
                     if name.lower().endswith('.meta'):
-#                        meta_list.append((remote.decode('string_escape'), os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
                         meta_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
                     else:
-#                        upload_list.append((remote.decode('string_escape'), os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
                         upload_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
         else:
             self.print_over("Building file list... ")
             for name in glob.glob(line):
                 if name.lower().endswith('.meta'):
-#                    meta_list.append((self.cwd.decode('string_escape'), os.path.join(os.getcwd(), name)))
                     meta_list.append((self.cwd, os.path.join(os.getcwd(), name)))
                 else:
-#                    upload_list.append((self.cwd.decode('string_escape'), os.path.join(os.getcwd(), name)))
                     upload_list.append((self.cwd, os.path.join(os.getcwd(), name)))
 
 # TODO  - for all files in meta_list - strip .xml extension and if NOT in upload_list -> treat as normal upload, else -> it's metadata
@@ -802,11 +756,7 @@ class parser(cmd.Cmd):
         list_asset_filepath = []
         total_bytes = 0
 
-# FIXME - will fail for things like get Data Team/sean or get Data Team/sean/*.zip -> need to do some unix style path analysis 1st ...
-# prefix with CWD -> then unix extract path and basename
 # NB: use posixpath for mediaflux namespace manipulation
-#        if not posixpath.isabs(line):
-#            line = posixpath.join(self.cwd, line)
         line = self.absolute_remote_filepath(line)
 
 # sanitise as asset.query is special
@@ -827,6 +777,10 @@ class parser(cmd.Cmd):
         else:
             base_query = "namespace='%s' and name='%s'" % (namespace, basename)
             base_namespace = posixpath.normpath(namespace)
+
+# base_namespace shouldn't have escaping as it's used in direct path compares (not sent to mediaflux)
+# base_query should have escaping as it is passed through mediaflux (asset.query etc)
+        base_namespace = base_namespace.decode('string_escape')
 
 # get content statistics and init for transfer polling loop
         stats = self.poll_total(base_query)
@@ -1028,10 +982,9 @@ class parser(cmd.Cmd):
         candidate = self.absolute_remote_filepath(line)
         if self.mf_client.namespace_exists(candidate):
             self.cwd = candidate
-#            print "Remote: %s" % self.cwd.decode('string_escape')
             print "Remote: %s" % self.cwd
         else:
-            print "Invalid remote folder: %s" % candidate
+            raise Exception(" Could not find remote folder: %s" % candidate)
 
 # --
     def help_pwd(self):
@@ -1052,13 +1005,12 @@ class parser(cmd.Cmd):
 # NEW - the uniform approach to apply for all sanitisation
 # always double quotes (so we can display literal) -> double quotes protected when passed to mf_client
             self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % ns_target.replace('"', '\\\"'))
-
         except Exception as e:
 # don't raise an exception if the namespace already exists - just warn
             if "already exists" in str(e):
-                print "Warning: %s" % str(e)
+                print str(e)
             else:
-# other errors (no permission, etc) should still raise an exception - failure
+# other errors (no permission, etc) should still raise an exception to indicate failure on exit
                 raise Exception(e)
 
 # --
@@ -1075,7 +1027,7 @@ class parser(cmd.Cmd):
         pattern = posixpath.basename(fullpath)
         base_query = "namespace='%s' and name='%s'" % (self.escape_single_quotes(namespace), self.escape_single_quotes(pattern))
 
-# count
+# prepare - count matches
         try:
             result = self.mf_client.aterm_run('asset.query :where "%s" :action count' % base_query)
         except Exception as e:
@@ -1097,18 +1049,21 @@ class parser(cmd.Cmd):
                     print "Aborted"
                 return
 
-# --
+# -- rmdir 
     def help_rmdir(self):
         print "\nRemove a remote folder\n"
         print "Usage: rmdir <folder>\n"
 
-# NB: we want an error from server on failure so we can produce a non 0 exit code if required
+# -- rmdir 
     def do_rmdir(self, line):
         ns_target = self.absolute_remote_filepath(line)
-        if self.ask("Remove folder: %s (y/n) " % ns_target):
-            self.mf_client.aterm_run('asset.namespace.destroy :namespace "%s"' % ns_target.replace('"', '\\\"'))
+        if self.mf_client.namespace_exists(ns_target):
+            if self.ask("Remove folder: %s (y/n) " % ns_target):
+                self.mf_client.aterm_run('asset.namespace.destroy :namespace "%s"' % ns_target.replace('"', '\\\"'))
+            else:
+                print "Aborted"
         else:
-            print "Aborted"
+            raise Exception(" Could not find remote folder: %s" % ns_target)
 
 # -- local commands
     def help_debug(self):
@@ -1243,26 +1198,19 @@ class parser(cmd.Cmd):
         print "Usage: login\n"
 
     def do_login(self, line):
+        if self.interactive is False:
+            raise Exception(" Non interactive login can only be performed using a delegate")
+        self.mf_client.log("DEBUG", "Authentication domain [%s]" % self.mf_client.domain)
         user = raw_input("Username: ")
-# NB: special cases
-        if user == "manager":
-            domain = 'system'
-        elif user == "public":
-            domain = 'public'
-        else:
-            domain = 'ivec'
         password = getpass.getpass("Password: ")
-
         try:
-            self.mf_client.login(domain, user, password)
+            self.mf_client.login(user, password)
             self.need_auth = False
 # save the authentication token
-#             print "Writing session to config file: %s" % self.config_filepath
             self.config.set(self.config_name, 'session', self.mf_client.session)
             f = open(self.config_filepath, "w")
             self.config.write(f)
             f.close()
-
         except Exception as e:
             print str(e)
 
@@ -1336,10 +1284,11 @@ class parser(cmd.Cmd):
 
         result = self.mf_client.aterm_run("asset.query :where \"namespace>='%s'\" :as iterator :action get-path" % remote_namespace)
 
-        elem = self.mf_client.xml_find(result, "iterator")
+        elem = result.find(".//iterator")
         iterator = elem.text
         iterate_size = 100
         iterate = True
+
         while iterate:
             self.mf_client.log("DEBUG", "Remote iterator chunk")
 # get file list for this sub-set
@@ -1358,14 +1307,14 @@ class parser(cmd.Cmd):
 
         return remote_files
 
-# ---
+# --- compare 
     def help_compare(self):
         print "\nCompares a local and a remote folder and reports any differences"
         print "The local and remote folders must have the same name and appear in the current local and remote working directories"
         print "Usage: compare <folder>\n"
         print "Examples: compare mystuff\n"
 
-# compare folder tree structure ... how?
+# --- compare 
     def do_compare(self, line):
         remote_fullpath = self.absolute_remote_filepath(line)
         if self.mf_client.namespace_exists(remote_fullpath) is False:
@@ -1435,10 +1384,9 @@ class parser(cmd.Cmd):
                 continue
 
             except Exception as e:
-# NEW - handle EOF case where stdin is force fed via command line
+# handle EOF case where stdin is force fed via command line
                 if "EOF" in str(e):
                     return
-
                 print str(e)
 
 def main():
@@ -1458,6 +1406,7 @@ def main():
     script = args.script
     encrypt = True
     debug = False
+    dummy = False
     session = ""
     token = None
     config_changed = False
@@ -1467,7 +1416,7 @@ def main():
     try:
         open(config_filepath, 'a').close()
     except:
-        print "Bad home [%s] ... falling back to current folder" % config_filepath
+#        print "Invalid home [%s] ... falling back to current folder" % config_filepath
         config_filepath = os.path.join(os.getcwd(), ".mf_config")
 # build config
     config = ConfigParser.ConfigParser()
@@ -1475,20 +1424,18 @@ def main():
 # use config in ~ if it exists
     try:
         if config.has_section(current):
-            print "Reading config [%s]" % config_filepath
+#            print "Reading config [%s]" % config_filepath
+            pass
         else:
             try:
 # config in zip bundle
                 me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
                 f = me.open('.mf_config')
-                print "Reading default config from bundle..."
+#                print "Reading default config from bundle..."
             except:
-# config in CWD
-#                f = open('.mf_config')
-#                print "Reading default config from CWD..."
 # config from pshell install directory
                 f = open(os.path.join(os.path.dirname(__file__), 'data', '.mf_config'))
-                print "Reading default config from site package..."
+#                print "Reading default config from site package..."
 
 # read non ~ config as defaults
             config.readfp(f)
@@ -1497,6 +1444,8 @@ def main():
         server = config.get(current, 'server')
         protocol = config.get(current, 'protocol')
         port = config.get(current, 'port')
+# NEW - require an authentication domain be specified
+        domain = config.get(current, 'domain')
 # no .mf_config in ~ or zip bundle or cwd => die
     except Exception as e:
         print "ERROR: failed to find a valid config file: %s" % str(e)
@@ -1506,6 +1455,8 @@ def main():
         encrypt = config.getboolean(current, 'encrypt')
     if config.has_option(current, 'debug'):
         debug = config.getboolean(current, 'debug')
+    if config.has_option(current, 'dummy'):
+        dummy = config.getboolean(current, 'dummy')
     if config.has_option(current, 'session'):
         session = config.get(current, 'session')
     if config.has_option(current, 'token'):
@@ -1527,7 +1478,7 @@ def main():
 
 # mediaflux client
     try:
-        mf_client = mfclient.mf_client(protocol=protocol, port=port, server=server, session=session, enforce_encrypted_login=encrypt, debug=debug)
+        mf_client = mfclient.mf_client(protocol=protocol, port=port, server=server, domain=domain, session=session, enforce_encrypted_login=encrypt, debug=debug, dummy=dummy)
     except Exception as e:
         print "Failed to establish network connection to: %s" % current
         print "Error: %s" % str(e)
@@ -1605,8 +1556,8 @@ def main():
             exit(-1)
 # run interactively
     else:
+        print " === pshell: type 'help' for a list of commands ==="
         my_parser.loop_interactively()
-
 
 if __name__ == '__main__':
     main()

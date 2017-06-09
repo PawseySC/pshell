@@ -6,3 +6,12 @@ encrypt = True
 debug = False
 domain = ivec
 namespace = /projects
+
+[dummy]
+server = localhost
+protocol = http
+port = 80
+debug = True
+domain = system
+dummy = True
+session = 123
