@@ -197,9 +197,8 @@ class mf_client:
         Primitive for sending an XML message to the Mediaflux server
         """
 
-# TODO - sneaky tests for pshell
+# NEW - dummy mode passback for pshell offline tests
         if self.dummy:
-            print "HOOKSHOT!"
             raise Exception(xml_string)
 
 # NB: timeout exception if server is unreachable
@@ -378,10 +377,9 @@ class mf_client:
         self.log("DEBUG", "XML  in: %s" % aterm_line, level=2)
 
 # no posix - protect escaped characters which need to be passed through
-# no posix - also means any escaped chars which are intented to be evaulated (eg escaped quotes in namespaces/assets) rather than passed through, breaks things
+# no posix - also means any escaped chars which are intented to be evaulated (eg escaped quotes in namespaces/assets) rather than passed through => breaks things
 # I think we have to have posix=True as it's closest to the way aterm processes input strings
         lexer = shlex.shlex(aterm_line, posix=True)
-#        lexer = shlex.shlex(aterm_line, posix=False)
         lexer.whitespace_split = True
 
         xml_root = xml_processor.Element(None)
