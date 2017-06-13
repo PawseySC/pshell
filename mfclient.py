@@ -374,7 +374,7 @@ class mf_client:
             A STRING containing the server reply (if post is TRUE, if false - just the XML for test comparisons)
         """
 
-        self.log("DEBUG", "XML  in: %s" % aterm_line, level=2)
+        self.log("DEBUG", "XML in: %s" % aterm_line, level=2)
 
 # no posix - protect escaped characters which need to be passed through
 # no posix - also means any escaped chars which are intented to be evaulated (eg escaped quotes in namespaces/assets) rather than passed through => breaks things
@@ -390,36 +390,46 @@ class mf_client:
 # first token is the service call, the rest are child arguments
         service_call = lexer.get_token()
         token = lexer.get_token()
-        while token:
-            if token[0] == ':':
-                child = xml_processor.SubElement(xml_node, '%s' % token[1:])
-                self.log("DEBUG", "XML elem [%s]" % token[1:], level=2)
-            elif token[0] == '<':
-                stack.append(xml_node)
-                xml_node = child
-            elif token[0] == '>':
-                xml_node = stack.pop()
-            elif token[0] == '-':
-                key = token[1:]
-                value = lexer.get_token()
-# xml attribs automatically get double quotes - strip any that were used (eg to protect whitespace)
-                if value.startswith('"') and value.endswith('"'):
-                    value = value[1:-1]
-                child.set(key, value)
-                self.log("DEBUG", "XML prop [%r = %r]" % (key, value), level=2)
-            else:
-# FIXME - potentially some issues here with data strings with multiple spaces (ie we are doing a whitespace split & only adding one back)
-                if child.text is not None:
-                    child.text += " " + token
+
+        try:
+            while token:
+                if token[0] == ':':
+                    child = xml_processor.SubElement(xml_node, '%s' % token[1:])
+                    self.log("DEBUG", "XML elem [%s]" % token[1:], level=2)
+# if element contains : (eg csiro:seismic) then we need to inject the xmlns stuff
+                    if ":" in token[1:]:
+                        item_list = token[1:].split(":")
+                        self.log("DEBUG", "XML associate namespace [%s] with element [%s]" % (item_list[0], token[1:]), level=2)
+                        child.set("xmlns:%s" % item_list[0], item_list[0])
+                elif token[0] == '<':
+                    stack.append(xml_node)
+                    xml_node = child
+                elif token[0] == '>':
+                    xml_node = stack.pop()
+                elif token[0] == '-':
+                    key = token[1:]
+                    value = lexer.get_token()
+                    if value.startswith('"') and value.endswith('"'):
+                        value = value[1:-1]
+                    child.set(key, value)
+                    self.log("DEBUG", "XML prop [%r = %r]" % (key, value), level=2)
                 else:
-                    if token.startswith('"') and token.endswith('"'):
-                        child.text = token[1:-1]
+# FIXME - potentially some issues here with data strings with multiple spaces (ie we are doing a whitespace split & only adding one back)
+                    if child.text is not None:
+                        child.text += " " + token
                     else:
-                        child.text = token
-                self.log("DEBUG", "XML text [%s]" % child.text, level=2)
+                        if token.startswith('"') and token.endswith('"'):
+                            child.text = token[1:-1]
+                        else:
+                            child.text = token
+                    self.log("DEBUG", "XML text [%s]" % child.text, level=2)
 
 # while tokens ...
-            token = lexer.get_token()
+                token = lexer.get_token()
+
+        except Exception as e:
+            self.log("DEBUG", "aterm_run() error: %s" % str(e))
+            raise Exception("Invalid command syntax; for more information on commands type 'help'")
 
 # testing hook
         if post is not True:
