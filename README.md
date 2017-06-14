@@ -12,12 +12,7 @@ Simply import the mfclient module into your Python code.
 
 ### How do I run the tests? ###
 
-The test_mfclient.py code serves as a basic example of how to use the mfclient module.
-
-Run it once to generate a template file ~/.mf_config which you will need to edit to suit your Mediaflux server.
-
-Run it again to execute the basic test suite.
-
+Run test_mfclient.py
 
 ### Is there a reference document? ###
 
@@ -28,10 +23,12 @@ To generate an API reference document, run:
 Then view mfclient.html in any web browser.
 
 
-### Command line clients - under development ###
+### Command line client ###
 
-pshell.py - python only command line client 
+pshell.py - command line client for mediaflux that uses mfclient for server communication.
 
-* Tab completion
+It features:
+
 * SFTP-like syntax
-
+* Tab completion
+* Basic support for mediaflux aterm commands
