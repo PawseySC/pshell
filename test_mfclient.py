@@ -12,7 +12,7 @@ import mfclient
 import posixpath
 import ConfigParser
 
-# global mfclient instance to avoid logging in for every single test
+# global mfclient instance to avoid setup for every test class
 mf_client = None
 
 ################################################
@@ -92,6 +92,10 @@ class mfclient_syntax(unittest.TestCase):
         reply = self.mf_client.aterm_run('www.list :namespace "/projects/Data Team/sean\'s dir" :page 1 :size 30', post=False)
         self.assertEqual(reply, "<namespace>/projects/Data Team/sean's dir</namespace><page>1</page><size>30</size>")
 
+    def test_xmlns_parsing(self):
+        reply = self.mf_client.aterm_run(r'asset.set :id 123 :meta < :pawsey:custom < :pawsey-key "pawsey value" >', post=False)
+        self.assertEqual(reply, '<id>123</id><meta><pawsey:custom xmlns:pawsey="pawsey"><pawsey-key>pawsey value</pawsey-key></pawsey:custom>')
+
 
 ########################################
 # convenience wrapper for squishing bugs
@@ -105,8 +109,8 @@ class mfclient_bugs(unittest.TestCase):
         self.mf_client.debug = True
         self.mf_client.debug_level = 1
 
-        reply = self.mf_client.aterm_run(r'asset.namespace.create :namespace "namespace_\"" :quota < :allocation "10 TB" >', post=False)
-        self.assertEqual(reply, '<namespace>namespace_"</namespace><quota><allocation>10 TB</allocation></quota>')
+        reply = self.mf_client.aterm_run(r'asset.set :id 123 :meta < :pawsey:custom < :pawsey-key "pawsey value" >', post=False)
+        self.assertEqual(reply, '<id>123</id><meta><pawsey:custom xmlns:pawsey="pawsey"><pawsey-key>pawsey value</pawsey-key></pawsey:custom>')
 
         print reply
 
