@@ -1345,19 +1345,18 @@ class parser(cmd.Cmd):
             try:
                 self.cmdloop()
             except KeyboardInterrupt:
-                print "Interrupted, cleaning up   "
-                continue
+                print " Interrupted by user"
 
 # NB: here's where all command failures are caught
             except SyntaxError:
-                print "Syntax error; for more information on commands type 'help'"
+                print " Syntax error; for more information on commands type 'help'"
 
             except Exception as e:
 # exit on the EOF case ie where stdin/file is force fed via command line redirect
                 if "EOF" in str(e):
                     return
                 print str(e)
-# TODO - handle via custom exception maybe?
+# TODO - handle via custom exception ?
                 if "session is not valid" in str(e):
                     self.need_auth = True
 
@@ -1522,8 +1521,11 @@ def main():
             try:
                 print "%s:%s> %s" % (current, my_parser.cwd, line)
                 my_parser.onecmd(line)
+            except KeyboardInterrupt:
+                print " Interrupted by user"
+                exit(-1)
             except SyntaxError:
-                print "Syntax error; for more information on commands type 'help'"
+                print " Syntax error; for more information on commands type 'help'"
                 exit(-1)
             except Exception as e:
                 print str(e)
