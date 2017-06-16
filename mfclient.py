@@ -212,6 +212,7 @@ class mf_client:
         if elem is not None:
             elem = tree.find(".//message")
             error_message = self._xml_succint_error(elem.text)
+            self.log("DEBUG", "_post() raise: [%s]" % error_message)
             raise Exception(error_message)
 
         return tree
@@ -429,7 +430,7 @@ class mf_client:
 
         except Exception as e:
             self.log("DEBUG", "aterm_run() error: %s" % str(e))
-            raise Exception("Invalid command syntax; for more information on commands type 'help'")
+            raise SyntaxError
 
 # testing hook
         if post is not True:

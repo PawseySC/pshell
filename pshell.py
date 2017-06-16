@@ -12,6 +12,7 @@ import getpass
 import zipfile
 import argparse
 import datetime
+import itertools
 import ConfigParser
 import mfclient
 import posixpath
@@ -394,16 +395,12 @@ class parser(cmd.Cmd):
         show_header = True
         while pagination_complete is False:
             pagination_footer = None
-            try:
-                if asset_filter is not None:
-# FIXME - filter encoding correct?
-                    reply = self.mf_client.aterm_run('www.list :namespace "%s" :page %s :size %s :filter "%s"' % (cwd.replace('"', '\\\"'), page, size, asset_filter.encode('string_escape')))
-                else:
-                    reply = self.mf_client.aterm_run('www.list :namespace "%s" :page %s :size %s' % (cwd.replace('"', '\\\"'), page, size))
 
-# trap things like "ls -al" and "ls'" - which will give an ugly stack trace
-            except Exception as e:
-                raise Exception(" Invalid command syntax; for more information type 'help ls'")
+# FIXME - filter encoding correct?
+            if asset_filter is not None:
+                reply = self.mf_client.aterm_run('www.list :namespace "%s" :page %s :size %s :filter "%s"' % (cwd.replace('"', '\\\"'), page, size, asset_filter.encode('string_escape')))
+            else:
+                reply = self.mf_client.aterm_run('www.list :namespace "%s" :page %s :size %s' % (cwd.replace('"', '\\\"'), page, size))
 
             for elem in reply.iter('parent'):
                 for child in elem:
@@ -462,11 +459,14 @@ class parser(cmd.Cmd):
 
             pagination_footer = "Page %r of %r, file filter [%r]: " % (canonical_page, canonical_last, asset_filter)
 
-# non-interactive - assume a quit after 1st page
-# TODO - keep looping with a sleep(1) to produce all files?
+# non-interactive - iterate through remaining pages
             if self.interactive is False:
-                print pagination_footer
-                break
+                time.sleep(1)
+                page = page + 1
+                if page > canonical_last:
+                    break
+                else:
+                    continue
 
 # pagination controls
             response = self.pagination_controller(pagination_footer)
@@ -615,9 +615,7 @@ class parser(cmd.Cmd):
 # section -> xmlns
 # TODO - how to handle to special case of first class asset properties (eg WGS84 geoshapes)
             for section in config.sections():
-
                 if "geoshape" in section:
-#                    print "section = [%s]" % section
                     xml_command = 'asset.set :id %r' % asset_id
                     tmp = section.split('/')
                     for item in tmp:
@@ -627,13 +625,11 @@ class parser(cmd.Cmd):
                     for item in tmp:
                         xml_command += ' >'
                 else:
-#                    print "section = [%s]" % section
                     xml_command = 'asset.set :id %r :meta < :%s <' % (asset_id, section)
                     for option in config.options(section):
                         xml_command += ' :%s %s' % (option, config.get(section, option))
                     xml_command += ' > >'
 # DEBUG
-#                print "import_metadata(): [%s]" % xml_command
                 reply = self.mf_client.aterm_run(xml_command)
 
         except Exception as e:
@@ -708,9 +704,6 @@ class parser(cmd.Cmd):
 #done =  (26730, '/projects/Data Team/test', '/Users/sean/dev/mfclient/test/script')
 # use last item in summary list? ie extend() is being used so treat it like a stack
 # can pop() from the list but this means it won't be available for summary info
-#                for item in manager.summary:
-#                    print "done = ", item
-                    # id , filepath to XML
 
         except KeyboardInterrupt:
             self.mf_client.log("WARNING", "put interrupted by user")
@@ -718,6 +711,7 @@ class parser(cmd.Cmd):
 
         except Exception as e:
             self.mf_client.log("ERROR", str(e))
+# FIXME - need to raise error so scripts get non zero
             return
 
         finally:
@@ -870,6 +864,7 @@ class parser(cmd.Cmd):
 
             except Exception as e:
                 self.mf_client.log("ERROR", str(e))
+# FIXME - need to raise error so scripts get non zero
                 return
 
 # CURRENT - enforce cleanup, see if helps KZ issues
@@ -888,11 +883,6 @@ class parser(cmd.Cmd):
             print "\nCompleted."
 
 # NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
-#        self.print_over("Downloaded files=%d" % len(done))
-#        elapsed = max(1.0, time.time() - start_time)
-#        rate = total_recv / (1000000.0*elapsed)
-#        print ", average rate=%.1f MB/s  " % rate
-#        return
 
 # --
     def help_put(self):
@@ -916,11 +906,9 @@ class parser(cmd.Cmd):
                 relpath_list = local_relpath.split(os.sep)
                 remote_relpath = "/".join(relpath_list)
                 remote = posixpath.join(self.cwd, remote_relpath)
-#                upload_list.extend( [(remote.decode('string_escape'), os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list] )
                 upload_list.extend( [(remote, os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list] )
         else:
             self.print_over("Building file list... ")
-#            upload_list = [(self.cwd.decode('string_escape'), os.path.join(os.getcwd(), filename)) for filename in glob.glob(line)]
             upload_list = [(self.cwd, os.path.join(os.getcwd(), filename)) for filename in glob.glob(line)]
 
 # DEBUG - window's path 
@@ -951,6 +939,7 @@ class parser(cmd.Cmd):
 
         except Exception as e:
             self.mf_client.log("ERROR", str(e))
+# FIXME - need to raise error so scripts get non zero
             return
 
         finally:
@@ -995,17 +984,7 @@ class parser(cmd.Cmd):
 
     def do_mkdir(self, line):
         ns_target = self.absolute_remote_filepath(line)
-        try:
-# NEW - the uniform approach to apply for all sanitisation
-# always double quotes (so we can display literal) -> double quotes protected when passed to mf_client
-            self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % ns_target.replace('"', '\\\"'))
-        except Exception as e:
-# don't raise an exception if the namespace already exists - just warn
-            if "already exists" in str(e):
-                print str(e)
-            else:
-# other errors (no permission, etc) should still raise an exception to indicate failure on exit
-                raise Exception(e)
+        self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % ns_target.replace('"', '\\\"'))
 
 # --
     def help_rm(self):
@@ -1022,12 +1001,7 @@ class parser(cmd.Cmd):
         base_query = "namespace='%s' and name='%s'" % (self.escape_single_quotes(namespace), self.escape_single_quotes(pattern))
 
 # prepare - count matches
-        try:
-            result = self.mf_client.aterm_run('asset.query :where "%s" :action count' % base_query)
-        except Exception as e:
-            print str(e)
-            return
-
+        result = self.mf_client.aterm_run('asset.query :where "%s" :action count' % base_query)
 # confirm remove
         elem = result.find(".//value")
         count = int(elem.text)
@@ -1142,7 +1116,8 @@ class parser(cmd.Cmd):
         print "Usage: whoami\n"
 
     def do_whoami(self, line):
-        try:
+#        try:
+        if True:
             result = self.mf_client.aterm_run("actor.self.describe")
             for elem in result.iter('actor'):
                 name = elem.attrib['name']
@@ -1152,12 +1127,11 @@ class parser(cmd.Cmd):
                     expiry = self.delegate_actor_expiry(name)
                     print "actor = delegate (expiry %s)" % expiry
 
-# TODO - if delegate - can do secure.identity.token.describe 
-# and extract the ctime = and validity information to report create/expiry dates
+# TODO  - display type (eg view) as well
             for elem in result.iter('role'):
                 print "  role = %s" % elem.text
-        except:
-            print "I'm not sure who you are!"
+#        except:
+#            print "I'm not sure who you are!"
 
 # --- 
     def help_processes(self):
@@ -1189,20 +1163,17 @@ class parser(cmd.Cmd):
 
     def do_login(self, line):
         if self.interactive is False:
-            raise Exception(" Non interactive login can only be performed using a delegate")
+            raise Exception(" Manual login not permitted in scripts")
         self.mf_client.log("DEBUG", "Authentication domain [%s]" % self.mf_client.domain)
         user = raw_input("Username: ")
         password = getpass.getpass("Password: ")
-        try:
-            self.mf_client.login(user, password)
-            self.need_auth = False
+        self.mf_client.login(user, password)
+        self.need_auth = False
 # save the authentication token
-            self.config.set(self.config_name, 'session', self.mf_client.session)
-            f = open(self.config_filepath, "w")
-            self.config.write(f)
-            f.close()
-        except Exception as e:
-            print str(e)
+        self.config.set(self.config_name, 'session', self.mf_client.session)
+        f = open(self.config_filepath, "w")
+        self.config.write(f)
+        f.close()
 
 # --
     def help_delegate(self):
@@ -1242,21 +1213,26 @@ class parser(cmd.Cmd):
 # lifetime setup
         d = datetime.datetime.now() + datetime.timedelta(days=dt)
         expiry = d.strftime("%d-%b-%Y %H:%M:%S")
-        print "Delegating until: " + expiry
+
 # query current authenticated identity
-        try:
-            result = self.mf_client.aterm_run("actor.self.describe")
-            for elem in result.iter():
-                if elem.tag == 'actor':
-                    actor = elem.attrib.get('name', elem.text)
-                    i = actor.find(":")
-                    domain = actor[0:i]
-                    user = actor[i+1:]
-        except:
-            raise Exception("Failed to get valid identity")
+        domain = None
+        user = None
+        name = None
+        result = self.mf_client.aterm_run("actor.self.describe")
+        elem = result.find(".//actor")
+        if elem is not None:
+            actor = elem.attrib['name']
+            if ":" in actor:
+                i = actor.find(":")
+                domain = actor[0:i]
+                user = actor[i+1:]
+        if user is None or domain is None:
+            raise Exception(" Delegate identity %r is not allowed to delegate" % actor)
 
 # create secure token (delegate) and assign current authenticated identity to the token
+        self.mf_client.log("DEBUG", "Attempting to delegate for: domain=%s, user=%s, until=%r" % (domain, user, expiry))
         result = self.mf_client.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16' % (expiry, actor, domain))
+        print "Delegate valid until: " + expiry
 
         for elem in result.iter():
             if elem.tag == 'token':
@@ -1273,7 +1249,6 @@ class parser(cmd.Cmd):
         prefix = len(remote_namespace)
 
         result = self.mf_client.aterm_run("asset.query :where \"namespace>='%s'\" :as iterator :action get-path" % remote_namespace)
-
         elem = result.find(".//iterator")
         iterator = elem.text
         iterate_size = 100
@@ -1373,11 +1348,18 @@ class parser(cmd.Cmd):
                 print "Interrupted, cleaning up   "
                 continue
 
+# NB: here's where all command failures are caught
+            except SyntaxError:
+                print "Syntax error; for more information on commands type 'help'"
+
             except Exception as e:
-# handle EOF case where stdin is force fed via command line
+# exit on the EOF case ie where stdin/file is force fed via command line redirect
                 if "EOF" in str(e):
                     return
                 print str(e)
+# TODO - handle via custom exception maybe?
+                if "session is not valid" in str(e):
+                    self.need_auth = True
 
 def main():
 # TODO - probably should make it compatible with 3.x as well (sigh)
@@ -1519,29 +1501,34 @@ def main():
     except:
         mf_client.log("WARNING", "No readline module; tab completion unavailable")
 
-# run script lines
+# build non interactive input iterator 
+    input_list = []
+    my_parser.interactive = True
     if script:
+        input_list = itertools.chain(input_list, open(script))
         my_parser.interactive = False
-        with open(script) as f:
-            for line in f:
-                try:
-                    print "input> %s" % line
-                    my_parser.onecmd(line)
-                except Exception as e:
-                    print str(e)
-                    exit(-1)
-# run single command
-    elif len(args.command) != 0:
+# FIXME - stricly, need regex to avoid split on quote protected && 
+    if len(args.command) != 0:
+        input_list = itertools.chain(input_list, args.command.split("&&"))
         my_parser.interactive = False
-        try:
-            my_parser.onecmd(args.command)
-        except Exception as e:
-            print str(e)
-            exit(-1)
-# run interactively
-    else:
+
+# interactive or input iterator (scripted)
+    if my_parser.interactive:
         print " === pshell: type 'help' for a list of commands ==="
         my_parser.loop_interactively()
+    else:
+        for item in input_list:
+            line = item.strip()
+            try:
+                print "%s:%s> %s" % (current, my_parser.cwd, line)
+                my_parser.onecmd(line)
+            except SyntaxError:
+                print "Syntax error; for more information on commands type 'help'"
+                exit(-1)
+            except Exception as e:
+                print str(e)
+                exit(-1)
+
 
 if __name__ == '__main__':
     main()
