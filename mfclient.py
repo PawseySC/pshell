@@ -1,8 +1,12 @@
 #!/usr/bin/python
 
+"""
+This module is a Python 2.7.x (standard lib only) implementation of a mediaflux client
+Author: Sean Fleming
+"""
+
 import os
 import re
-import cmd
 import sys
 import ssl
 import time
@@ -12,7 +16,6 @@ import random
 import string
 import socket
 import signal
-import inspect
 import urllib2
 import httplib
 import datetime
@@ -22,13 +25,7 @@ import posixpath
 import multiprocessing
 import xml.etree.ElementTree as xml_processor
 
-# Python standard lib implementation of a mediaflux client
-# Author: Sean Fleming
-
-#------------------------------------------------------------
-"""
-Globals ... multiprocess IO monitoring is hard
-"""
+# Globals - multiprocess IO monitoring is hard
 manage_lock = multiprocessing.Lock()
 bytes_sent = multiprocessing.Value('d', 0, lock=True)
 bytes_recv = multiprocessing.Value('d', 0, lock=True)
@@ -50,7 +47,6 @@ def put_jump(mfclient, data):
         asset_id = mfclient.put(data[0], data[1])
     except Exception as e:
         mfclient.log("ERROR", "[pid=%d] put_jump(%s): %s" % (os.getpid(), data[1], str(e)))
-# NB: return form should be suitable for retry of this transfer primitive
         return (-1, data[0], data[1])
 
     return (int(asset_id), data[0], data[1])
@@ -72,7 +68,6 @@ def get_jump(mfclient, data):
         mfclient.get(data[0], data[1])
     except Exception as e:
         mfclient.log("ERROR", "[pid=%d] get_jump(): %s" % (os.getpid(), str(e)))
-# NB: return form should be suitable for retry of this transfer primitive
         return (-1, data[0], data[1])
 
     return (0, data[0], data[1])
@@ -84,7 +79,6 @@ def init_jump(recv, sent):
     """
     global bytes_sent
     global bytes_recv
-
 # initialize the globals in this process with the main process globals O.O
     bytes_sent = sent
     bytes_recv = recv
@@ -107,10 +101,10 @@ class mf_client:
                                port: a STRING which is usually "80" or "443"
                              server: a STRING giving the FQDN of the server
                              domain: a STRING giving the authentication domain to use when authenticating
-                            session: a STRING supplying the session ID which, if it exists, enables re-use of an existing authenticated session 
+                            session: a STRING supplying the session ID which, if it exists, enables re-use of an existing authenticated session
                             timeout: an INTEGER specifying the connection timeout
             enforce_encrypted_login: a BOOLEAN that should only be False on a safe internal dev/test network
-                              debug: an INTEGER which controls output of troubleshooting information 
+                              debug: an INTEGER which controls output of troubleshooting information
                               dummy: a BOOLEAN used for testing only (no actual server connection)
 
         Returns:
@@ -128,14 +122,14 @@ class mf_client:
         self.session = session
         self.dummy = dummy
         self.debug = debug
-        self.base_url="{0}://{1}".format(protocol, server)
-        self.post_url= self.base_url + "/__mflux_svc__"
+        self.base_url = "{0}://{1}".format(protocol, server)
+        self.post_url = self.base_url + "/__mflux_svc__"
         self.data_url = self.base_url + "/mflux/content.mfjp"
-        self.http_lib="{0}:{1}".format(server, self.port)
+        self.http_lib = "{0}:{1}".format(server, self.port)
         self.enforce_encrypted_login = bool(enforce_encrypted_login)
 # download/upload buffers
-        self.get_buffer=8192
-        self.put_buffer=8192
+        self.get_buffer = 8192
+        self.put_buffer = 8192
 # XML pretty print hack
         self.indent = 0
         if dummy:
@@ -170,8 +164,11 @@ class mf_client:
 
 
 #------------------------------------------------------------
-# an impossible routine ...
-    def _xml_succint_error(self, xml):
+    @staticmethod
+    def _xml_succint_error(xml):
+        """
+        Primitive for extracting sensible error messages from Java stack traces
+        """
 #        print " === error start\n%s\n === error stop" % xml
         message = None
 
@@ -226,7 +223,6 @@ class mf_client:
 
 # mediaflux seems to have random periods of unresponsiveness - particularly around final ACK of transfer
         retry_count = 9
-
 # setup
         pid = os.getpid()
         boundary = ''.join(random.choice(string.digits + string.ascii_letters) for i in range(30))
@@ -239,18 +235,14 @@ class mf_client:
 
 # multipart - request xml and file
         lines = []
-        lines.extend(( '--%s' % boundary, 'Content-Disposition: form-data; name="request"', '', str(xml),))
-
-# CURRENT - adding Jason's suggested form field (1 data file attachment?)
-# tested on dev box and does seem to 1) have no mfp created in volatile/tmp ... 2) be a lot faster
-        lines.extend(( '--%s' % boundary, 'Content-Disposition: form-data; name="nb-data-attachments"', '', "1",))
+        lines.extend(('--%s' % boundary, 'Content-Disposition: form-data; name="request"', '', str(xml),))
+# specifying nb-data-attachments is the key for getting the data direct to the store
+        lines.extend(('--%s' % boundary, 'Content-Disposition: form-data; name="nb-data-attachments"', '', "1",))
 # file
-        lines.extend(( '--%s' % boundary, 'Content-Disposition: form-data; name="filename"; filename="%s"' % filename, 'Content-Type: %s' % mimetype, '', '' ))
+        lines.extend(('--%s' % boundary, 'Content-Disposition: form-data; name="filename"; filename="%s"' % filename, 'Content-Type: %s' % mimetype, '', ''))
         body = '\r\n'.join(lines)
-
 # NB - should include everything AFTER the first /r/n after the headers
         total_size = len(body) + os.path.getsize(filepath) + len(boundary) + 8
-
         infile = open(filepath, 'rb')
 
 # DEBUG
@@ -271,7 +263,6 @@ class mf_client:
         self.log("DEBUG", "[pid=%d] File send starting: %s" % (pid, filepath))
         conn.putrequest('POST', "/__mflux_svc__")
 # headers
-        conn.putheader('User-Agent', 'Python/2.7')
         conn.putheader('Connection', 'keep-alive')
         conn.putheader('Cache-Control', 'no-cache')
         conn.putheader('Content-Length', str(total_size))
@@ -321,13 +312,9 @@ class mf_client:
 
         self.log("DEBUG", "[pid=%d] File send completed, waiting for server..." % pid)
 
-# NOTE - used to get timeouts (on large unknown files) here
-# this is less of an issue since added Arcitecta's magic nb attachements flag to the upload
-# which meant data went straight to destination rather than tmp area and then moved (delay proportional to size)
-# CURRENTLY - for comms with dev VM (ie same machine) get a lot of connection terminated by peer errors
-# could this be the mediaflux server prematurely closing the connection due to non-existent network latency???
+# NB - past source of problems, seems better these days ...
         message = "response did not contain an asset ID."
-        for i in range(0,retry_count):
+        for i in range(0, retry_count):
             try:
                 resp = conn.getresponse()
                 reply = resp.read()
@@ -350,7 +337,8 @@ class mf_client:
         raise Exception("[pid=%d] Giving up on final server ACK." % pid)
 
 #------------------------------------------------------------
-    def _xml_sanitise(self, text):
+    @staticmethod
+    def _xml_sanitise(text):
         """
         Helper method to sanitise text for the server XML parsing routines
         """
@@ -363,8 +351,8 @@ class mf_client:
 
 #------------------------------------------------------------
     def aterm_run(self, aterm_line, post=True):
-        """ 
-        Method for parsing aterm's compressed XML syntax and sending to the Mediaflux server 
+        """
+        Method for parsing aterm's compressed XML syntax and sending to the Mediaflux server
 
         Args:
              aterm_line: raw input text that is assumed to be in aterm syntax
@@ -376,9 +364,7 @@ class mf_client:
 
         self.log("DEBUG", "XML in: %s" % aterm_line, level=2)
 
-# no posix - protect escaped characters which need to be passed through
-# no posix - also means any escaped chars which are intented to be evaulated (eg escaped quotes in namespaces/assets) rather than passed through => breaks things
-# I think we have to have posix=True as it's closest to the way aterm processes input strings
+# NB - use posix=True as it's closest to the way aterm processes input strings
         lexer = shlex.shlex(aterm_line, posix=True)
         lexer.whitespace_split = True
 
@@ -437,7 +423,7 @@ class mf_client:
             self.log("DEBUG", "XML out: %s" % tmp, level=2)
             return tmp
 
-# wrap with session/service call 
+# wrap with session/service call
         xml = xml_processor.Element("request")
         child = xml_processor.SubElement(xml, "service")
         child.set("name", service_call)
@@ -458,14 +444,14 @@ class mf_client:
         """
         Helper method for traversing XML and generating formatted output
         """
-        attrib_text = ""
-        for key,value in elem.attrib.iteritems():
-            attrib_text += "%s=%s " % (key,value)
 
-        if len(attrib_text) > 0:
-            text += ' '*self.indent + '%s = %s    { %s}\n' % (elem.tag, elem.text, attrib_text)
+        if elem.text is not None:
+            text += ' '*self.indent + '%s="%s"    ' % (elem.tag, elem.text)
         else:
-            text += ' '*self.indent + '%s = %s\n' % (elem.tag, elem.text)
+            text += ' '*self.indent + '%s    ' % elem.tag
+        for key, value in elem.attrib.iteritems():
+            text += ' -%s="%s"' % (key, value)
+        text += '\n'
 
         self.indent += 4
         for child in elem.getchildren():
@@ -515,7 +501,7 @@ class mf_client:
         Destroy the current session (NB: delegate can auto-create a new session if available)
         """
         self.aterm_run("system.logoff")
-        self.session=""
+        self.session = ""
 
 #------------------------------------------------------------
     def login(self, user=None, password=None, token=None):
@@ -543,7 +529,7 @@ class mf_client:
 # extract session key
         elem = reply.find(".//session")
         if elem is not None:
-            self.session=elem.text
+            self.session = elem.text
             return
 
         raise Exception("Login failed")
@@ -559,7 +545,7 @@ class mf_client:
         if self.dummy:
             return True
         try:
-            result = self.aterm_run("actor.self.describe")
+            self.aterm_run("actor.self.describe")
             return True
         except Exception as e:
             self.session = ""
@@ -590,14 +576,13 @@ class mf_client:
             asset_id: and INTEGER specifying the remote asset
 
         Returns:
-            A STRING representing a URL which contains an authorizing token 
+            A STRING representing a URL which contains an authorizing token
 
         Raises:
             An error on failure
         """
 
 # NOTE - if logged in with a delegate (token) then that could be used to form the URL
-# TODO - the tokens and thus the URLs have (or should have) expiry dates - how to communicate this?
         app = "wget"
         namespace = None
 
@@ -628,16 +613,16 @@ class mf_client:
         return url
 
 #------------------------------------------------------------
-    def get_local_checksum(self, filepath): 
+    def get_local_checksum(self, filepath):
         current = 0
         with open(filepath, 'rb') as fd:
             while True:
-                buffer = fd.read(self.put_buffer)
-                if not buffer:
+                data = fd.read(self.put_buffer)
+                if not data:
                     break
-                current = zlib.crc32(buffer, current)
+                current = zlib.crc32(data, current)
         fd.close()
-        return (current & 0xFFFFFFFF)
+        return current & 0xFFFFFFFF
 
 #------------------------------------------------------------
     def get(self, asset_id, filepath, overwrite=False):
@@ -810,7 +795,7 @@ class mf_client:
 #############################################################
 class mf_manager:
     """
-    Multiprocessing file transfer management object. 
+    Multiprocessing file transfer management object.
     """
 
 # a list which is appended to as individual transfers are completed
@@ -824,7 +809,7 @@ class mf_manager:
         Args:
                function: the primitive transfer METHOD put() or get() to invoke in transferring a single file
               arguments: a LIST of STRING pairs to be supplied to the transfer function primitive
-              processes: INTEGER number of processes to spawn to deal with the input list 
+              processes: INTEGER number of processes to spawn to deal with the input list
             total_bytes: INTEGER size of the transfer, for progress reporting
 
         Returns:
@@ -844,17 +829,16 @@ class mf_manager:
         bytes_sent.value = 0
         bytes_recv.value = 0
 
-# CURRENT - ref:http://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python 
+# CURRENT - ref:http://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
 # force control-C to be ignored by process pool
-        handler = signal.signal(signal.SIGINT, signal.SIG_IGN)    
+        handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
 # NB: urllib2 and httplib are not thread safe -> use process pool instead of threads
-
 # old style - works with *nix fork()
 #        self.pool = multiprocessing.Pool(processes)
 # new style - shared mem globals aren't preserved with a Windows fork() - need an explicit init
         self.pool = multiprocessing.Pool(processes, init_jump, (bytes_recv, bytes_sent))
 
-# restore control-C 
+# restore control-C
         signal.signal(signal.SIGINT, handler)
         self.task = self.pool.map_async(function, arguments, callback=self.summary.extend)
         self.pool.close()
@@ -864,22 +848,14 @@ class mf_manager:
         """
         Invoke to properly terminate the process pool (eg if user cancels via control-C)
         """
-#        print "\nCleaning up..."
         self.pool.terminate()
         self.pool.join()
         manage_lock.release()
 
-    def remaining(self):
-        """
-        Returns the number of transfers still remaining
-        """
-        return(self.task._number_left)
-
     def byte_sent_rate(self):
         """
-        Returns the upload put() transfer rate
+        Returns the upload transfer rate
         """
-        global bytes_sent
         elapsed = time.time() - self.start_time
         try:
             rate = bytes_sent.value / elapsed
@@ -890,9 +866,8 @@ class mf_manager:
 
     def byte_recv_rate(self):
         """
-        Returns the download get() transfer rate
+        Returns the download transfer rate
         """
-        global bytes_recv
         elapsed = time.time() - self.start_time
         try:
             rate = bytes_recv.value / elapsed
@@ -901,18 +876,18 @@ class mf_manager:
             rate = 0.0
         return rate
 
-    def bytes_sent(self):
+    @staticmethod
+    def bytes_sent():
         """
-        Returns the total bytes sent - accumulated across all processes
+        Returns the total bytes sent for the current process
         """
-        global bytes_sent
         return bytes_sent.value
 
-    def bytes_recv(self):
+    @staticmethod
+    def bytes_recv():
         """
-        Returns the total bytes recieved - accumulated across all processes
+        Returns the total bytes recieved for the current process
         """
-        global bytes_recv
         return bytes_recv.value
 
     def is_done(self):

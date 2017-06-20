@@ -7,15 +7,14 @@ import sys
 import glob
 import math
 import time
-import fnmatch
 import getpass
 import zipfile
 import argparse
 import datetime
 import itertools
+import posixpath
 import ConfigParser
 import mfclient
-import posixpath
 # no readline on windows
 try:
     import readline
@@ -67,7 +66,7 @@ class parser(cmd.Cmd):
 # --- helper: attempt to complete a namespace
     def complete_namespace(self, partial_ns, start):
 
-# extract any partial namespace to use as pattern match 
+# extract any partial namespace to use as pattern match
         match = re.match(r".*/", partial_ns)
         if match:
             offset = match.end()
@@ -119,7 +118,7 @@ class parser(cmd.Cmd):
         if self.mf_client.namespace_exists(candidate_ns):
 # candidate is a namespace -> it's our target for listing
             target_ns = candidate_ns
-# no pattern -> add all namespaces 
+# no pattern -> add all namespaces
             pattern = None
 # replacement prefix for any matches
             prefix = partial_asset_path[start:]
@@ -146,7 +145,7 @@ class parser(cmd.Cmd):
         asset_list = []
         for elem in result.iter("name"):
             if elem.text is not None:
-                asset_list.append(posixpath.join(prefix,elem.text))
+                asset_list.append(posixpath.join(prefix, elem.text))
 
         self.mf_client.log("DEBUG", "ca found: %r" % asset_list, level=2)
 
@@ -250,7 +249,7 @@ class parser(cmd.Cmd):
 # --- helper
     def ask(self, text):
 # new - if script, assume you know what you're doing
-        if self.interactive == False:
+        if self.interactive is False:
             return True
         response = raw_input(text)
         if response == 'y' or response == 'Y':
@@ -259,7 +258,7 @@ class parser(cmd.Cmd):
 
 # --- helper
     def escape_single_quotes(self, namespace):
-        return(namespace.replace("'", "\\'"))
+        return namespace.replace("'", "\\'")
 
 # --- helper: convert a relative/absolute mediaflux namespace/asset reference to minimal (non-quoted) absolute form
     def absolute_remote_filepath(self, line):
@@ -288,7 +287,7 @@ class parser(cmd.Cmd):
 #        import select
 
         result = None
-        if self.interactive == False:
+        if self.interactive is False:
             return result
 
 # TODO - can we use something like this to replace the ugly platform specific stuff ???
@@ -352,7 +351,7 @@ class parser(cmd.Cmd):
                     elif key == '\r':
                         print
                         return result
-# concat everything else onto the final result 
+# concat everything else onto the final result
                     else:
                         result += key
             else:
@@ -371,7 +370,7 @@ class parser(cmd.Cmd):
     def do_ls(self, line):
 # page is done by pagination controller
         page = 1
-# size is calculated from terminal minus 3 for command + header + footer 
+# size is calculated from terminal minus 3 for command + header + footer
         size = max(1, self.terminal_height - 3)
         asset_filter = None
 
@@ -385,7 +384,7 @@ class parser(cmd.Cmd):
                 cwd = posixpath.dirname(cwd)
 
 # FIXME - these issues actually look like a www.list bug - when there is a " in the namespace
-# CURRENT - sean"s dir/ 
+# CURRENT - sean"s dir/
 #        cwd = cwd.replace('"', '\\"')
 # query attempt
 #        print "Remote folder: [%s]" % cwd
@@ -417,7 +416,7 @@ class parser(cmd.Cmd):
                     if child.tag == "namespaces":
                         canonical_namespaces = int(child.text)
 
-# print header 
+# print header
             if show_header:
                 print "%d items, %d items per page, remote folder: %s" % (canonical_assets+canonical_namespaces, canonical_size, canonical_folder)
                 show_header = False
@@ -426,7 +425,7 @@ class parser(cmd.Cmd):
             for elem in reply.iter('namespace'):
                 for child in elem:
                     if child.tag == "name":
-                            print "[Folder] %s" % child.text
+                        print "[Folder] %s" % child.text
 # for each asset
             for elem in reply.iter('asset'):
                 asset_id = "?"
@@ -457,7 +456,7 @@ class parser(cmd.Cmd):
 # display asset
                 print " %-10s | %s %s | %s" % (asset_id, filestate, filesize, filename)
 
-# if current display requires no pagination - auto exit in some cases 
+# if current display requires no pagination - auto exit in some cases
             if canonical_last == 1:
                 if asset_filter is None:
                     break
@@ -562,7 +561,7 @@ class parser(cmd.Cmd):
                     if child.tag == "namespace":
                         namespace = child.text
 # remote = *nix , local = windows or *nix
-# NEW - the relative path should be computed from the starting namespace 
+# NEW - the relative path should be computed from the starting namespace
                         remote_relpath = posixpath.relpath(path=namespace, start=base_namespace)
                         relpath_list = remote_relpath.split("/")
                         local_relpath = os.sep.join(relpath_list)
@@ -597,10 +596,6 @@ class parser(cmd.Cmd):
 # TODO - this is too noisy currently as we're doing this more than we should, but unavoidable until the split out above *** is done
 #                self.mf_client.log("DEBUG", "%s" % str(e))
                 pass
-
-# DEBUG - upload iterate sub-set of files
-#        for asset_id, filepath in online.iteritems():
-#            print "get [id=%r] => %r" % (asset_id, filepath)
 
         return online
 
@@ -650,7 +645,7 @@ class parser(cmd.Cmd):
         print "Examples: import myfile.jpg"
         print "          import myfolder/\n"
 
-# --- 
+# ---
     def do_import(self, line):
         self.do_put(line, meta=True)
         return
@@ -663,9 +658,6 @@ class parser(cmd.Cmd):
         print "          get *.txt\n"
 
     def do_get(self, line):
-        list_asset_filepath = []
-        total_bytes = 0
-
 # NB: use posixpath for mediaflux namespace manipulation
         line = self.absolute_remote_filepath(line)
 # sanitise as asset.query is special
@@ -700,10 +692,8 @@ class parser(cmd.Cmd):
 
         current = dict()
         done = dict()
-        complete = False
         total_recv = 0
         start_time = time.time()
-        dmf_elapsed_mins = 0
         elapsed_mins = 0
 
 # we only expect to be able to download files where the content is in a known state
@@ -725,7 +715,7 @@ class parser(cmd.Cmd):
         unavailable_files = todo - stats['online-files']
         if unavailable_files > 0:
             user_msg += ", migrating files=%d, please be patient ...  " % unavailable_files
-# recall all offline files 
+# recall all offline files
             xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" >' % base_query
             self.mf_client.aterm_run(xml_command)
         else:
@@ -733,7 +723,7 @@ class parser(cmd.Cmd):
 
         print user_msg
 
-# overall transfer loop 
+# overall transfer loop
 # TODO - time expired breakout?
         while todo > 0:
             try:
@@ -745,7 +735,7 @@ class parser(cmd.Cmd):
 # FIXME - python 2.6 causes compile error on this -> which means the runtime print "you need version > 2.7" isn't displayed
 #                     current = {k:v for k,v in online.iteritems() if k not in done}
 # CURRENT - this seems to resolve the issue
-                    current = dict([(k,v) for (k,v) in online.iteritems() if k not in done])
+                    current = dict([(k, v) for (k, v) in online.iteritems() if k not in done])
 
 # is there something to transfer?
                     if len(current) == 0:
@@ -758,10 +748,10 @@ class parser(cmd.Cmd):
                             msg += " migrating=" + self.human_size(stats['migrating-bytes'])
 
 # TODO - even small migrations take a while ... make this something like 1,5,10,15 mins? (ie back-off)
-                        for i in range(0,4):
+                        for i in range(0, 4):
                             elapsed = time.time() - start_time
                             elapsed_mins = int(elapsed/60.0)
-                            self.print_over("Progress=%d%%,%s, elapsed=%d mins ...  " % (current_pc, msg,elapsed_mins))
+                            self.print_over("Progress=%d%%,%s, elapsed=%d mins ...  " % (current_pc, msg, elapsed_mins))
                             time.sleep(60)
                     else:
                         manager = self.mf_client.get_managed(current.iteritems(), total_bytes=stats['total-bytes'], processes=self.transfer_processes)
@@ -795,7 +785,7 @@ class parser(cmd.Cmd):
 
 # final report
         fail = 0
-        for status,remote_ns,local_filepath in manager.summary:
+        for status, remote_ns, local_filepath in manager.summary:
             if status < 0:
                 fail += 1
         if fail != 0:
@@ -828,17 +818,17 @@ class parser(cmd.Cmd):
                 remote = posixpath.join(self.cwd, remote_relpath)
 
 # CURRENT - remove put/import code redundancy
-                if meta==False:
+                if meta is False:
                     upload_list.extend([(remote, os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list])
                 else:
                     for name in name_list:
                         if name.lower().endswith('.meta'):
                             pass
                         else:
-                            upload_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
+                            upload_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name))))
         else:
             self.print_over("Building file list... ")
-            if meta==False:
+            if meta is False:
                 upload_list = [(self.cwd, os.path.join(os.getcwd(), name)) for name in glob.glob(line)]
             else:
                 for name in glob.glob(line):
@@ -847,11 +837,10 @@ class parser(cmd.Cmd):
                     else:
                         upload_list.append((self.cwd, os.path.join(os.getcwd(), name)))
 
-# DEBUG - window's path 
+# DEBUG - window's path
 #        for dest,src in upload_list:
 #            print "put: %s -> %s" % (src, dest)
 
-        start_time = time.time()
         manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
         self.mf_client.log("DEBUG", "Starting transfer...")
         self.print_over("Total files=%d" % len(upload_list))
@@ -884,11 +873,11 @@ class parser(cmd.Cmd):
 
 # TODO - pop some of the metadata imports in the upload cycle if it helps the efficiency (measure!)
         fail = 0
-        for asset_id,remote_ns,local_filepath in manager.summary:
+        for asset_id, remote_ns, local_filepath in manager.summary:
             if asset_id < 0:
                 fail += 1
             else:
-                if meta==True:
+                if meta is True:
                     metadata_filename = local_filepath + ".meta"
                     self.import_metadata(asset_id, metadata_filename)
 
@@ -955,12 +944,12 @@ class parser(cmd.Cmd):
             else:
                 print "Aborted"
 
-# -- rmdir 
+# -- rmdir
     def help_rmdir(self):
         print "\nRemove a remote folder\n"
         print "Usage: rmdir <folder>\n"
 
-# -- rmdir 
+# -- rmdir
     def do_rmdir(self, line):
         ns_target = self.absolute_remote_filepath(line)
         if self.mf_client.namespace_exists(ns_target):
@@ -985,7 +974,7 @@ class parser(cmd.Cmd):
             self.mf_client.debug = 1
         elif "false" in line or "off" in line:
             self.mf_client.debug = 0
-        print "Debug=%r" % self.mf_client.debug 
+        print "Debug=%r" % self.mf_client.debug
 
 # --
     def help_lpwd(self):
@@ -1017,8 +1006,8 @@ class parser(cmd.Cmd):
             path = line
 
 # get display folder and setup for a glob style listing
-        if os.path.isdir(path) == True:
-            display_path = path 
+        if os.path.isdir(path) is True:
+            display_path = path
             path = os.path.join(path, "*")
         else:
             display_path = os.path.dirname(path)
@@ -1028,12 +1017,12 @@ class parser(cmd.Cmd):
 # NEW - glob these to allow wildcards
         for filename in glob.glob(path):
             if os.path.isdir(filename):
-                head,tail = os.path.split(filename)
+                head, tail = os.path.split(filename)
                 print "[Folder] " + tail
 
         for filename in glob.glob(path):
             if os.path.isfile(filename):
-                head,tail = os.path.split(filename)
+                head, tail = os.path.split(filename)
                 print "%s | %-s" % (self.human_size(os.path.getsize(filename)), tail)
 
 # --- working example of PKI via mediaflux
@@ -1052,34 +1041,28 @@ class parser(cmd.Cmd):
 
         return "unknown"
 
-# --- 
+# ---
     def help_whoami(self):
         print "\nReport the current authenticated user or delegate and associated roles\n"
         print "Usage: whoami\n"
 
     def do_whoami(self, line):
-#        try:
-        if True:
-            result = self.mf_client.aterm_run("actor.self.describe")
-            for elem in result.iter('actor'):
-                name = elem.attrib['name']
-                if ":" in name:
-                    print "actor = %s" % name
-                else:
-                    expiry = self.delegate_actor_expiry(name)
-                    print "actor = delegate (expiry %s)" % expiry
+        result = self.mf_client.aterm_run("actor.self.describe")
+        for elem in result.iter('actor'):
+            name = elem.attrib['name']
+            if ":" in name:
+                print "actor = %s" % name
+            else:
+                expiry = self.delegate_actor_expiry(name)
+                print "actor = delegate (expiry %s)" % expiry
+        for elem in result.iter('role'):
+            print "  role = %s" % elem.text
 
-# TODO  - display type (eg view) as well
-            for elem in result.iter('role'):
-                print "  role = %s" % elem.text
-#        except:
-#            print "I'm not sure who you are!"
-
-# --- 
+# ---
     def help_processes(self):
-        print ("\nSet the number of concurrent processes to use when transferring files.")
-        print ("If no number is supplied, reports the current value.")
-        print ("Usage: processes <number>\n")
+        print "\nSet the number of concurrent processes to use when transferring files."
+        print "If no number is supplied, reports the current value."
+        print "Usage: processes <number>\n"
 
     def do_processes(self, line):
         try:
@@ -1087,7 +1070,7 @@ class parser(cmd.Cmd):
             self.transfer_processes = p
         except:
             pass
-        print("Current number of processes: %r" % self.transfer_processes)
+        print "Current number of processes: %r" % self.transfer_processes
 
 # -- connection commands
     def help_logout(self):
@@ -1098,7 +1081,7 @@ class parser(cmd.Cmd):
         self.mf_client.logout()
         self.need_auth = True
 
-# --- 
+# ---
     def help_login(self):
         print "\nInitiate login to the current remote server\n"
         print "Usage: login\n"
@@ -1214,14 +1197,14 @@ class parser(cmd.Cmd):
 
         return remote_files
 
-# --- compare 
+# --- compare
     def help_compare(self):
         print "\nCompares a local and a remote folder and reports any differences"
         print "The local and remote folders must have the same name and appear in the current local and remote working directories"
         print "Usage: compare <folder>\n"
         print "Examples: compare mystuff\n"
 
-# --- compare 
+# --- compare
     def do_compare(self, line):
         remote_fullpath = self.absolute_remote_filepath(line)
         if self.mf_client.namespace_exists(remote_fullpath) is False:
@@ -1324,7 +1307,7 @@ def main():
     token = None
     config_changed = False
 
-# ascertain local path for storing the config, fallback to CWD if system gives a dud path for ~ 
+# ascertain local path for storing the config, fallback to CWD if system gives a dud path for ~
     config_filepath = os.path.expanduser("~/.mf_config")
     try:
         open(config_filepath, 'a').close()
@@ -1377,11 +1360,11 @@ def main():
 # won't work for windows (of course)
 # TODO - make this work with windows
     try:
-        import fcntl, termios, struct  
+        import fcntl, termios, struct
         size = struct.unpack('hh', fcntl.ioctl(0, termios.TIOCGWINSZ, '1234'))
     except:
         print "Warning: couldn't determine terminal size"
-        size = (80,25)
+        size = (80, 25)
 
 # mediaflux client
     try:
@@ -1442,13 +1425,13 @@ def main():
     except:
         mf_client.log("WARNING", "No readline module; tab completion unavailable")
 
-# build non interactive input iterator 
+# build non interactive input iterator
     input_list = []
     my_parser.interactive = True
     if script:
         input_list = itertools.chain(input_list, open(script))
         my_parser.interactive = False
-# FIXME - stricly, need regex to avoid split on quote protected && 
+# FIXME - stricly, need regex to avoid split on quote protected &&
     if len(args.command) != 0:
         input_list = itertools.chain(input_list, args.command.split("&&"))
         my_parser.interactive = False
