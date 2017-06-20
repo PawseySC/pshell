@@ -447,7 +447,14 @@ class parser(cmd.Cmd):
                                 filestate = "online    |"
                             else:
                                 filestate = "%-9s |" % child.text
-# file item
+# FIXME - enforce this (XML might get returned/parsed out of order)
+                    if child.tag == 'direction':
+                        if child.text is not None:
+                            if "online" in child.text:
+                                filestate = "recalling |"
+                            else:
+                                filestate = "archiving |"
+# display asset
                 print " %-10s | %s %s | %s" % (asset_id, filestate, filesize, filename)
 
 # if current display requires no pagination - auto exit in some cases 
@@ -459,7 +466,7 @@ class parser(cmd.Cmd):
 
             pagination_footer = "Page %r of %r, file filter [%r]: " % (canonical_page, canonical_last, asset_filter)
 
-# non-interactive - iterate through remaining pages
+# non-interactive - auto iterate (with delay) through remaining pages
             if self.interactive is False:
                 time.sleep(1)
                 page = page + 1
@@ -645,93 +652,8 @@ class parser(cmd.Cmd):
 
 # --- 
     def do_import(self, line):
-
-# build upload list pairs
-        upload_list = []
-        meta_list = []
-        if os.path.isdir(line):
-            self.print_over("Walking directory tree...")
-# FIXME - handle input of '/'
-            line = os.path.abspath(line)
-            parent = os.path.normpath(os.path.join(line, ".."))
-            for root, directory_list, name_list in os.walk(line):
-# convert a local relative path - which could contain either windows or *nix path separators - to a remote path, which must be *nix style
-                local_relpath = os.path.relpath(path=root, start=parent)
-# split on LOCAL separator (whatever that may be) then join on remote *nix separator
-                relpath_list = local_relpath.split(os.sep)
-                remote_relpath = "/".join(relpath_list)
-                remote = posixpath.join(self.cwd, remote_relpath)
-                for name in name_list:
-                    if name.lower().endswith('.meta'):
-                        meta_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
-                    else:
-                        upload_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
-        else:
-            self.print_over("Building file list... ")
-            for name in glob.glob(line):
-                if name.lower().endswith('.meta'):
-                    meta_list.append((self.cwd, os.path.join(os.getcwd(), name)))
-                else:
-                    upload_list.append((self.cwd, os.path.join(os.getcwd(), name)))
-
-# TODO  - for all files in meta_list - strip .xml extension and if NOT in upload_list -> treat as normal upload, else -> it's metadata
-# DEBUG - window's path 
-#        for dest,src in upload_list:
-#            print "import: %s -> %s" % (src, dest)
-#        for dest,src in meta_list:
-#            print "meta: %s -> %s" % (src, dest)
-
-# TODO - duplicate code from do_put()
-        start_time = time.time()
-        manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
-        self.mf_client.log("DEBUG", "Starting transfer...")
-        self.print_over("Total files=%d" % len(upload_list))
-        print ", transferring...  "
-        try:
-            while True:
-                if manager.bytes_total > 0:
-                    progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
-                else:
-                    progress = 0.0
-
-                self.print_over("Progress: %3.0f%% at %.1f MB/s  " % (progress, manager.byte_sent_rate()))
-
-                if manager.is_done():
-                    break
-                time.sleep(2)
-# TODO - use this sleep time to populate metadata (if any?)
-# ie manager.summary -> list of completed ... remove from meta_list after update
-#done =  (26730, '/projects/Data Team/test', '/Users/sean/dev/mfclient/test/script')
-# use last item in summary list? ie extend() is being used so treat it like a stack
-# can pop() from the list but this means it won't be available for summary info
-
-        except KeyboardInterrupt:
-            self.mf_client.log("WARNING", "put interrupted by user")
-            return
-
-        except Exception as e:
-            self.mf_client.log("ERROR", str(e))
-# FIXME - need to raise error so scripts get non zero
-            return
-
-        finally:
-            if manager is not None:
-                manager.cleanup()
-
-# TODO - pop some of these in the upload cycle if it helps the efficiency (measure!)
-# TODO - customize extension to use?
-        fail = 0
-        for item in manager.summary:
-            if item[0] < 0:
-                fail += 1
-            else:
-                metadata_filename = item[2] + ".meta"
-                self.import_metadata(item[0], metadata_filename)
-# final report
-        if fail != 0:
-            raise Exception("\nFailed to upload %d file(s)." % fail)
-        else:
-            print "\nCompleted."
+        self.do_put(line, meta=True)
+        return
 
 # --
     def help_get(self):
@@ -746,7 +668,6 @@ class parser(cmd.Cmd):
 
 # NB: use posixpath for mediaflux namespace manipulation
         line = self.absolute_remote_filepath(line)
-
 # sanitise as asset.query is special
         double_escaped = self.escape_single_quotes(line)
 # collapsed namespace
@@ -883,7 +804,6 @@ class parser(cmd.Cmd):
             print "\nCompleted."
 
 # NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
-
 # --
     def help_put(self):
         print "\nUpload local files or folders to the current folder on the remote server\n"
@@ -891,7 +811,7 @@ class parser(cmd.Cmd):
         print "Examples: put /home/sean/*.jpg"
         print "          put /home/sean/myfolder/\n"
 
-    def do_put(self, line):
+    def do_put(self, line, meta=False):
 # build upload list pairs
         upload_list = []
         if os.path.isdir(line):
@@ -906,10 +826,26 @@ class parser(cmd.Cmd):
                 relpath_list = local_relpath.split(os.sep)
                 remote_relpath = "/".join(relpath_list)
                 remote = posixpath.join(self.cwd, remote_relpath)
-                upload_list.extend( [(remote, os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list] )
+
+# CURRENT - remove put/import code redundancy
+                if meta==False:
+                    upload_list.extend([(remote, os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list])
+                else:
+                    for name in name_list:
+                        if name.lower().endswith('.meta'):
+                            pass
+                        else:
+                            upload_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name)))) 
         else:
             self.print_over("Building file list... ")
-            upload_list = [(self.cwd, os.path.join(os.getcwd(), filename)) for filename in glob.glob(line)]
+            if meta==False:
+                upload_list = [(self.cwd, os.path.join(os.getcwd(), name)) for name in glob.glob(line)]
+            else:
+                for name in glob.glob(line):
+                    if name.lower().endswith('.meta'):
+                        pass
+                    else:
+                        upload_list.append((self.cwd, os.path.join(os.getcwd(), name)))
 
 # DEBUG - window's path 
 #        for dest,src in upload_list:
@@ -931,6 +867,7 @@ class parser(cmd.Cmd):
 
                 if manager.is_done():
                     break
+# TODO - could use some of this time to populate metadata for successful uploads (if any)
                 time.sleep(2)
 
         except KeyboardInterrupt:
@@ -939,18 +876,23 @@ class parser(cmd.Cmd):
 
         except Exception as e:
             self.mf_client.log("ERROR", str(e))
-# FIXME - need to raise error so scripts get non zero
             return
 
         finally:
             if manager is not None:
                 manager.cleanup()
 
-# final report
+# TODO - pop some of the metadata imports in the upload cycle if it helps the efficiency (measure!)
         fail = 0
-        for status,remote_ns,local_filepath in manager.summary:
-            if status < 0:
+        for asset_id,remote_ns,local_filepath in manager.summary:
+            if asset_id < 0:
                 fail += 1
+            else:
+                if meta==True:
+                    metadata_filename = local_filepath + ".meta"
+                    self.import_metadata(asset_id, metadata_filename)
+
+# final report
         if fail != 0:
             raise Exception("\nFailed to upload %d file(s)." % fail)
         else:

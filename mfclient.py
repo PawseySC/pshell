@@ -12,7 +12,6 @@ import random
 import string
 import socket
 import signal
-import getpass
 import inspect
 import urllib2
 import httplib

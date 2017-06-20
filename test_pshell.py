@@ -16,18 +16,29 @@ class pshell_syntax(unittest.TestCase):
             if "request" in line:
                 self.assertEqual(line.strip(), '<request><service name="asset.namespace.exists" session=""><args><namespace>/projects"\'</namespace></args></service></request>')
 
-    def test_mkdir(self):
-        proc = subprocess.Popen(["pshell.py", "-c", "dummy", "mkdir /dir1/../dir2/namespace\"'"], stdout=subprocess.PIPE)
+    def test_rm(self):
+        proc = subprocess.Popen(["pshell.py", "-c", "dummy", "rm *\'*"], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "request" in line:
-                self.assertEqual(line.strip(), '<request><service name="asset.namespace.create" session=""><args><namespace>/dir2/namespace"\'</namespace></args></service></request>')
+                self.assertEqual(line.strip(), '<request><service name="asset.query" session=""><args><where>namespace=\'/projects\' and name=\'*\\\'*\'</where><action>count</action></args></service></request>')
 
     def test_file(self):
         proc = subprocess.Popen(["pshell.py", "-c", "dummy", r'file "/dir1/../dir2/test_!@#\""'], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "request" in line:
                 self.assertEqual(line.strip(), '<request><service name="asset.get" session=""><args><id>path=/dir2/test_!@#"</id></args></service></request>')
- 
+
+    def test_mkdir(self):
+        proc = subprocess.Popen(["pshell.py", "-c", "dummy", "mkdir /dir1/../dir2/namespace\"'"], stdout=subprocess.PIPE)
+        for line in proc.stdout:
+            if "request" in line:
+                self.assertEqual(line.strip(), '<request><service name="asset.namespace.create" session=""><args><namespace>/dir2/namespace"\'</namespace></args></service></request>')
+
+    def test_rmdir(self):
+        proc = subprocess.Popen(["pshell.py", "-c", "dummy", "rmdir sean's dir"], stdout=subprocess.PIPE)
+        for line in proc.stdout:
+            if "request" in line:
+                self.assertEqual(line.strip(), '<request><service name="asset.namespace.exists" session=""><args><namespace>/projects/sean\'s dir</namespace></args></service></request>')
 
 ########################################
 # convenience wrapper for squishing bugs
@@ -37,8 +48,12 @@ class pshell_bugs(unittest.TestCase):
         print "setup"
 
     def test_squish(self):
-        print "TODO"
-
+        print "NEW"
+        proc = subprocess.Popen(["pshell.py", "-c", "dummy", "rmdir sean's dir"], stdout=subprocess.PIPE)
+        for line in proc.stdout:
+            if "request" in line:
+                print line
+                self.assertEqual(line.strip(), '<request><service name="asset.namespace.exists" session=""><args><namespace>/projects/sean\'s dir</namespace></args></service></request>')
 
 ######
 # main
