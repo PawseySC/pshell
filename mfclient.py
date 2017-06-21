@@ -362,7 +362,6 @@ class mf_client:
             A STRING containing the server reply (if post is TRUE, if false - just the XML for test comparisons)
         """
 
-        self.log("DEBUG", "XML in: %s" % aterm_line, level=2)
 
 # NB - use posix=True as it's closest to the way aterm processes input strings
         lexer = shlex.shlex(aterm_line, posix=True)
@@ -376,6 +375,11 @@ class mf_client:
 # first token is the service call, the rest are child arguments
         service_call = lexer.get_token()
         token = lexer.get_token()
+
+        if service_call == "system.logon":
+            self.log("DEBUG", "aterm_run() input: system.login ...", level=2)
+        else:
+            self.log("DEBUG", "aterm_run() input: %s" % aterm_line, level=2)
 
         try:
             while token:
@@ -393,12 +397,19 @@ class mf_client:
                 elif token[0] == '>':
                     xml_node = stack.pop()
                 elif token[0] == '-':
-                    key = token[1:]
-                    value = lexer.get_token()
-                    if value.startswith('"') and value.endswith('"'):
-                        value = value[1:-1]
-                    child.set(key, value)
-                    self.log("DEBUG", "XML prop [%r = %r]" % (key, value), level=2)
+                    try:
+# -number => it's a text value
+                        number = float(token)
+                        child.text = token
+                        self.log("DEBUG", "XML text [%s]" % child.text, level=2)
+                    except:
+# -other => it's an XML attribute/property
+                        key = token[1:]
+                        value = lexer.get_token()
+                        if value.startswith('"') and value.endswith('"'):
+                            value = value[1:-1]
+                        child.set(key, value)
+                        self.log("DEBUG", "XML prop [%r = %r]" % (key, value), level=2)
                 else:
 # FIXME - potentially some issues here with data strings with multiple spaces (ie we are doing a whitespace split & only adding one back)
                     if child.text is not None:
@@ -408,8 +419,10 @@ class mf_client:
                             child.text = token[1:-1]
                         else:
                             child.text = token
-                    self.log("DEBUG", "XML text [%s]" % child.text, level=2)
-
+                    if child.tag.lower() == "password":
+                        self.log("DEBUG", "XML text [xxxxx]", level=2)
+                    else:
+                        self.log("DEBUG", "XML text [%s]" % child.text, level=2)
 # while tokens ...
                 token = lexer.get_token()
 
@@ -420,7 +433,9 @@ class mf_client:
 # testing hook
         if post is not True:
             tmp = xml_processor.tostring(xml_root, method="html")
-            self.log("DEBUG", "XML out: %s" % tmp, level=2)
+# password hiding for system.logon ...
+            if service_call != "system.logon":
+                self.log("DEBUG", "XML out: %s" % tmp, level=2)
             return tmp
 
 # wrap with session/service call
@@ -431,10 +446,12 @@ class mf_client:
             child.set("session", self.session)
         args = xml_processor.SubElement(child, "args")
         args.append(xml_root)
-        xml_text = xml_processor.tostring(xml)
-# debug
-        tmp = re.sub(r'session=[^>]*', 'session="..."', xml_text)
-        self.log("DEBUG", "XML out: %s" % tmp, level=2)
+# NEW - method = html
+        xml_text = xml_processor.tostring(xml, method="html")
+# debug - password hiding for system.logon ...
+        if service_call != "system.logon":
+            tmp = re.sub(r'session=[^>]*', 'session="..."', xml_text)
+            self.log("DEBUG", "XML out: %s" % tmp, level=2)
 # post
         reply = self._post(xml_text)
         return reply
