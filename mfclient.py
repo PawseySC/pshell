@@ -428,7 +428,7 @@ class mf_client:
 
 # testing hook
         if post is not True:
-            tmp = xml_processor.tostring(xml_root, method="html")
+            tmp = xml_processor.tostring(xml_root, method = 'xml')
 # password hiding for system.logon ...
             if service_call != "system.logon":
                 self.log("DEBUG", "XML out: %s" % tmp, level=2)
@@ -443,7 +443,7 @@ class mf_client:
         args = xml_processor.SubElement(child, "args")
         args.append(xml_root)
 # NEW - method = html
-        xml_text = xml_processor.tostring(xml, method="html")
+        xml_text = xml_processor.tostring(xml, method = 'xml')
 # debug - password hiding for system.logon ...
         if service_call != "system.logon":
             tmp = re.sub(r'session=[^>]*', 'session="..."', xml_text)

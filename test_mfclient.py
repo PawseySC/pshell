@@ -46,13 +46,13 @@ class mfclient_syntax(unittest.TestCase):
 
     def test_empty_property_value(self):
         reply = self.mf_client.aterm_run(r'dummy.call :element -property " " :element2 text', post=False)
-        self.assertEqual(reply, '<element property=" "></element><element2>text</element2>')
+        self.assertEqual(reply, '<element property=" " /><element2>text</element2>')
 
 # FIXME - in practise, might have to escape the [] chars as they are special in TCL (but this should be done internal to the string itself)
     def test_service_add(self):
         line = 'system.service.add :name custom.service :replace-if-exists true :access ACCESS :definition < :element -name arg1 -type string :element -name arg2 -type string -min-occurs 0 -default " " :element -name arg3 -type boolean -min-occurs 0 -default false > :execute \"return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]\"'
         reply = self.mf_client.aterm_run(line, post=False)
-        self.assertEqual(reply, '<name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string"></element><element default=" " min-occurs="0" name="arg2" type="string"></element><element default="false" min-occurs="0" name="arg3" type="boolean"></element></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute>')
+        self.assertEqual(reply, '<name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string" /><element default=" " min-occurs="0" name="arg2" type="string" /><element default="false" min-occurs="0" name="arg3" type="boolean" /></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute>')
 
     def test_semicolon_value(self):
         line = 'actor.grant :name public:public :type user :role -type role read-only'
@@ -94,7 +94,7 @@ class mfclient_syntax(unittest.TestCase):
 
     def test_xmlns_parsing(self):
         reply = self.mf_client.aterm_run(r'asset.set :id 123 :meta < :pawsey:custom < :pawsey-key "pawsey value" >', post=False)
-        self.assertEqual(reply, '<id>123</id><meta><pawsey:custom xmlns:pawsey="pawsey"><pawsey-key>pawsey value</pawsey-key></pawsey:custom>')
+        self.assertEqual(reply, '<id>123</id><meta><pawsey:custom xmlns:pawsey="pawsey"><pawsey-key>pawsey value</pawsey-key></pawsey:custom></meta>')
 
     def test_negative_not_attribute(self):
         reply = self.mf_client.aterm_run('asset.set :id 123 :geoshape < :point < :latitude -31.95 :longitude 115.86 :elevation 10.0 > >', post=False)
@@ -109,10 +109,12 @@ class mfclient_bugs(unittest.TestCase):
         global mf_client
         self.mf_client = mf_client
 
-    def test_negative_not_attribute(self):
+    def test_debug(self):
         self.mf_client.debug = 2
-        reply = self.mf_client.aterm_run('asset.set :id 123 :geoshape < :point < :latitude -31.95 :longitude 115.86 :elevation 10.0 > >', post=False)
-        self.assertEqual(reply, '<id>123</id><geoshape><point><latitude>-31.95</latitude><longitude>115.86</longitude><elevation>10.0</elevation></point></geoshape>')
+        # NB: xml.tostring(method='html') causes incorrect xml output (missing meta closure)
+        reply = self.mf_client.aterm_run('asset.set :id 123 :meta < :csiro:seismic < :name "Perth" :geometry "sprawling" > >', post=False)
+        self.assertEqual(reply, '<id>123</id><meta><csiro:seismic xmlns:csiro="csiro"><name>Perth</name><geometry>sprawling</geometry></csiro:seismic></meta>')
+
 
         print reply
 
