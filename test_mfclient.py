@@ -93,6 +93,7 @@ class mfclient_syntax(unittest.TestCase):
         self.assertEqual(reply, "<namespace>/projects/Data Team/sean's dir</namespace><page>1</page><size>30</size>")
 
     def test_xmlns_parsing(self):
+        # NB: xml.tostring(method='html') causes incorrect xml output (missing meta closure)
         reply = self.mf_client.aterm_run(r'asset.set :id 123 :meta < :pawsey:custom < :pawsey-key "pawsey value" >', post=False)
         self.assertEqual(reply, '<id>123</id><meta><pawsey:custom xmlns:pawsey="pawsey"><pawsey-key>pawsey value</pawsey-key></pawsey:custom></meta>')
 
@@ -111,10 +112,8 @@ class mfclient_bugs(unittest.TestCase):
 
     def test_debug(self):
         self.mf_client.debug = 2
-        # NB: xml.tostring(method='html') causes incorrect xml output (missing meta closure)
         reply = self.mf_client.aterm_run('asset.set :id 123 :meta < :csiro:seismic < :name "Perth" :geometry "sprawling" > >', post=False)
         self.assertEqual(reply, '<id>123</id><meta><csiro:seismic xmlns:csiro="csiro"><name>Perth</name><geometry>sprawling</geometry></csiro:seismic></meta>')
-
 
         print reply
 
