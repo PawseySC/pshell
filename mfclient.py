@@ -170,21 +170,17 @@ class mf_client:
         Primitive for extracting sensible error messages from Java stack traces
         """
 #        print " === error start\n%s\n === error stop" % xml
-        message = None
-
 # look for patterns..
         match = re.search(r"Syntax error.*Error", xml, re.DOTALL)
         if match:
             message = match.group(0)[:-6]
+            return message
 
         match = re.search(r"failed:.*", xml)
         if match:
             message = match.group(0)[7:]
-
-        if message is not None:
             return message
 
-#        print "MATCH FALLBACK"
         return xml[:600]
 
 #------------------------------------------------------------

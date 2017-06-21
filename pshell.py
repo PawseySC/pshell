@@ -1274,7 +1274,7 @@ class parser(cmd.Cmd):
 
 # NB: here's where all command failures are caught
             except SyntaxError:
-                print " Syntax error; for more information on commands type 'help'"
+                print " Syntax error: for more information on commands type 'help'"
 
             except Exception as e:
 # exit on the EOF case ie where stdin/file is force fed via command line redirect
@@ -1450,7 +1450,7 @@ def main():
                 print " Interrupted by user"
                 exit(-1)
             except SyntaxError:
-                print " Syntax error; for more information on commands type 'help'"
+                print " Syntax error: for more information on commands type 'help'"
                 exit(-1)
             except Exception as e:
                 print str(e)

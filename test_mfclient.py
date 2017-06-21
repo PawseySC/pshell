@@ -88,7 +88,7 @@ class mfclient_syntax(unittest.TestCase):
         reply = self.mf_client.aterm_run(r'asset.namespace.create :namespace "namespace_\"" :quota < :allocation "10 TB" >', post=False)
         self.assertEqual(reply, '<namespace>namespace_"</namespace><quota><allocation>10 TB</allocation></quota>')
 
-    def test_www_list_sanitise(self):
+    def test_sanitise_www_list(self):
         reply = self.mf_client.aterm_run('www.list :namespace "/projects/Data Team/sean\'s dir" :page 1 :size 30', post=False)
         self.assertEqual(reply, "<namespace>/projects/Data Team/sean's dir</namespace><page>1</page><size>30</size>")
 
