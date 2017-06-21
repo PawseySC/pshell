@@ -493,7 +493,8 @@ class mf_client:
         if elem is None:
             elem = xml_tree
         if elem is not None:
-            print self._xml_recurse(elem)
+            for child in elem.getchildren():
+                print self._xml_recurse(child)
         else:
             print "Empty XML document"
         return
