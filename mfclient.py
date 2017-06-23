@@ -162,7 +162,6 @@ class mf_client:
                 except Exception as e:
                     print " WARNING: %s" % str(e)
 
-
 #------------------------------------------------------------
     @staticmethod
     def _xml_succint_error(xml):
@@ -357,7 +356,6 @@ class mf_client:
         Returns:
             A STRING containing the server reply (if post is TRUE, if false - just the XML for test comparisons)
         """
-
 
 # NB - use posix=True as it's closest to the way aterm processes input strings
         lexer = shlex.shlex(aterm_line, posix=True)
@@ -580,52 +578,6 @@ class mf_client:
                 return True
 
         return False
-
-#------------------------------------------------------------
-# deprec - too config specific (prefer pshell publish)
-    def get_url(self, asset_id):
-        """
-        Retrieve a wget'able URL from the server
-
-        Input:
-            asset_id: and INTEGER specifying the remote asset
-
-        Returns:
-            A STRING representing a URL which contains an authorizing token
-
-        Raises:
-            An error on failure
-        """
-
-# NOTE - if logged in with a delegate (token) then that could be used to form the URL
-        app = "wget"
-        namespace = None
-
-# find root project namespace
-        result = self.aterm_run("asset.get :id %r :xpath namespace" % asset_id)
-
-        elem = result.find(".//value")
-        if elem is not None:
-            tmp = elem.text
-            match = re.search(r"/projects/[^/]+", tmp)
-            if match:
-                namespace = match.group(0)
-        if namespace is None:
-            raise Exception("Failed to find project namespace for asset [%r]" % asset_id)
-
-# get project token
-        result = self.aterm_run("asset.namespace.application.settings.get :namespace %s :app %s" % (namespace, app))
-
-        elem = result.find(".//token")
-        if elem is not None:
-            token = elem.text
-        else:
-            raise Exception("Failed to retrieve token for project [%s]" % namespace)
-
-# build URL
-        url = self.data_url + "?_token=%s&id=%r" % (token, asset_id)
-
-        return url
 
 #------------------------------------------------------------
     def get_local_checksum(self, filepath):

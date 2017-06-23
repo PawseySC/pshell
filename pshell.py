@@ -644,7 +644,7 @@ class parser(cmd.Cmd):
 
     def help_import(self):
         print "\nUpload files or folders with associated metadata"
-        print "For every file called <filename.ext> a file called <filename.ext.meta> is treated as containing metadata\n"
+        print "For every file <filename.ext> another file called <filename.ext.meta> should contain metadata in INI file format\n"
         print "Usage: import <file or folder>\n"
         print "Examples: import myfile.jpg"
         print "          import myfolder/\n"
@@ -1202,7 +1202,7 @@ class parser(cmd.Cmd):
         print "\nCompares a local and a remote folder and reports any differences"
         print "The local and remote folders must have the same name and appear in the current local and remote working directories"
         print "Usage: compare <folder>\n"
-        print "Examples: compare mystuff\n"
+        print "Examples: compare myfolder\n"
 
 # --- compare
     def do_compare(self, line):
