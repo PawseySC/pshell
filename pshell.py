@@ -8,6 +8,7 @@ import glob
 import math
 import time
 import getpass
+import urllib2
 import zipfile
 import argparse
 import datetime
@@ -162,7 +163,6 @@ class parser(cmd.Cmd):
         return candidate_list
 
 # ---
-# NB: taking the approach that rm is for files (assets) only and rmdir is for folders (namespaces)
     def complete_rm(self, text, line, start_index, end_index):
         candidate_list = self.complete_asset(line[3:end_index], start_index-3)
         candidate_list += self.complete_namespace(line[3:end_index], start_index-3)
@@ -172,6 +172,12 @@ class parser(cmd.Cmd):
     def complete_file(self, text, line, start_index, end_index):
         candidate_list = self.complete_asset(line[5:end_index], start_index-5)
         candidate_list += self.complete_namespace(line[5:end_index], start_index-5)
+        return candidate_list
+
+# ---
+    def complete_publish(self, text, line, start_index, end_index):
+        candidate_list = self.complete_asset(line[8:end_index], start_index-8)
+        candidate_list += self.complete_namespace(line[8:end_index], start_index-8)
         return candidate_list
 
 # ---
@@ -561,7 +567,7 @@ class parser(cmd.Cmd):
                     if child.tag == "namespace":
                         namespace = child.text
 # remote = *nix , local = windows or *nix
-# NEW - the relative path should be computed from the starting namespace
+# the relative path should be computed from the starting namespace
                         remote_relpath = posixpath.relpath(path=namespace, start=base_namespace)
                         relpath_list = remote_relpath.split("/")
                         local_relpath = os.sep.join(relpath_list)
@@ -578,16 +584,15 @@ class parser(cmd.Cmd):
 
                     online[asset_id] = filepath
 
-# NEW - check for completion - to avoid triggering a mediaflux exception on invalid iterator
+# check for completion - to avoid triggering a mediaflux exception on invalid iterator
             for elem in result.iter("iterated"):
                 state = elem.get('complete')
                 if "true" in state:
                     self.mf_client.log("DEBUG", "Asset iteration completed")
                     iterate = False
 
-# TODO - *** split out this from the online files call -> call ONCE on ALL files at the start, rather than polling
+# TODO - *** split out this from get_online_set() -> call ONCE on ALL files at the start, rather than polling
 # create any required local dirs (NB: may get exception if they exist - hence the catch)
-# FIXME - permission denied exception left to actual download ... better way to handle?
         for local_path in list_local_path:
             try:
                 self.mf_client.log("DEBUG", "Creating local folder: %s" % local_path)
@@ -608,9 +613,9 @@ class parser(cmd.Cmd):
         sys.stdout.write("\r"+text)
         sys.stdout.flush()
 
-# CURRENT - meta populator
+# metadata populator
     def import_metadata(self, asset_id, filepath):
-#        print "import_metadata() [%s] : [%s]" % (asset_id, filepath)
+        self.mf_client.log("DEBUG","import_metadata() [%s] : [%s]" % (asset_id, filepath))
         try:
             config = ConfigParser.ConfigParser()
             config.read(filepath)
@@ -637,7 +642,6 @@ class parser(cmd.Cmd):
         except Exception as e:
             self.mf_client.log("WARNING", "Metadata population failed: %s" % str(e))
 
-# TODO - allow customization of metadata extension file?
     def help_import(self):
         print "\nUpload files or folders with associated metadata"
         print "For every file called <filename.ext> a file called <filename.ext.meta> is treated as containing metadata\n"
@@ -775,10 +779,8 @@ class parser(cmd.Cmd):
 
             except Exception as e:
                 self.mf_client.log("ERROR", str(e))
-# FIXME - need to raise error so scripts get non zero
                 return
 
-# CURRENT - enforce cleanup, see if helps KZ issues
             finally:
                 if manager is not None:
                     manager.cleanup()
@@ -806,7 +808,6 @@ class parser(cmd.Cmd):
         upload_list = []
         if os.path.isdir(line):
             self.print_over("Walking directory tree...")
-# FIXME - handle input of '/'
             line = os.path.abspath(line)
             parent = os.path.normpath(os.path.join(line, ".."))
             for root, directory_list, name_list in os.walk(line):
@@ -817,7 +818,6 @@ class parser(cmd.Cmd):
                 remote_relpath = "/".join(relpath_list)
                 remote = posixpath.join(self.cwd, remote_relpath)
 
-# CURRENT - remove put/import code redundancy
                 if meta is False:
                     upload_list.extend([(remote, os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list])
                 else:
@@ -1014,7 +1014,7 @@ class parser(cmd.Cmd):
 
         print "Local folder: %s" % display_path
 
-# NEW - glob these to allow wildcards
+# glob these to allow wildcards
         for filename in glob.glob(path):
             if os.path.isdir(filename):
                 head, tail = os.path.split(filename)
@@ -1249,8 +1249,25 @@ class parser(cmd.Cmd):
             print "%s" % item
 
 # TODO - checksum compares as well?
-
         print "=== Compare complete ==="
+
+# --
+    def help_publish(self):
+        print "\nReturn a public, downloadable URL for a file\nRequires public sharing to be enabled by the project administrator\n"
+        print "Usage: publish <filename>\n"
+
+# --
+    def do_publish(self, line):
+        fullpath = self.absolute_remote_filepath(line)
+        self.mf_client.aterm_run('asset.label.add :id "path=%s" :label PUBLISHED' % fullpath)
+# generate URL (assumes Pawsey setup)
+        public_url = '%s://%s/download/%s' % (self.mf_client.protocol, self.mf_client.server, urllib2.quote(fullpath[10:]))
+        try:
+            urllib2.urlopen(public_url)
+            print public_url
+        except Exception as e:
+            self.mf_client.log("DEBUG", str(e))
+            raise Exception("Error: public sharing not enabled")
 
 # --
     def help_quit(self):
@@ -1286,7 +1303,6 @@ class parser(cmd.Cmd):
                     self.need_auth = True
 
 def main():
-# TODO - probably should make it compatible with 3.x as well (sigh)
     if sys.hexversion < 0x02070000:
         print("ERROR: requires Python 2.7.x, using: ", sys.version)
         exit(-1)
@@ -1336,7 +1352,7 @@ def main():
         server = config.get(current, 'server')
         protocol = config.get(current, 'protocol')
         port = config.get(current, 'port')
-# NEW - require an authentication domain be specified
+# require an authentication domain be specified
         domain = config.get(current, 'domain')
 # no .mf_config in ~ or zip bundle or cwd => die
     except Exception as e:
@@ -1352,12 +1368,11 @@ def main():
     if config.has_option(current, 'token'):
         token = config.get(current, 'token')
 
-# NEW - don't store debug level in config (command line flag or pshell command is enough)
+# don't store debug level in config (command line flag or pshell command is enough)
     if args.debug:
         debug = args.debug
 
-# CURRENT - extract size - use this for auto pagination
-# won't work for windows (of course)
+# extract terminal size for auto pagination
 # TODO - make this work with windows
     try:
         import fcntl, termios, struct

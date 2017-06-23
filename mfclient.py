@@ -582,6 +582,7 @@ class mf_client:
         return False
 
 #------------------------------------------------------------
+# deprec - too config specific (prefer pshell publish)
     def get_url(self, asset_id):
         """
         Retrieve a wget'able URL from the server
