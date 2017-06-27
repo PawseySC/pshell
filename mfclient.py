@@ -137,7 +137,6 @@ class mf_client:
 # check is server is reachable
         s = socket.socket()
 # initial connection test exception
-#        s.settimeout(self.timeout)
         s.settimeout(7)
         s.connect((self.server, self.port))
         s.close()
@@ -796,13 +795,11 @@ class mf_manager:
         bytes_sent.value = 0
         bytes_recv.value = 0
 
-# CURRENT - ref:http://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
+# ref:http://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
 # force control-C to be ignored by process pool
         handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
 # NB: urllib2 and httplib are not thread safe -> use process pool instead of threads
-# old style - works with *nix fork()
-#        self.pool = multiprocessing.Pool(processes)
-# new style - shared mem globals aren't preserved with a Windows fork() - need an explicit init
+# shared mem globals aren't preserved with a Windows fork() - need an explicit init
         self.pool = multiprocessing.Pool(processes, init_jump, (bytes_recv, bytes_sent))
 
 # restore control-C
