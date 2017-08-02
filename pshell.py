@@ -22,6 +22,10 @@ try:
 except:
     pass
 
+# NEW
+import xml.etree.ElementTree as xml_processor
+
+
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
 
@@ -613,35 +617,73 @@ class parser(cmd.Cmd):
         sys.stdout.write("\r"+text)
         sys.stdout.flush()
 
-# metadata populator
+
+# TODO - pshell test cases for this new metadata importing ...
+# -- convert XML document to mediaflux shorthand XML markup
+    def xml_to_mf(self, xml_root, result=None):
+        if xml_root is not None:
+            if xml_root.text is not None:
+                result = " :%s %s" % (xml_root.tag, xml_root.text)
+            else:
+                result = " :%s <" % xml_root.tag
+                for xml_child in xml_root:
+                    if xml_child.text is not None:
+                        result += " :%s %s" % (xml_child.tag, xml_child.text)
+                    else:
+                        result += self.xml_to_mf(xml_child, result)
+                result += " >"
+        return result
+
+# -- metadata populator
     def import_metadata(self, asset_id, filepath):
         self.mf_client.log("DEBUG","import_metadata() [%s] : [%s]" % (asset_id, filepath))
         try:
             config = ConfigParser.ConfigParser()
             config.read(filepath)
 # section -> xmlns
-# TODO - how to handle to special case of first class asset properties (eg WGS84 geoshapes)
+# TODO - this could perhaps be done more properly with formal XML construction + asset.import.with.xml.metadata ... but that needs formal XSLT 
+            xml_root = xml_processor.Element(None)
             for section in config.sections():
-                if "geoshape" in section:
-                    xml_command = 'asset.set :id %r' % asset_id
-                    tmp = section.split('/')
-                    for item in tmp:
-                        xml_command += " :%s <" % item
-                    for option in config.options(section):
-                        xml_command += ' :%s %s' % (option, config.get(section, option))
-                    for item in tmp:
-                        xml_command += ' >'
-                else:
-                    xml_command = 'asset.set :id %r :meta < :%s <' % (asset_id, section)
-                    for option in config.options(section):
-                        xml_command += ' :%s %s' % (option, config.get(section, option))
-                    xml_command += ' > >'
+                xml_child = xml_processor.SubElement(xml_root, section)
+                for option in config.options(section):
+                    elem_list = option.split('/')
+                    xml_item = xml_child
+                    xpath = './'
+# create any/all intermediate XML nodes in the xpath or merge with existing
+                    for elem in elem_list:
+                        xpath += "/%s" % elem
+                        match = xml_root.find(xpath)
+                        if match is not None:
+                            xml_item = match
+                            continue
+                        xml_item = xml_processor.SubElement(xml_item, elem)
+# terminate at the final element to populate with the current option data
+                    if xml_item is not None:
+                        xml_item.text = config.get(section, option)
 # DEBUG
-                reply = self.mf_client.aterm_run(xml_command)
+#            self.mf_client.xml_print(xml_root)
+
+# construct the command
+            xml_command = 'asset.set :id %r' % asset_id
+            for xml_child in xml_root:
+                if xml_child.tag == 'asset':
+                    for xml_arg in xml_child:
+                        xml_command += self.xml_to_mf(xml_arg)
+                else:
+                    xml_command += ' :meta <%s >' % self.xml_to_mf(xml_child)
+
+# DEBUG
+#            print xml_command
+
+# update the asset metadata
+            self.mf_client.aterm_run(xml_command)
+# re-analyze the content - stricly only needs to be done if type/ctype/lctype was changed
+            self.mf_client.aterm_run("asset.reanalyze :id %r" % asset_id)
 
         except Exception as e:
             self.mf_client.log("WARNING", "Metadata population failed: %s" % str(e))
 
+# ---
     def help_import(self):
         print "\nUpload files or folders with associated metadata"
         print "For every file <filename.ext> another file called <filename.ext.meta> should contain metadata in INI file format\n"
