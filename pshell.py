@@ -15,15 +15,13 @@ import datetime
 import itertools
 import posixpath
 import ConfigParser
+import xml.etree.ElementTree as ET
 import mfclient
 # no readline on windows
 try:
     import readline
 except:
     pass
-
-# NEW
-import xml.etree.ElementTree as xml_processor
 
 
 # standard lib python command line client for mediaflux
@@ -617,8 +615,6 @@ class parser(cmd.Cmd):
         sys.stdout.write("\r"+text)
         sys.stdout.flush()
 
-
-# TODO - pshell test cases for this new metadata importing ...
 # -- convert XML document to mediaflux shorthand XML markup
     def xml_to_mf(self, xml_root, result=None):
         if xml_root is not None:
@@ -641,10 +637,9 @@ class parser(cmd.Cmd):
             config = ConfigParser.ConfigParser()
             config.read(filepath)
 # section -> xmlns
-# TODO - this could perhaps be done more properly with formal XML construction + asset.import.with.xml.metadata ... but that needs formal XSLT 
-            xml_root = xml_processor.Element(None)
+            xml_root = ET.Element(None)
             for section in config.sections():
-                xml_child = xml_processor.SubElement(xml_root, section)
+                xml_child = ET.SubElement(xml_root, section)
                 for option in config.options(section):
                     elem_list = option.split('/')
                     xml_item = xml_child
@@ -656,7 +651,7 @@ class parser(cmd.Cmd):
                         if match is not None:
                             xml_item = match
                             continue
-                        xml_item = xml_processor.SubElement(xml_item, elem)
+                        xml_item = ET.SubElement(xml_item, elem)
 # terminate at the final element to populate with the current option data
                     if xml_item is not None:
                         xml_item.text = config.get(section, option)
@@ -773,7 +768,6 @@ class parser(cmd.Cmd):
 # TODO - time expired breakout?
         while todo > 0:
             try:
-
 # wait (if required) and start transfers as soon as possible
                 manager = None
                 while manager is None:

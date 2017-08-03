@@ -23,7 +23,7 @@ import functools
 import mimetypes
 import posixpath
 import multiprocessing
-import xml.etree.ElementTree as xml_processor
+import xml.etree.ElementTree as ET
 
 # Globals - multiprocess IO monitoring is hard
 manage_lock = multiprocessing.Lock()
@@ -195,7 +195,7 @@ class mf_client:
         request = urllib2.Request(self.post_url, data=xml_string, headers={'Content-Type': 'text/xml'})
         response = urllib2.urlopen(request, timeout=self.timeout)
         xml = response.read()
-        tree = xml_processor.fromstring(xml)
+        tree = ET.fromstring(xml)
 
 # if error - attempt to extract a useful message
         elem = tree.find(".//reply/error")
@@ -313,7 +313,7 @@ class mf_client:
                 resp = conn.getresponse()
                 reply = resp.read()
                 conn.close()
-                tree = xml_processor.fromstring(reply)
+                tree = ET.fromstring(reply)
 
 # return asset id of uploaded filed or any (error) message
                 for elem in tree.iter():
@@ -360,7 +360,7 @@ class mf_client:
         lexer = shlex.shlex(aterm_line, posix=True)
         lexer.whitespace_split = True
 
-        xml_root = xml_processor.Element(None)
+        xml_root = ET.Element(None)
         xml_node = xml_root
         child = None
         stack = []
@@ -377,7 +377,7 @@ class mf_client:
         try:
             while token:
                 if token[0] == ':':
-                    child = xml_processor.SubElement(xml_node, '%s' % token[1:])
+                    child = ET.SubElement(xml_node, '%s' % token[1:])
                     self.log("DEBUG", "XML elem [%s]" % token[1:], level=2)
 # if element contains : (eg csiro:seismic) then we need to inject the xmlns stuff
                     if ":" in token[1:]:
@@ -425,22 +425,22 @@ class mf_client:
 
 # testing hook
         if post is not True:
-            tmp = xml_processor.tostring(xml_root, method = 'xml')
+            tmp = ET.tostring(xml_root, method = 'xml')
 # password hiding for system.logon ...
             if service_call != "system.logon":
                 self.log("DEBUG", "XML out: %s" % tmp, level=2)
             return tmp
 
 # wrap with session/service call
-        xml = xml_processor.Element("request")
-        child = xml_processor.SubElement(xml, "service")
+        xml = ET.Element("request")
+        child = ET.SubElement(xml, "service")
         child.set("name", service_call)
         if service_call != "system.logon":
             child.set("session", self.session)
-        args = xml_processor.SubElement(child, "args")
+        args = ET.SubElement(child, "args")
         args.append(xml_root)
 # NEW - method = html
-        xml_text = xml_processor.tostring(xml, method = 'xml')
+        xml_text = ET.tostring(xml, method = 'xml')
 # debug - password hiding for system.logon ...
         if service_call != "system.logon":
             tmp = re.sub(r'session=[^>]*', 'session="..."', xml_text)

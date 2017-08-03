@@ -4,6 +4,8 @@ import os
 import sys
 import unittest
 import subprocess
+import xml.etree.ElementTree as ET
+import pshell
 
 #########################
 # serverless pshell tests
@@ -40,6 +42,17 @@ class pshell_syntax(unittest.TestCase):
             if "request" in line:
                 self.assertEqual(line.strip(), '<request><service name="asset.namespace.exists" session=""><args><namespace>/projects/sean\'s dir</namespace></args></service></request>')
 
+# NEW - test conversion of XML to Arcitecta's shorthand format - used for metadata import
+    def test_import_metadata(self):
+        pp = pshell.parser()
+        xml_root = ET.fromstring('<ctype>"image/tiff"</ctype>')
+        result = pp.xml_to_mf(xml_root, result=None)
+        self.assertEqual(result, ' :ctype "image/tiff"')
+        xml_root = ET.fromstring('<geoshape><point><elevation>5.0</elevation></point></geoshape>')
+        result = pp.xml_to_mf(xml_root, result=None)
+        self.assertEqual(result, ' :geoshape < :point < :elevation 5.0 > >')
+
+
 ########################################
 # convenience wrapper for squishing bugs
 ########################################
@@ -47,13 +60,14 @@ class pshell_bugs(unittest.TestCase):
     def setUp(self):
         print "setup"
 
+# TODO - more testing of pshell methods
     def test_squish(self):
-        print "NEW"
-        proc = subprocess.Popen(["pshell.py", "-c", "dummy", "rmdir sean's dir"], stdout=subprocess.PIPE)
-        for line in proc.stdout:
-            if "request" in line:
-                print line
-                self.assertEqual(line.strip(), '<request><service name="asset.namespace.exists" session=""><args><namespace>/projects/sean\'s dir</namespace></args></service></request>')
+        print "NEW" 
+        pp = pshell.parser()
+        xml_root = ET.fromstring('<geoshape><point><elevation>5.0</elevation></point></geoshape>')
+        result = pp.xml_to_mf(xml_root, result=None)
+        self.assertEqual(result, ' :geoshape < :point < :elevation 5.0 > >')
+
 
 ######
 # main
