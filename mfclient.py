@@ -785,6 +785,7 @@ class mf_manager:
         global bytes_recv
 
 # fail if there is already a managed transfer (there can only be one!)
+# FIXME - not really an informative exception ...
         if not manage_lock.acquire(block=False):
             raise TypeError
 

@@ -608,6 +608,9 @@ class parser(cmd.Cmd):
 
 # --
     def print_over(self, text):
+# don't do this for scripted (non-interactive) use as it won't display properly
+        if not self.interactive:
+            return
 # these clear to end of line codes don't work on windows
 #        sys.stdout.write('\x1b[2K')
 #        sys.stdout.write("\033[K")
