@@ -1348,12 +1348,12 @@ def main():
 
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
-    p.add_argument("-c", dest='config', default="pawsey", help="the server in $HOME/.mf_config to connect to")
+    p.add_argument("-c", dest='current', default="pawsey", help="the server in $HOME/.mf_config to connect to")
     p.add_argument("-i", dest='script', help="input text file containing commands")
     p.add_argument("-d", dest='debug', default=0, help="activates debugging level")
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
-    current = args.config
+    current = args.current
     script = args.script
     encrypt = True
     debug = 0
@@ -1381,7 +1381,7 @@ def main():
                 me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
                 f = me.open('.mf_config')
             except:
-# config from pshell install directory
+# config from pshell install directory (Windows fix)
                 f = open(os.path.join(os.path.dirname(__file__), 'data', '.mf_config'))
 
 # read non ~ config as defaults
@@ -1412,15 +1412,15 @@ def main():
         debug = args.debug
 
 # extract terminal size for auto pagination
-# TODO - make this work with windows
     try:
         import fcntl, termios, struct
         size = struct.unpack('hh', fcntl.ioctl(0, termios.TIOCGWINSZ, '1234'))
     except:
-        print "Warning: couldn't determine terminal size"
+# FIXME - make this work with windows
         size = (80, 25)
 
 # mediaflux client
+# FIXME - the argument count is getting a bit ridiculous
     try:
         mf_client = mfclient.mf_client(protocol=protocol, port=port, server=server, domain=domain, session=session, enforce_encrypted_login=encrypt, debug=debug, dummy=dummy)
     except Exception as e:
@@ -1428,30 +1428,21 @@ def main():
         print "Error: %s" % str(e)
         exit(-1)
 
-# check session first
+# NEW - simplified auth reasoning
     need_auth = True
-    if not len(session) == 0:
-        if not mf_client.authenticated():
-            session = ""
-            config.set(current, 'session', session)
-            config_changed = True
-        else:
-            need_auth = False
-
-# missing or invalid session - check the token (if any)
-    if len(session) == 0:
-        if token:
+    if mf_client.authenticated():
+        need_auth = False
+    else:
+        if token is not None:
             try:
                 mf_client.login(token=token)
-                config.set(current, 'session', mf_client.session)
-                config_changed = True
                 need_auth = False
                 mf_client.log("DEBUG", "Delegate is valid")
             except Exception as e:
                 mf_client.log("WARNING", "Delegate authentication failed.")
                 mf_client.log("DEBUG", str(e))
 
-# update config to match current state
+# save config - should only ever happen on first time run 
     if config_changed:
         mf_client.log("DEBUG", "Writing config...")
         f = open(config_filepath, "w")
@@ -1468,7 +1459,6 @@ def main():
     my_parser.terminal_height = size[0]
 
 # TAB completion
-# FIXME - no readline in Windows ...
 # strange hackery required to get tab completion working under OS-X and also still be able to use the b key
 # REF - http://stackoverflow.com/questions/7124035/in-python-shell-b-letter-does-not-work-what-the
     try:
@@ -1477,6 +1467,7 @@ def main():
         else:
             readline.parse_and_bind("tab: complete")
     except:
+# FIXME - no readline in Windows ...
         mf_client.log("WARNING", "No readline module; tab completion unavailable")
 
 # build non interactive input iterator
