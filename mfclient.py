@@ -413,11 +413,17 @@ class mf_client:
                         else:
                             child.text = token
                     if child.tag.lower() == "password":
-                        self.log("DEBUG", "XML text [xxxxx]", level=2)
+                        self.log("DEBUG", "XML text [xxxxxxxx]", level=2)
                     else:
                         self.log("DEBUG", "XML text [%s]" % child.text, level=2)
-# while tokens ...
-                token = lexer.get_token()
+# NEW - don't treat quotes as special characters in password string
+                if "password" in token:
+                    save_lexer_quotes = lexer.quotes
+                    lexer.quotes = iter('') 
+                    token = lexer.get_token()
+                    lexer.quotes = save_lexer_quotes
+                else:
+                    token = lexer.get_token()
 
         except Exception as e:
             self.log("DEBUG", "aterm_run() error: %s" % str(e))

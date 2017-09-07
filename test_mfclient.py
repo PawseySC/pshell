@@ -92,6 +92,10 @@ class mfclient_syntax(unittest.TestCase):
         reply = self.mf_client.aterm_run('www.list :namespace "/projects/Data Team/sean\'s dir" :page 1 :size 30', post=False)
         self.assertEqual(reply, "<namespace>/projects/Data Team/sean's dir</namespace><page>1</page><size>30</size>")
 
+    def test_sanitise_password(self):
+        reply = self.mf_client.aterm_run("system.logon :domain ivec :user sean :password Letmein'()<>1", post=False)
+        self.assertEqual(reply, "<domain>ivec</domain><user>sean</user><password>Letmein'()&lt;&gt;1</password>")
+
     def test_xmlns_parsing(self):
         # NB: xml.tostring(method='html') causes incorrect xml output (missing meta closure)
         reply = self.mf_client.aterm_run(r'asset.set :id 123 :meta < :pawsey:custom < :pawsey-key "pawsey value" >', post=False)
@@ -110,12 +114,10 @@ class mfclient_bugs(unittest.TestCase):
         global mf_client
         self.mf_client = mf_client
 
-    def test_debug(self):
-        self.mf_client.debug = 2
-        reply = self.mf_client.aterm_run('asset.set :id 123 :meta < :csiro:seismic < :name "Perth" :geometry "sprawling" > >', post=False)
-        self.assertEqual(reply, '<id>123</id><meta><csiro:seismic xmlns:csiro="csiro"><name>Perth</name><geometry>sprawling</geometry></csiro:seismic></meta>')
-
-        print reply
+# CURRENT
+    def test_sanitise_password(self):
+        reply = self.mf_client.aterm_run("system.logon :domain ivec :user sean :password Letmein'()<>1", post=False)
+        self.assertEqual(reply, "<domain>ivec</domain><user>sean</user><password>Letmein'()&lt;&gt;1</password>")
 
 
 ######
