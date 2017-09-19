@@ -139,10 +139,9 @@ class mf_client:
         s.connect((self.server, self.port))
         s.close()
 
-# check if unecrypted data transfer is an option
+# prefer (faster) unecrypted data transfer, if available
         if self.protocol == 'https':
             self.encrypted_data = True
-# TODO - this may not be good enough ...
 # FIXME - I think some networks (eg UWA) will allow an 80 connection - but you can't actually use it
 # FIXME - in this case, have to try and extract a valid response from the server on 80
             try:
@@ -156,7 +155,7 @@ class mf_client:
         else:
             self.encrypted_data = False
 
-# build base download URL
+# build data URLs
         if self.encrypted_data:
             self.data_get = "https://%s/mflux/content.mfjp" % server
             self.data_put = "%s:%s" % (server, 443)
@@ -212,7 +211,7 @@ class mf_client:
         Primitive for sending an XML message to the Mediaflux server
         """
 
-# NEW - dummy mode passback for pshell offline tests
+# dummy mode passback for pshell offline tests
         if self.dummy:
             raise Exception(xml_string)
 
@@ -471,7 +470,6 @@ class mf_client:
             child.set("session", self.session)
         args = ET.SubElement(child, "args")
         args.append(xml_root)
-# NEW - method = html
         xml_text = ET.tostring(xml, method = 'xml')
 # debug - password hiding for system.logon ...
         if service_call != "system.logon":
