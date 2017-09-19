@@ -835,7 +835,7 @@ class parser(cmd.Cmd):
 # NEW
             elapsed = time.time() - start_time
             average = stats['total-bytes'] / elapsed
-            average = average / 1000000
+            average = average / 1000000.0
             print "\nCompleted at %.1f MB/s" % average
 
 # NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
@@ -931,7 +931,7 @@ class parser(cmd.Cmd):
         else:
             elapsed = time.time() - start_time
             rate = manager.bytes_sent() / elapsed
-            rate = rate / 1000.0
+            rate = rate / 1000000.0
             print "\nCompleted at %.1f MB/s" % rate
 
 # --
