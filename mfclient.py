@@ -122,11 +122,9 @@ class mf_client:
         self.session = session
         self.dummy = dummy
         self.debug = debug
-        self.base_url = "{0}://{1}".format(protocol, server)
-        self.post_url = self.base_url + "/__mflux_svc__"
-        self.data_url = self.base_url + "/mflux/content.mfjp"
-        self.http_lib = "{0}:{1}".format(server, self.port)
-        self.enforce_encrypted_login = bool(enforce_encrypted_login)
+        self.encrypted_post = bool(enforce_encrypted_login)
+# service call URL
+        self.post_url = "%s://%s/__mflux_svc__" % (protocol, server)
 # download/upload buffers
         self.get_buffer = 8192
         self.put_buffer = 8192
@@ -134,16 +132,43 @@ class mf_client:
         self.indent = 0
         if dummy:
             return
-# check is server is reachable
+
+# initial connection check 
         s = socket.socket()
-# initial connection test exception
         s.settimeout(7)
         s.connect((self.server, self.port))
         s.close()
 
+# check if unecrypted data transfer is an option
+        if self.protocol == 'https':
+            self.encrypted_data = True
+# TODO - this may not be good enough ...
+# FIXME - I think some networks (eg UWA) will allow an 80 connection - but you can't actually use it
+# FIXME - in this case, have to try and extract a valid response from the server on 80
+            try:
+                s = socket.socket()
+                s.settimeout(2)
+                s.connect((self.server, 80))
+                s.close()
+                self.encrypted_data = False
+            except Exception as e:
+                pass
+        else:
+            self.encrypted_data = False
+
+# build base download URL
+        if self.encrypted_data:
+            self.data_get = "https://%s/mflux/content.mfjp" % server
+            self.data_put = "%s:%s" % (server, 443)
+        else:
+            self.data_get = "http://%s/mflux/content.mfjp" % server
+            self.data_put = "%s:%s" % (server, 80)
+
 # if required, attempt to display more connection info
         if self.debug > 0:
-            print "  SERVER: %s://%s:%s" % (self.protocol, self.server, self.port)
+            print "POST-URL: %s" % self.post_url
+            print "DATA-GET: %s" % self.data_get
+            print "DATA-PUT: %s" % self.data_put
             if self.protocol == "https":
 # first line of python version info is all we're interested in
                 version = sys.version
@@ -248,10 +273,10 @@ class mf_client:
 #        print "================="
 
 # different connection object for HTTPS vs HTTP
-        if self.protocol == 'https':
-            conn = httplib.HTTPSConnection(self.http_lib, timeout=self.timeout)
+        if self.encrypted_data is True:
+            conn = httplib.HTTPSConnection(self.data_put, timeout=self.timeout)
         else:
-            conn = httplib.HTTPConnection(self.http_lib, timeout=self.timeout)
+            conn = httplib.HTTPConnection(self.data_put, timeout=self.timeout)
 
 # kickoff
         self.log("DEBUG", "[pid=%d] File send starting: %s" % (pid, filepath))
@@ -412,11 +437,12 @@ class mf_client:
                             child.text = token[1:-1]
                         else:
                             child.text = token
-                    if child.tag.lower() == "password":
+# don't display sensitive info
+                    if child.tag.lower() == "password" or child.tag.lower() == 'token':
                         self.log("DEBUG", "XML text [xxxxxxxx]", level=2)
                     else:
                         self.log("DEBUG", "XML text [%s]" % child.text, level=2)
-# NEW - don't treat quotes as special characters in password string
+# don't treat quotes as special characters in password string
                 if "password" in token:
                     save_lexer_quotes = lexer.quotes
                     lexer.quotes = iter('') 
@@ -534,7 +560,7 @@ class mf_client:
         """
 # security check
         if self.protocol != "https":
-            if self.enforce_encrypted_login:
+            if self.encrypted_post:
                 raise Exception("Forbidding unencrypted password post")
             else:
                 self.log("DEBUG", "Permitting unencrypted login; I hope you know what you're doing.")
@@ -611,10 +637,11 @@ class mf_client:
         """
         global bytes_recv
 
-# CURRENT - server returns data as disposition attachment regardless of the argument disposition=attachment
-#        url = self.data_url + "?_skey={0}&id={1}&disposition=attachment".format(self.session, asset_id)
-        url = self.data_url + "?_skey={0}&id={1}".format(self.session, asset_id)
+# build download URL
+        url = self.data_get + "?_skey=%s&id=%s" % (self.session, asset_id)
+#        print "GET url [%s]" % url
         req = urllib2.urlopen(url)
+
 # distinguish between file data and mediaflux error message
 # DEBUG
 #        info = req.info()

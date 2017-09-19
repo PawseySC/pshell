@@ -832,7 +832,11 @@ class parser(cmd.Cmd):
         if fail != 0:
             raise Exception("\nFailed to download %d file(s)." % fail)
         else:
-            print "\nCompleted."
+# NEW
+            elapsed = time.time() - start_time
+            average = stats['total-bytes'] / elapsed
+            average = average / 1000000
+            print "\nCompleted at %.1f MB/s" % average
 
 # NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
 # --
@@ -883,6 +887,7 @@ class parser(cmd.Cmd):
         manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
         self.mf_client.log("DEBUG", "Starting transfer...")
         self.print_over("Total files=%d" % len(upload_list))
+        start_time = time.time()
         print ", transferring...  "
         try:
             while True:
@@ -924,7 +929,10 @@ class parser(cmd.Cmd):
         if fail != 0:
             raise Exception("\nFailed to upload %d file(s)." % fail)
         else:
-            print "\nCompleted."
+            elapsed = time.time() - start_time
+            rate = manager.bytes_sent() / elapsed
+            rate = rate / 1000.0
+            print "\nCompleted at %.1f MB/s" % rate
 
 # --
     def help_cd(self):
