@@ -232,7 +232,7 @@ class mf_client:
         return tree
 
 #------------------------------------------------------------
-    def _post_multipart_buffered(self, xml, filepath):
+    def _post_multipart_buffered(self, xml, filepath, upload_timeout=600):
         """
         Primitive for doing buffered upload on a single file. Used by the put() method
         Sends a multipart POST to the server; consisting of the initial XML, followed by a streamed, buffered read of the file contents
@@ -273,9 +273,9 @@ class mf_client:
 
 # different connection object for HTTPS vs HTTP
         if self.encrypted_data is True:
-            conn = httplib.HTTPSConnection(self.data_put, timeout=self.timeout)
+            conn = httplib.HTTPSConnection(self.data_put, timeout=upload_timeout)
         else:
-            conn = httplib.HTTPConnection(self.data_put, timeout=self.timeout)
+            conn = httplib.HTTPConnection(self.data_put, timeout=upload_timeout)
 
 # kickoff
         self.log("DEBUG", "[pid=%d] File send starting: %s" % (pid, filepath))
@@ -347,10 +347,11 @@ class mf_client:
                         message = elem.text
                 raise Exception(message)
 
-# re-try if we have a slow server (final ack timeout)
+# re-try if we have a slow server (final ack timeout) after a delay
             except socket.timeout:
-                self.log("DEBUG", "[pid=%d] No response from server [count=%d] trying again..." % (pid, i))
-                time.sleep(self.timeout)
+                delay = upload_timeout / (retry_count+1)
+                self.log("DEBUG", "[pid=%d] No response from server [count=%d] trying again in [%d seconds] ..." % (pid, i, delay))
+                time.sleep(delay)
 
         raise Exception("[pid=%d] Giving up on final server ACK." % pid)
 
