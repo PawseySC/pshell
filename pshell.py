@@ -911,7 +911,8 @@ class parser(cmd.Cmd):
             while manager is not None:
                 elapsed = time.time() - start_time
 
-                total_sent = self.mf_client.bytes_sent.value
+#                total_sent = self.mf_client.bytes_sent.value
+                total_sent = manager.bytes_sent()
 
                 current_pc = int(100.0 * total_sent / total_bytes)
 
@@ -921,6 +922,7 @@ class parser(cmd.Cmd):
 
                 time.sleep(2)
                 if manager.ready():
+                    total_sent = manager.bytes_sent()
                     break
 
         except KeyboardInterrupt:
@@ -942,10 +944,13 @@ class parser(cmd.Cmd):
 # transfer concluded
         elapsed = time.time() - start_time
         self.print_over("Transfer ended          \n")
-        if self.mf_client.bytes_sent.value != total_bytes:
-            self.mf_client.log("ERROR", "Bytes sent = %r, bytes expected = %r" % (self.mf_client.bytes_sent.value, total_bytes))
+#        if self.mf_client.bytes_sent.value != total_bytes:
+#            self.mf_client.log("ERROR", "Bytes sent = %r, bytes expected = %r" % (self.mf_client.bytes_sent.value, total_bytes))
+        if total_sent != total_bytes:
+            self.mf_client.log("ERROR", "Bytes sent = %r, bytes expected = %r" % (total_sent, total_bytes))
 # final report
-        self.print_transfer_stats(self.mf_client.bytes_sent.value, elapsed)
+#        self.print_transfer_stats(self.mf_client.bytes_sent.value, elapsed)
+        self.print_transfer_stats(total_sent, elapsed)
 
 
 # --
