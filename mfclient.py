@@ -232,12 +232,16 @@ class mf_client:
         return tree
 
 #------------------------------------------------------------
-    def _post_multipart_buffered(self, xml, filepath, upload_timeout=900, retry_count=9):
+    def _post_multipart_buffered(self, xml, filepath):
         """
         Primitive for doing buffered upload on a single file. Used by the put() method
         Sends a multipart POST to the server; consisting of the initial XML, followed by a streamed, buffered read of the file contents
         """
         global bytes_sent
+
+# mediaflux seems to have random periods of unresponsiveness - particularly around final ACK of transfer
+        retry_count = 9
+        upload_timeout = 900
 
 # setup
         pid = os.getpid()
@@ -326,8 +330,9 @@ class mf_client:
         chunk = "\r\n--%s--\r\n" % boundary
         conn.send(chunk)
 
-# NB: mediaflux seems to have random periods of unresponsiveness - particularly around ACK of final send()
         self.log("DEBUG", "[pid=%d] File send completed, waiting for server..." % pid)
+
+# NB - past source of problems, seems better these days ...
         message = "response did not contain an asset ID."
         for i in range(0, retry_count):
             try:
@@ -335,16 +340,18 @@ class mf_client:
                 reply = resp.read()
                 conn.close()
                 tree = ET.fromstring(reply)
+
+# return asset id of uploaded filed or any (error) message
                 for elem in tree.iter():
-# we got an asset ID (integer) corresponding to the uploaded file => success
                     if elem.tag == 'id':
                         return int(elem.text)
                     if elem.tag == 'message':
                         message = elem.text
                 raise Exception(message)
-# re-try if we have a slow server (final ack timeout) after a delay
+
+# re-try if we have a slow server (final ack timeout)
             except socket.timeout:
-                delay = upload_timeout / (retry_count+1)
+                delay = int(upload_timeout / (retry_count+1))
                 self.log("DEBUG", "[pid=%d] No response from server [count=%d] trying again in [%d seconds] ..." % (pid, i, delay))
                 time.sleep(delay)
 

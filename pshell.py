@@ -255,22 +255,6 @@ class parser(cmd.Cmd):
         return text
 
 # --- helper
-    def print_transfer_stats(self, total_bytes, total_time):
-        average = 0.0
-        netav = 0.0
-        diskav = 0.0
-        try:
-            average = float(total_bytes) / (1000000.0 * total_time)
-            netav = total_bytes / (1000000.0 * self.mf_client.net_dt.value)
-            diskav = total_bytes / (1000000.0 * self.mf_client.disk_dt.value)
-            summary = "Concurency=%d (network=%.1f MB/s, disk=%.1f MB/s) overall=%.1f MB/s" % (self.transfer_processes, netav, diskav, average)
-        except:
-            # handle div by zero, ie fast completion times
-            summary = "Concurency=%d (network=%.1fs, disk=%.1fs) overall=%.1f MB/s" % (self.transfer_processes, self.mf_client.net_dt.value, self.mf_client.disk_dt.value, average)
-
-        print summary
-
-# --- helper
     def ask(self, text):
 # new - if script, assume you know what you're doing
         if self.interactive is False:
@@ -753,6 +737,7 @@ class parser(cmd.Cmd):
         current = dict()
         done = dict()
         total_recv = 0
+        start_time = time.time()
         elapsed_mins = 0
 
 # we only expect to be able to download files where the content is in a known state
@@ -778,12 +763,11 @@ class parser(cmd.Cmd):
             xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" >' % base_query
             self.mf_client.aterm_run(xml_command)
         else:
-            user_msg += ", downloading...  "
+            user_msg += ", transferring ...  "
 
         print user_msg
 
 # overall transfer loop
-        start_time = time.time()
 # TODO - time expired breakout?
         while todo > 0:
             try:
@@ -793,7 +777,7 @@ class parser(cmd.Cmd):
                     online = self.get_online_set(base_query, base_namespace=base_namespace)
 # FIXME - python 2.6 causes compile error on this -> which means the runtime print "you need version > 2.7" isn't displayed
 #                     current = {k:v for k,v in online.iteritems() if k not in done}
-# this seems to resolve the issue
+# CURRENT - this seems to resolve the issue
                     current = dict([(k, v) for (k, v) in online.iteritems() if k not in done])
 
 # is there something to transfer?
@@ -813,45 +797,46 @@ class parser(cmd.Cmd):
                             self.print_over("Progress=%d%%,%s, elapsed=%d mins ...  " % (current_pc, msg, elapsed_mins))
                             time.sleep(60)
                     else:
-                        manager = self.mf_client.get_managed(current.iteritems(), processes=self.transfer_processes)
+                        manager = self.mf_client.get_managed(current.iteritems(), total_bytes=stats['total-bytes'], processes=self.transfer_processes)
 
-# transfer polling
+# network transfer polling
                 while manager is not None:
-                    elapsed = time.time() - start_time
-
-                    total_recv = self.mf_client.bytes_recv.value
-
-# FIXME - this will be wrong on multiple manager submits (gets reset to 0)
-                    current_pc = int(100.0 * total_recv / stats['total-bytes'])
-
-                    current_rate = float(total_recv) / (1000000.0 * elapsed)
-
-                    self.print_over("Progress=%d%% at %.1f MB/s " % (current_pc, current_rate))
-
-                    time.sleep(2)
-
-                    if manager.ready():
+                    current_recv = total_recv + manager.bytes_recv()
+                    current_pc = int(100.0 * current_recv / stats['total-bytes'])
+                    self.print_over("Progress=%d%%, rate=%.1f MB/s  " % (current_pc, manager.byte_recv_rate()))
+# update statistics after managed pool completes
+                    if manager.is_done():
                         done.update(current)
                         todo = stats['total-files'] - bad_files - len(done)
+                        total_recv += manager.bytes_recv()
                         break
+                    time.sleep(2)
 
             except KeyboardInterrupt:
-                self.mf_client.log("WARNING", "Interrupted by user... ")
+                self.mf_client.log("WARNING", "get interrupted by user")
                 return
 
             except Exception as e:
                 self.mf_client.log("ERROR", str(e))
-#                return
+                return
 
-# transfer concluded
-# FIXME - this is wrong if DMF (separate pools => reset byte counter)
-        elapsed = time.time() - start_time
-        self.print_over("Transfer completed          \n")
-        if self.mf_client.bytes_recv.value != stats['total-bytes']:
-            self.mf_client.log("ERROR", "Bytes recv = %r, bytes expected = %r" % (self.mf_client.bytes_recv.value, stats['total-bytes']))
+            finally:
+                if manager is not None:
+                    manager.cleanup()
+
 # final report
-        self.print_transfer_stats(self.mf_client.bytes_recv.value, elapsed)
-
+        fail = 0
+        for status, remote_ns, local_filepath in manager.summary:
+            if status < 0:
+                fail += 1
+        if fail != 0:
+            raise Exception("\nFailed to download %d file(s)." % fail)
+        else:
+# NEW
+            elapsed = time.time() - start_time
+            average = stats['total-bytes'] / elapsed
+            average = average / 1000000.0
+            print "\nCompleted at %.1f MB/s" % average
 
 # NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
 # --
@@ -864,9 +849,6 @@ class parser(cmd.Cmd):
     def do_put(self, line, meta=False):
 # build upload list pairs
         upload_list = []
-
-        total_bytes = 0
-
         if os.path.isdir(line):
             self.print_over("Walking directory tree...")
             line = os.path.abspath(line)
@@ -879,79 +861,78 @@ class parser(cmd.Cmd):
                 remote_relpath = "/".join(relpath_list)
                 remote = posixpath.join(self.cwd, remote_relpath)
 
-                for name in name_list:
-                    if meta is True and name.lower().endswith('.meta'):
-                        pass
-                    else:
-                        filepath = os.path.normpath(os.path.join(os.getcwd(), root, name))
-                        total_bytes += os.path.getsize(filepath)
-                        upload_list.append((remote, filepath))
+                if meta is False:
+                    upload_list.extend([(remote, os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list])
+                else:
+                    for name in name_list:
+                        if name.lower().endswith('.meta'):
+                            pass
+                        else:
+                            upload_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name))))
         else:
             self.print_over("Building file list... ")
-            for name in glob.glob(line):
-                if meta is True and name.lower().endswith('.meta'):
-                    pass
-                else:
-                    filepath = os.path.join(os.getcwd(), name)
-                    if os.path.isfile(filepath):
-                        total_bytes += os.path.getsize(filepath)
-                        upload_list.append((self.cwd, filepath))
+            if meta is False:
+                upload_list = [(self.cwd, os.path.join(os.getcwd(), name)) for name in glob.glob(line)]
+            else:
+                for name in glob.glob(line):
+                    if name.lower().endswith('.meta'):
+                        pass
+                    else:
+                        upload_list.append((self.cwd, os.path.join(os.getcwd(), name)))
 
 # DEBUG - window's path
 #        for dest,src in upload_list:
 #            print "put: %s -> %s" % (src, dest)
 
+        manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
+        self.mf_client.log("DEBUG", "Starting transfer...")
+        self.print_over("Total files=%d" % len(upload_list))
+        start_time = time.time()
+        print ", transferring...  "
         try:
-            manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
-            self.mf_client.log("DEBUG", "Starting transfer...")
-            self.print_over("Total files=%d" % len(upload_list))
-            start_time = time.time()
-            print ", uploading... "
+            while True:
+                if manager.bytes_total > 0:
+                    progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
+                else:
+                    progress = 0.0
 
-            while manager is not None:
-                elapsed = time.time() - start_time
+                self.print_over("Progress: %3.0f%% at %.1f MB/s  " % (progress, manager.byte_sent_rate()))
 
-#                total_sent = self.mf_client.bytes_sent.value
-                total_sent = manager.bytes_sent()
-
-                current_pc = int(100.0 * total_sent / total_bytes)
-
-                current_rate = float(total_sent) / (1000000.0 * elapsed)
-
-                self.print_over("Progress=%d%% at %.1f MB/s " % (current_pc, current_rate))
-
-                time.sleep(2)
-                if manager.ready():
-                    total_sent = manager.bytes_sent()
+                if manager.is_done():
                     break
+# TODO - could use some of this time to populate metadata for successful uploads (if any)
+                time.sleep(2)
 
         except KeyboardInterrupt:
-            self.mf_client.log("WARNING", "Interrupted by user... ")
+            self.mf_client.log("WARNING", "put interrupted by user")
             return
 
         except Exception as e:
             self.mf_client.log("ERROR", str(e))
+            return
 
-# CURRENT - should wrap a try around this probably ...
-        if meta is True:
-            self.mf_client.log("DEBUG", "Adding metadata...")
-            for namespace, filepath in upload_list:
-                filename = os.path.basename(filepath)
-                remotepath = posixpath.join(namespace, filename)
-                metadata_filename = filepath + ".meta"
-                self.import_metadata("path=%s" % remotepath, metadata_filename)
+        finally:
+            if manager is not None:
+                manager.cleanup()
 
-# transfer concluded
-        elapsed = time.time() - start_time
-        self.print_over("Transfer ended          \n")
-#        if self.mf_client.bytes_sent.value != total_bytes:
-#            self.mf_client.log("ERROR", "Bytes sent = %r, bytes expected = %r" % (self.mf_client.bytes_sent.value, total_bytes))
-        if total_sent != total_bytes:
-            self.mf_client.log("ERROR", "Bytes sent = %r, bytes expected = %r" % (total_sent, total_bytes))
+# TODO - pop some of the metadata imports in the upload cycle if it helps the efficiency (measure!)
+        fail = 0
+        for asset_id, remote_ns, local_filepath in manager.summary:
+            if asset_id < 0:
+                fail += 1
+            else:
+                if meta is True:
+                    metadata_filename = local_filepath + ".meta"
+                    self.import_metadata(asset_id, metadata_filename)
+
 # final report
-#        self.print_transfer_stats(self.mf_client.bytes_sent.value, elapsed)
-        self.print_transfer_stats(total_sent, elapsed)
-
+        if fail != 0:
+            raise Exception("\nFailed to upload %d file(s)." % fail)
+        else:
+            elapsed = time.time() - start_time
+            rate = manager.bytes_sent() / elapsed
+            rate = rate / 1000000.0
+            print "\nCompleted at %.1f MB/s" % rate
 
 # --
     def help_cd(self):
