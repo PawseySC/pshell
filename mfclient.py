@@ -120,6 +120,7 @@ class mf_client:
         self.domain = domain
         self.timeout = timeout
         self.session = session
+        self.token = None
         self.dummy = dummy
         self.debug = debug
         self.encrypted_post = bool(enforce_encrypted_login)
@@ -189,24 +190,27 @@ class mf_client:
     @staticmethod
     def _xml_succint_error(xml):
         """
-        Primitive for extracting sensible error messages from Java stack traces
+        Primitive for extracting more concise error messages from Java stack traces
         """
-#        print " === error start\n%s\n === error stop" % xml
-# look for patterns..
-        match = re.search(r"Syntax error.*Error", xml, re.DOTALL)
-        if match:
-            message = match.group(0)[:-6]
-            return message
+        max_size = 600
 
+# pattern 1 - remove context
+        match = re.search(r"Syntax error.*Context", xml, re.DOTALL)
+        if match:
+            message = match.group(0)[:-7]
+            return message[:max_size]
+
+# pattern 2 - other
         match = re.search(r"failed:.*", xml)
         if match:
             message = match.group(0)[7:]
-            return message
+            return message[:max_size]
 
-        return xml[:600]
+# give up
+        return xml[:max_size]
 
 #------------------------------------------------------------
-    def _post(self, xml_string):
+    def _post(self, xml_string, output_local_filepath=None):
         """
         Primitive for sending an XML message to the Mediaflux server
         """
@@ -219,7 +223,44 @@ class mf_client:
         request = urllib2.Request(self.post_url, data=xml_string, headers={'Content-Type': 'text/xml'})
         response = urllib2.urlopen(request, timeout=self.timeout)
         xml = response.read()
+
+#        print "\n===================\n"
+#        print xml
+#        print "\n===================\n"
+
         tree = ET.fromstring(xml)
+
+# NEW - outputs-via = session
+# HACK - MF returns multiple outputs (some are metadata I think?) lets go with the first as the requested data
+        elem = tree.find(".//outputs/id")
+        if elem is not None:
+            output_id = elem.text
+#            print "getting: ", output_id
+
+# CURRENT - download
+# TODO - can also use token (use if exists to workaround timeouts) 
+# BUT - can't use token with outputs-via=session
+# TODO - aternative is outputs-via=response ... but this returns as attachment(s) which must be handled differently
+
+            url = self.data_get + "?_skey=%s&id=%s" % (self.session, output_id)
+#            url = self.data_get + "?token=%s&id=%s" % (self.token, output_id)
+
+            url = url.replace("content", "output")
+            filepath = output_local_filepath.replace("file:/", "")
+#            print "get outputs via [%s]" % url
+            print "Downloading: %s ..." % filepath
+
+# buffered write to open file
+            response = urllib2.urlopen(url)
+            with open(filepath, 'wb') as output:
+                while True:
+                    data = response.read(self.get_buffer)
+                    if not data:
+                        break
+                    output.write(data)
+# TODO if intercepted for download ... different return?
+                    
+
 
 # if error - attempt to extract a useful message
         elem = tree.find(".//reply/error")
@@ -383,7 +424,8 @@ class mf_client:
             A STRING containing the server reply (if post is TRUE, if false - just the XML for test comparisons)
         """
 
-# NB - use posix=True as it's closest to the way aterm processes input strings
+# NB - use posix=True as it's the closest to the way aterm processes input strings
+
         lexer = shlex.shlex(aterm_line, posix=True)
         lexer.whitespace_split = True
 
@@ -391,12 +433,17 @@ class mf_client:
         xml_node = xml_root
         child = None
         stack = []
+        data_out_min = 0
+        data_out_name = None
+        flag_login = False
 
 # first token is the service call, the rest are child arguments
         service_call = lexer.get_token()
         token = lexer.get_token()
 
+# special cases for login
         if service_call == "system.logon":
+            flag_login = True
             self.log("DEBUG", "aterm_run() input: system.login ...", level=2)
         else:
             self.log("DEBUG", "aterm_run() input: %s" % aterm_line, level=2)
@@ -444,6 +491,13 @@ class mf_client:
                         self.log("DEBUG", "XML text [xxxxxxxx]", level=2)
                     else:
                         self.log("DEBUG", "XML text [%s]" % child.text, level=2)
+
+# special case - out element - needs to be removed (replaced with outputs-via and an outputs-expected attribute)
+                    if child.tag.lower() == "out":
+                        data_out_name = child.text
+                        data_out_min = 1
+                        xml_node.remove(child)
+
 # don't treat quotes as special characters in password string
                 if "password" in token:
                     save_lexer_quotes = lexer.quotes
@@ -458,28 +512,74 @@ class mf_client:
             raise SyntaxError
 
 # testing hook
-        if post is not True:
-            tmp = ET.tostring(xml_root, method = 'xml')
-# password hiding for system.logon ...
-            if service_call != "system.logon":
-                self.log("DEBUG", "XML out: %s" % tmp, level=2)
-            return tmp
+#        if post is not True:
+#            tmp = ET.tostring(xml_root, method = 'xml')
+#            if flag_login is False:
+#                self.log("DEBUG", "XML out: %s" % tmp, level=2)
+#            return tmp
 
 # wrap with session/service call
         xml = ET.Element("request")
+# special case for "system.login" as it does not work with "service.excute" - due to the requirement of a valid session
+# TODO - this might be a workaround for expired sessions -> use token if exists
         child = ET.SubElement(xml, "service")
-        child.set("name", service_call)
-        if service_call != "system.logon":
+        if flag_login is True:
+            child.set("name", service_call)
+            args = ET.SubElement(child, "args")
+            args.append(xml_root)
+        else:
+# NEW - wrap the service call in a service.execute (so we can use background=True in the future)
+            child.set("name", "service.execute")
+
+# NEW - if valid token - always use to avoid session timeouts...
+#            if self.token is not None:
+#                child.set("token-type", "secure.identity")
+#                child.set("token", self.token)
+#            else:
+#                child.set("session", self.session)
+
+# use of token borks download via session?
             child.set("session", self.session)
-        args = ET.SubElement(child, "args")
-        args.append(xml_root)
+
+            args = ET.SubElement(child, "args")
+            call = ET.SubElement(args, "service")
+            call.set("name", service_call)
+            call.append(xml_root)
+# KEY change
+            if data_out_min > 0:
+                call.set("outputs", "%s" % data_out_min)
+                output = ET.SubElement(args, "outputs-via")
+# this returns the outputs via direct stream???
+                output.text = "session"
+
+
+# this returns the outputs via attachments (see dev guide p11)
+#                output.text = "response"
+
+# p110 dev guide ... unecessary in this case
+#                more = ET.SubElement(args, "reply")
+#                more.text = "last"
+
+# TODO - the output filename -> download to (read reply ???)
+# TODO - also replace the get() method
+
         xml_text = ET.tostring(xml, method = 'xml')
+
 # debug - password hiding for system.logon ...
-        if service_call != "system.logon":
-            tmp = re.sub(r'session=[^>]*', 'session="..."', xml_text)
-            self.log("DEBUG", "XML out: %s" % tmp, level=2)
+#        if service_call != "system.logon":
+# TODO - simplify session= and password hiding with unified function call
+        tmp = re.sub(r'session=[^>]*', 'session="..."', xml_text)
+        tmp2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxxx</password>', tmp)
+        self.log("DEBUG", "XML out: %s" % tmp2, level=2)
+
+# TODO - test case for asset.get / asset.archive.create ... ie special case handling of :out element
+# testing hook
+        if post is not True:
+            return tmp
+
 # post
-        reply = self._post(xml_text)
+        reply = self._post(xml_text, output_local_filepath=data_out_name)
+
         return reply
 
 #------------------------------------------------------------
@@ -568,6 +668,7 @@ class mf_client:
 # attempt token authentication first (if supplied)
         if token is not None:
             reply = self.aterm_run("system.logon :token %s" % token)
+            self.token = token
         else:
             reply = self.aterm_run("system.logon :domain %s :user %s :password %s" % (self.domain, user, password))
 # extract session key
