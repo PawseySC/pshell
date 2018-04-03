@@ -16,31 +16,31 @@ class pshell_syntax(unittest.TestCase):
         proc = subprocess.Popen(["pshell.py", "-c", "dummy", "cd /projects\"'"], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "request" in line:
-                self.assertEqual(line.strip(), '<request><service name="asset.namespace.exists" session=""><args><namespace>/projects"\'</namespace></args></service></request>')
+                self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.namespace.exists"><namespace>/projects"\'</namespace></service></args></service></request>')
 
     def test_rm(self):
         proc = subprocess.Popen(["pshell.py", "-c", "dummy", "rm *\'*"], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "request" in line:
-                self.assertEqual(line.strip(), '<request><service name="asset.query" session=""><args><where>namespace=\'/projects\' and name=\'*\\\'*\'</where><action>count</action></args></service></request>')
+                self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.query"><where>namespace=\'/projects\' and name=\'*\\\'*\'</where><action>count</action></service></args></service></request>')
 
     def test_file(self):
         proc = subprocess.Popen(["pshell.py", "-c", "dummy", r'file "/dir1/../dir2/test_!@#\""'], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "request" in line:
-                self.assertEqual(line.strip(), '<request><service name="asset.get" session=""><args><id>path=/dir2/test_!@#"</id></args></service></request>')
+                self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.get"><id>path=/dir2/test_!@#"</id></service></args></service></request>')
 
     def test_mkdir(self):
         proc = subprocess.Popen(["pshell.py", "-c", "dummy", "mkdir /dir1/../dir2/namespace\"'"], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "request" in line:
-                self.assertEqual(line.strip(), '<request><service name="asset.namespace.create" session=""><args><namespace>/dir2/namespace"\'</namespace></args></service></request>')
+                self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.namespace.create"><namespace>/dir2/namespace"\'</namespace></service></args></service></request>')
 
     def test_rmdir(self):
         proc = subprocess.Popen(["pshell.py", "-c", "dummy", "rmdir sean's dir"], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "request" in line:
-                self.assertEqual(line.strip(), '<request><service name="asset.namespace.exists" session=""><args><namespace>/projects/sean\'s dir</namespace></args></service></request>')
+                self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.namespace.exists"><namespace>/projects/sean\'s dir</namespace></service></args></service></request>')
 
 # NEW - test conversion of XML to Arcitecta's shorthand format - used for metadata import
     def test_import_metadata(self):

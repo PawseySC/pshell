@@ -238,13 +238,9 @@ class mf_client:
 #            print "getting: ", output_id
 
 # CURRENT - download
-# TODO - can also use token (use if exists to workaround timeouts) 
 # BUT - can't use token with outputs-via=session
 # TODO - aternative is outputs-via=response ... but this returns as attachment(s) which must be handled differently
-
             url = self.data_get + "?_skey=%s&id=%s" % (self.session, output_id)
-#            url = self.data_get + "?token=%s&id=%s" % (self.token, output_id)
-
             url = url.replace("content", "output")
             filepath = output_local_filepath.replace("file:/", "")
 #            print "get outputs via [%s]" % url
@@ -412,6 +408,17 @@ class mf_client:
         return text
 
 #------------------------------------------------------------
+    @staticmethod
+    def _xml_cloak(text):
+        """
+        Helper method for hiding sensitive text in XML posts
+        """
+        text1 = re.sub(r'session=[^>]*', 'session="..."', text)
+        text2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxxx</password>', text1)
+        text3 = re.sub(r'<token>.*?</token>', '<token>xxxxxxx</token>', text2)
+        return text3
+
+#------------------------------------------------------------
     def aterm_run(self, aterm_line, post=True):
         """
         Method for parsing aterm's compressed XML syntax and sending to the Mediaflux server
@@ -511,13 +518,6 @@ class mf_client:
             self.log("DEBUG", "aterm_run() error: %s" % str(e))
             raise SyntaxError
 
-# testing hook
-#        if post is not True:
-#            tmp = ET.tostring(xml_root, method = 'xml')
-#            if flag_login is False:
-#                self.log("DEBUG", "XML out: %s" % tmp, level=2)
-#            return tmp
-
 # wrap with session/service call
         xml = ET.Element("request")
 # special case for "system.login" as it does not work with "service.excute" - due to the requirement of a valid session
@@ -530,17 +530,8 @@ class mf_client:
         else:
 # NEW - wrap the service call in a service.execute (so we can use background=True in the future)
             child.set("name", "service.execute")
-
-# NEW - if valid token - always use to avoid session timeouts...
-#            if self.token is not None:
-#                child.set("token-type", "secure.identity")
-#                child.set("token", self.token)
-#            else:
-#                child.set("session", self.session)
-
-# use of token borks download via session?
+# NB: use of token will bork download via session
             child.set("session", self.session)
-
             args = ET.SubElement(child, "args")
             call = ET.SubElement(args, "service")
             call.set("name", service_call)
@@ -549,38 +540,42 @@ class mf_client:
             if data_out_min > 0:
                 call.set("outputs", "%s" % data_out_min)
                 output = ET.SubElement(args, "outputs-via")
-# this returns the outputs via direct stream???
+# this returns data via the output URL
                 output.text = "session"
-
-
-# this returns the outputs via attachments (see dev guide p11)
-#                output.text = "response"
-
-# p110 dev guide ... unecessary in this case
-#                more = ET.SubElement(args, "reply")
-#                more.text = "last"
-
-# TODO - the output filename -> download to (read reply ???)
-# TODO - also replace the get() method
 
         xml_text = ET.tostring(xml, method = 'xml')
 
 # debug - password hiding for system.logon ...
 #        if service_call != "system.logon":
 # TODO - simplify session= and password hiding with unified function call
-        tmp = re.sub(r'session=[^>]*', 'session="..."', xml_text)
-        tmp2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxxx</password>', tmp)
-        self.log("DEBUG", "XML out: %s" % tmp2, level=2)
+#        tmp = re.sub(r'session=[^>]*', 'session="..."', xml_text)
+#        tmp2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxxx</password>', tmp)
+#        self.log("DEBUG", "XML out: %s" % tmp2, level=2)
+        self.log("DEBUG", "XML out: %s" % self._xml_cloak(xml_text), level=2)
 
-# TODO - test case for asset.get / asset.archive.create ... ie special case handling of :out element
+
 # testing hook
         if post is not True:
             return tmp
 
-# post
-        reply = self._post(xml_text, output_local_filepath=data_out_name)
+# NEW : if auth failure -> redo session with token (if exists)
+        try:
+            reply = self._post(xml_text, output_local_filepath=data_out_name)
+            return reply
+        except Exception as e:
+            self.log("DEBUG", "POST exception")
+            message = str(e)
+            if "session is not valid" in message:
+                self.log("DEBUG", "session is not valid")
+                if self.token is not None:
+                    self.log("DEBUG", "We have a token ... attempting to establish new session")
+                    self.login(self.token)
+                    self.log("DEBUG", "We have a session ... attempting to run command again")
+                    reply = self._post(xml_text, output_local_filepath=data_out_name)
+                    return reply
 
-        return reply
+# couldn't post without an error - give up
+        raise Exception(message)
 
 #------------------------------------------------------------
     def _xml_recurse(self, elem, text=""):
@@ -739,6 +734,7 @@ class mf_client:
         """
         global bytes_recv
 
+# TODO - replace with an aterm asset.get command now that :out is supported
 # build download URL
         url = self.data_get + "?_skey=%s&id=%s" % (self.session, asset_id)
 #        print "GET url [%s]" % url

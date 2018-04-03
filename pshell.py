@@ -1444,6 +1444,8 @@ def main():
         if token is not None:
             try:
                 mf_client.login(token=token)
+                config.set(current, 'session', mf_client.session)
+                config_changed = True
                 need_auth = False
                 mf_client.log("DEBUG", "Delegate is valid")
             except Exception as e:
