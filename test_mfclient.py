@@ -106,10 +106,12 @@ class mfclient_syntax(unittest.TestCase):
 #        self.assertEqual(reply, "<namespace>/projects/Data Team/sean's dir</namespace><page>1</page><size>30</size>")
         self.assertEqual(reply, '<request><service name="service.execute" session="..."><args><service name="www.list"><namespace>/projects/Data Team/sean\'s dir</namespace><page>1</page><size>30</size></service></args></service></request>')
 
+# FIXME - this is less useful now that we're cloaking all sensitive info - redo as mfclient test?
     def test_sanitise_password(self):
         reply = self.mf_client.aterm_run("system.logon :domain ivec :user sean :password Letmein'()<>1", post=False)
 #        self.assertEqual(reply, "<domain>ivec</domain><user>sean</user><password>Letmein'()&lt;&gt;1</password>")
-        self.assertEqual(reply, '<request><service name="system.logon"><args><domain>ivec</domain><user>sean</user><password>Letmein\'()&lt;&gt;1</password></args></service></request>')
+#        self.assertEqual(reply, '<request><service name="system.logon"><args><domain>ivec</domain><user>sean</user><password>Letmein\'()&lt;&gt;1</password></args></service></request>')
+        self.assertEqual(reply, '<request><service name="system.logon"><args><domain>ivec</domain><user>sean</user><password>xxxxxxx</password></args></service></request>')
 
     def test_xmlns_parsing(self):
         # NB: xml.tostring(method='html') causes incorrect xml output (missing meta closure)

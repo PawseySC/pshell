@@ -414,7 +414,7 @@ class mf_client:
         Helper method for hiding sensitive text in XML posts
         """
         text1 = re.sub(r'session=[^>]*', 'session="..."', text)
-        text2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxxx</password>', text1)
+        text2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxx</password>', text1)
         text3 = re.sub(r'<token>.*?</token>', '<token>xxxxxxx</token>', text2)
         return text3
 
@@ -551,12 +551,13 @@ class mf_client:
 #        tmp = re.sub(r'session=[^>]*', 'session="..."', xml_text)
 #        tmp2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxxx</password>', tmp)
 #        self.log("DEBUG", "XML out: %s" % tmp2, level=2)
-        self.log("DEBUG", "XML out: %s" % self._xml_cloak(xml_text), level=2)
 
+        xml_hidden = self._xml_cloak(xml_text) 
+        self.log("DEBUG", "XML out: %s" % xml_hidden, level=2)
 
 # testing hook
         if post is not True:
-            return tmp
+            return xml_hidden
 
 # NEW : if auth failure -> redo session with token (if exists)
         try:
