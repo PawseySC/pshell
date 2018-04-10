@@ -235,7 +235,6 @@ class mf_client:
         elem = tree.find(".//outputs/id")
         if elem is not None:
             output_id = elem.text
-#            print "getting: ", output_id
 
 # CURRENT - download
 # BUT - can't use token with outputs-via=session
@@ -243,7 +242,6 @@ class mf_client:
             url = self.data_get + "?_skey=%s&id=%s" % (self.session, output_id)
             url = url.replace("content", "output")
             filepath = output_local_filepath.replace("file:/", "")
-#            print "get outputs via [%s]" % url
             print "Downloading: %s ..." % filepath
 
 # buffered write to open file
@@ -255,8 +253,6 @@ class mf_client:
                         break
                     output.write(data)
 # TODO if intercepted for download ... different return?
-                    
-
 
 # if error - attempt to extract a useful message
         elem = tree.find(".//reply/error")
@@ -432,10 +428,8 @@ class mf_client:
         """
 
 # NB - use posix=True as it's the closest to the way aterm processes input strings
-
         lexer = shlex.shlex(aterm_line, posix=True)
         lexer.whitespace_split = True
-
         xml_root = ET.Element(None)
         xml_node = xml_root
         child = None
@@ -546,12 +540,6 @@ class mf_client:
         xml_text = ET.tostring(xml, method = 'xml')
 
 # debug - password hiding for system.logon ...
-#        if service_call != "system.logon":
-# TODO - simplify session= and password hiding with unified function call
-#        tmp = re.sub(r'session=[^>]*', 'session="..."', xml_text)
-#        tmp2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxxx</password>', tmp)
-#        self.log("DEBUG", "XML out: %s" % tmp2, level=2)
-
         xml_hidden = self._xml_cloak(xml_text) 
         self.log("DEBUG", "XML out: %s" % xml_hidden, level=2)
 
@@ -564,16 +552,19 @@ class mf_client:
             reply = self._post(xml_text, output_local_filepath=data_out_name)
             return reply
         except Exception as e:
-            self.log("DEBUG", "POST exception")
             message = str(e)
+            self.log("DEBUG", "POST exception: %s" % message)
             if "session is not valid" in message:
-                self.log("DEBUG", "session is not valid")
+# TODO - if mf_config has a valid token, but the session is also valid -> mfclient won't get the valid token 
+# can we do something about this in pshell eg record a token if exists anyway???
                 if self.token is not None:
-                    self.log("DEBUG", "We have a token ... attempting to establish new session")
-                    self.login(self.token)
-                    self.log("DEBUG", "We have a session ... attempting to run command again")
+                    self.log("DEBUG", "We have a token, attempting to establish new session")
+                    self.login(token=self.token)
+                    xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
                     reply = self._post(xml_text, output_local_filepath=data_out_name)
                     return reply
+                else:
+                    self.log("DEBUG", "We have no token.")
 
 # couldn't post without an error - give up
         raise Exception(message)
