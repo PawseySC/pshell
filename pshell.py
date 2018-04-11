@@ -370,117 +370,131 @@ class parser(cmd.Cmd):
 # ---
     def help_ls(self):
         print "\nList files stored on the remote server."
-        print "Navigation in paginated output can be achieved by entering a page number or /<pattern> or q to quit.\n"
+        print "Navigation in paginated output can be achieved by entering a page number, [enter] for next page or q to quit.\n"
         print "Usage: ls <file pattern or folder name>\n"
         print "Examples: ls /projects/my project/some folder"
         print "          ls *.txt\n"
 
+# --- paginated ls, requires a pattern ('*' for none)
+    def remote_ls_print(self, namespace, namespace_count, asset_count, page, page_size, pattern):
+        page_count = max(1, 1+int((namespace_count+asset_count-1) / page_size))
+#        print "remote_ls(): [%s] nc=%d ac=%d - p=%d pc=%d ps=%d - pattern=%s" % (namespace, namespace_count, asset_count, page, page_count, page_size, pattern)
+
+# number of namespaces and assets to show, given current pagination values
+        namespace_todo = max(0, min(page_size, namespace_count - (page-1)*page_size))
+        asset_todo = min(page_size, asset_count+namespace_count - (page-1)*page_size) - namespace_todo
+
+#        print "TODO n=%d a=%d" % (namespace_todo, asset_todo)
+
+        namespace_page_count = 1 + int((namespace_count-1) / page_count)
+
+        if namespace_todo > 0:
+            reply = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % namespace)
+            namespace_list = reply.findall('.//namespace/namespace')
+            namespace_start = (page-1) * page_size
+            for i in range(namespace_start,namespace_start+namespace_todo):
+                elem = namespace_list[i]
+                print "[Folder] %s" % elem.text
+
+
+        if asset_todo > 0:
+
+            asset_start = abs(min(0, namespace_count - (page-1)*page_size - namespace_todo))+1
+
+#            print "asset start index = %d, asset count = %d" % (asset_start, asset_todo)
+
+            reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :sort < :key name > :action get-values :xpath "id" -ename "id" :xpath "name" -ename "name" :xpath "content/type" -ename "type" :xpath "content/size" -ename "size" :xpath "mtime" -ename "mtime" :size %d :idx %d' % (namespace, pattern.replace("'", "\'"), asset_todo, asset_start))
+
+            asset_list = reply.findall('.//asset')
+
+# get the content status - THIS IS SLOW ...
+#            reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :sort < :key name > :action pipe :service -name asset.content.status :size %d :idx %d :pipe-generate-result-xml true' % (namespace, pattern.replace("'", "\'"), page_size, asset_start))
+#            status_list = reply.findall('.//asset/state')
+
+            asset_name = "?"
+            asset_size = self.human_size(0)
+
+#            for i in range(0,asset_todo):
+            for elem in asset_list:
+
+#                elem = asset_list[i] 
+
+                child = elem.find('.//id')
+                asset_id = child.text
+                child = elem.find('.//name')
+                if child.text is not None:
+                    asset_name = child.text
+                child = elem.find('.//size')
+                if child.text is not None:
+                    asset_size = self.human_size(int(child.text))
+                print " %-10s | %s | %s" % (asset_id, asset_size, asset_name)
+
+# NEW - removed www.list dependency
+# NB: - content state (online/offline) is currently too expensive to include as it needs a second asset.query with content.state recall
     def do_ls(self, line):
-# page is done by pagination controller
+
+# make candidate absolute path from input line 
+        candidate = self.absolute_remote_filepath(line)
+        try:
+# candidate is a namespace reference
+            reply = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % candidate)
+            cwd = candidate
+# count namespaces 
+            asset_filter = "*"
+            ns_list = reply.findall('.//namespace/namespace')
+            namespace_count = len(ns_list)
+
+        except Exception as e:
+# candidate is not a namespace -> assume input line is a filter
+            cwd = posixpath.dirname(candidate)
+            asset_filter = posixpath.basename(candidate)
+            asset_filter = asset_filter.replace("'", "\'")
+# we have a filter -> ignore namespaces
+#            reply = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % cwd)
+            namespace_count = 0
+
+# count assets 
+        reply = self.mf_client.aterm_run("asset.query :where \"namespace='%s' and name='%s'\" :action count" % (cwd, asset_filter))
+        elem = reply.find(".//value")
+        asset_count = int(elem.text)
+
+# setup pagination
+#        print "# namespaces =", namespace_count
+#        print "# assets =", asset_count
         page = 1
-# size is calculated from terminal minus 3 for command + header + footer
-        size = max(1, self.terminal_height - 3)
-        asset_filter = None
-
-        if len(line) == 0:
-            cwd = self.cwd
-        else:
-# if absolute path exists as a namespace -> query this, else query via an asset pattern match
-            cwd = self.absolute_remote_filepath(line)
-            if not self.mf_client.namespace_exists(cwd):
-                asset_filter = posixpath.basename(cwd)
-                cwd = posixpath.dirname(cwd)
-
-# FIXME - these issues actually look like a www.list bug - when there is a " in the namespace
-# CURRENT - sean"s dir/
-#        cwd = cwd.replace('"', '\\"')
-# query attempt
-#        print "Remote folder: [%s]" % cwd
-#        print "asset filter: [%s]" % asset_filter
-
+        page_size = max(1, min(self.terminal_height - 3, 100))
+        canonical_last =  1 + int((namespace_count + asset_count - 1) / page_size )
         pagination_complete = False
         show_header = True
         while pagination_complete is False:
             pagination_footer = None
 
-# FIXME - filter encoding correct?
-            if asset_filter is not None:
-                reply = self.mf_client.aterm_run('www.list :namespace "%s" :page %s :size %s :filter "%s"' % (cwd.replace('"', '\\\"'), page, size, asset_filter.encode('string_escape')))
-            else:
-                reply = self.mf_client.aterm_run('www.list :namespace "%s" :page %s :size %s' % (cwd.replace('"', '\\\"'), page, size))
-
-            for elem in reply.iter('parent'):
-                for child in elem:
-                    if child.tag == "name":
-                        canonical_folder = child.text
-                    if child.tag == "page":
-                        canonical_page = int(child.text)
-                    if child.tag == "last":
-                        canonical_last = int(child.text)
-                    if child.tag == "size":
-                        canonical_size = int(child.text)
-                    if child.tag == "assets":
-                        canonical_assets = int(child.text)
-                    if child.tag == "namespaces":
-                        canonical_namespaces = int(child.text)
-
-# print header
             if show_header:
-                print "%d items, %d items per page, remote folder: %s" % (canonical_assets+canonical_namespaces, canonical_size, canonical_folder)
+                print "%d items, %d items per page, remote folder: %s" % (namespace_count+asset_count, page_size, cwd)
                 show_header = False
 
-# for each namespace
-            for elem in reply.iter('namespace'):
-                for child in elem:
-                    if child.tag == "name":
-                        print "[Folder] %s" % child.text
-# for each asset
-            for elem in reply.iter('asset'):
-                asset_id = "?"
-                filestate = "unknown   |"
-                filesize = self.human_size(0)
-                filename = "?"
-                for child in elem:
-                    if child.tag == "id":
-                        asset_id = child.text
-                    if child.tag == "name":
-                        filename = child.text
-                    if child.tag == "size":
-                        if child.text is not None:
-                            filesize = self.human_size(int(child.text))
-                    if child.tag == "state":
-                        if child.text is not None:
-                            if "online" in child.text:
-                                filestate = "online    |"
-                            else:
-                                filestate = "%-9s |" % child.text
-# FIXME - enforce this (XML might get returned/parsed out of order)
-                    if child.tag == 'direction':
-                        if child.text is not None:
-                            if "online" in child.text:
-                                filestate = "recalling |"
-                            else:
-                                filestate = "archiving |"
-# display asset
-                print " %-10s | %s %s | %s" % (asset_id, filestate, filesize, filename)
+            page = max(1, min(page, canonical_last))
 
-# if current display requires no pagination - auto exit in some cases
+            self.remote_ls_print(cwd, namespace_count, asset_count, page, page_size, asset_filter)
+
+# if current display requires no pagination - auto exit in some cases 
             if canonical_last == 1:
                 if asset_filter is None:
                     break
                 if pagination_footer is None:
                     break
 
-            pagination_footer = "Page %r of %r, file filter [%r]: " % (canonical_page, canonical_last, asset_filter)
+            pagination_footer = "Page %r of %r, file filter [%r]: " % (page, canonical_last, asset_filter)
 
-# non-interactive - auto iterate (with delay) through remaining pages
+# just displayed last page - exit
+            if page == canonical_last:
+                break
+
+# non-interactive - iterate through remaining pages
             if self.interactive is False:
                 time.sleep(1)
                 page = page + 1
-                if page > canonical_last:
-                    break
-                else:
-                    continue
+                continue
 
 # pagination controls
             response = self.pagination_controller(pagination_footer)
@@ -491,14 +505,6 @@ class parser(cmd.Cmd):
                     if response == 'q' or response == 'quit':
                         pagination_complete = True
                         break
-                    elif response.startswith("/"):
-                        asset_filter = response[1:]
-                        if len(asset_filter) == 0:
-                            asset_filter = None
-                        else:
-                            asset_filter = self.escape_single_quotes(asset_filter)
-                        show_header = True
-                        page = 1
                     else:
                         page = page + 1
                         if page > canonical_last:
