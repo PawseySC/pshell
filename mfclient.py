@@ -124,6 +124,7 @@ class mf_client:
         self.dummy = dummy
         self.debug = debug
         self.encrypted_post = bool(enforce_encrypted_login)
+        self.encrypted_data = self.encrypted_post
 # service call URL
         self.post_url = "%s://%s/__mflux_svc__" % (protocol, server)
 # download/upload buffers
@@ -131,6 +132,15 @@ class mf_client:
         self.put_buffer = 8192
 # XML pretty print hack
         self.indent = 0
+# build data URLs
+        if self.encrypted_data:
+            self.data_get = "https://%s/mflux/content.mfjp" % server
+            self.data_put = "%s:%s" % (server, 443)
+        else:
+            self.data_get = "http://%s/mflux/content.mfjp" % server
+            self.data_put = "%s:%s" % (server, 80)
+
+# test mode - don't check server connection
         if dummy:
             return
 
@@ -140,29 +150,17 @@ class mf_client:
         s.connect((self.server, self.port))
         s.close()
 
-# prefer (faster) unecrypted data transfer, if available
+# check if we're on internal Pawsey (ie https, but can do http as well)
         if self.protocol == 'https':
-            self.encrypted_data = True
-# FIXME - I think some networks (eg UWA) will allow an 80 connection - but you can't actually use it
-# FIXME - in this case, have to try and extract a valid response from the server on 80
             try:
                 s = socket.socket()
                 s.settimeout(2)
                 s.connect((self.server, 80))
                 s.close()
+# yes - do unencrypted data transfer
                 self.encrypted_data = False
             except Exception as e:
                 pass
-        else:
-            self.encrypted_data = False
-
-# build data URLs
-        if self.encrypted_data:
-            self.data_get = "https://%s/mflux/content.mfjp" % server
-            self.data_put = "%s:%s" % (server, 443)
-        else:
-            self.data_get = "http://%s/mflux/content.mfjp" % server
-            self.data_put = "%s:%s" % (server, 80)
 
 # if required, attempt to display more connection info
         if self.debug > 0:

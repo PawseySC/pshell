@@ -119,12 +119,14 @@ class mfclient_syntax(unittest.TestCase):
 #        self.assertEqual(reply, '<id>123</id><meta><pawsey:custom xmlns:pawsey="pawsey"><pawsey-key>pawsey value</pawsey-key></pawsey:custom></meta>')
         self.assertEqual(reply, '<request><service name="service.execute" session="..."><args><service name="asset.set"><id>123</id><meta><pawsey:custom xmlns:pawsey="pawsey"><pawsey-key>pawsey value</pawsey-key></pawsey:custom></meta></service></args></service></request>')
 
-
     def test_negative_not_attribute(self):
         reply = self.mf_client.aterm_run('asset.set :id 123 :geoshape < :point < :latitude -31.95 :longitude 115.86 :elevation 10.0 > >', post=False)
 #        self.assertEqual(reply, '<id>123</id><geoshape><point><latitude>-31.95</latitude><longitude>115.86</longitude><elevation>10.0</elevation></point></geoshape>')
         self.assertEqual(reply, '<request><service name="service.execute" session="..."><args><service name="asset.set"><id>123</id><geoshape><point><latitude>-31.95</latitude><longitude>115.86</longitude><elevation>10.0</elevation></point></geoshape></service></args></service></request>')
 
+    def test_asset_get_out(self):
+        reply = self.mf_client.aterm_run('asset.get :id 123 :format extended :out /Users/sean/test123', post=False)
+        self.assertEqual(reply, '<request><service name="service.execute" session="..."><args><service name="asset.get" outputs="1"><id>123</id><format>extended</format></service><outputs-via>session</outputs-via></args></service></request>')
 
 
 ########################################
@@ -135,10 +137,12 @@ class mfclient_bugs(unittest.TestCase):
         global mf_client
         self.mf_client = mf_client
 
-# CURRENT
-    def test_sanitise_password(self):
-        reply = self.mf_client.aterm_run("system.logon :domain ivec :user sean :password Letmein'()<>1", post=False)
-        self.assertEqual(reply, "<domain>ivec</domain><user>sean</user><password>Letmein'()&lt;&gt;1</password>")
+
+    def test_asset_out_element(self):
+        reply = self.mf_client.aterm_run('asset.get :id 123 :format extended :out /Users/sean/test123', post=False)
+        self.assertEqual(reply, '<request><service name="service.execute" session="..."><args><service name="asset.get" outputs="1"><id>123</id><format>extended</format></service><outputs-via>session</outputs-via></args></service></request>')
+
+
 
 
 ######

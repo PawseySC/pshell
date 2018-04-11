@@ -493,7 +493,6 @@ class parser(cmd.Cmd):
                 asset_filter = posixpath.basename(cwd)
                 cwd = posixpath.dirname(cwd)
 
-
 # NEW - size is calculated from terminal minus 3 for command + header + footer (TODO - non-interactive mode exception?)
         page_size = max(1, min(self.terminal_height - 3, 100))
 
@@ -505,9 +504,7 @@ class parser(cmd.Cmd):
 
 #        self.remote_ls_print(cwd, namespace_count, asset_count, page, page_size, asset_filter)
 #        return
-
         canonical_last =  1 + int((namespace_count + asset_count - 1) / page_size )
-
 
 # FIXME - these issues actually look like a www.list bug - when there is a " in the namespace
 # CURRENT - sean"s dir/ 

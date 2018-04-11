@@ -60,14 +60,11 @@ class pshell_bugs(unittest.TestCase):
     def setUp(self):
         print "setup"
 
-# TODO - more testing of pshell methods
+# TODO - more testing of pshell 
     def test_squish(self):
-        print "NEW" 
-        pp = pshell.parser()
-        xml_root = ET.fromstring('<geoshape><point><elevation>5.0</elevation></point></geoshape>')
-        result = pp.xml_to_mf(xml_root, result=None)
-        self.assertEqual(result, ' :geoshape < :point < :elevation 5.0 > >')
-
+        proc = subprocess.Popen(["pshell.py", "-c", "dummy", "import script2"], stdout=subprocess.PIPE)
+        for line in proc.stdout:
+            print line.strip()
 
 ######
 # main
