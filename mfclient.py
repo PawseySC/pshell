@@ -122,7 +122,7 @@ class mf_client:
         self.session = session
         self.token = None
         self.dummy = dummy
-        self.debug = debug
+        self.debug = int(debug)
         self.encrypted_post = bool(enforce_encrypted_login)
         self.encrypted_data = self.encrypted_post
 # service call URL
@@ -157,8 +157,10 @@ class mf_client:
                 s.settimeout(2)
                 s.connect((self.server, 80))
                 s.close()
-# yes - do unencrypted data transfer
+# yes - do unencrypted data transfer (NB: MUST CHANGE URLS)
                 self.encrypted_data = False
+                self.data_put = "%s:%s" % (server, 80)
+                self.data_get = "http://%s/mflux/content.mfjp" % server
             except Exception as e:
                 pass
 
@@ -274,6 +276,8 @@ class mf_client:
         retry_count = 9
         upload_timeout = 900
 
+#        print "DEBUG: %s" % xml
+
 # setup
         pid = os.getpid()
         boundary = ''.join(random.choice(string.digits + string.ascii_letters) for i in range(30))
@@ -306,8 +310,10 @@ class mf_client:
 
 # different connection object for HTTPS vs HTTP
         if self.encrypted_data is True:
+            self.log("DEBUG", "Using https for data: [%s]" % self.data_put, level=2)
             conn = httplib.HTTPSConnection(self.data_put, timeout=upload_timeout)
         else:
+            self.log("DEBUG", "Using http for data: [%s]" % self.data_put, level=2)
             conn = httplib.HTTPConnection(self.data_put, timeout=upload_timeout)
 
 # kickoff
@@ -363,7 +369,7 @@ class mf_client:
 
         self.log("DEBUG", "[pid=%d] File send completed, waiting for server..." % pid)
 
-# NB - past source of problems, seems better these days ...
+# get ACK from server (asset ID) else error (raise exception)
         message = "response did not contain an asset ID."
         for i in range(0, retry_count):
             try:
@@ -615,8 +621,11 @@ class mf_client:
         """
         Timestamp based message logging.
         """
+
+#        print "log: %d,%d" % (level, self.debug)
+
         if "DEBUG" in prefix:
-            if level > self.debug:
+            if level > int(self.debug):
                 return
 
         ts = time.time()
@@ -727,7 +736,7 @@ class mf_client:
 # TODO - replace with an aterm asset.get command now that :out is supported
 # build download URL
         url = self.data_get + "?_skey=%s&id=%s" % (self.session, asset_id)
-#        print "GET url [%s]" % url
+        self.log("DEBUG", "get URL=[%s]" % url, level=2)
         req = urllib2.urlopen(url)
 
 # distinguish between file data and mediaflux error message
@@ -805,15 +814,9 @@ class mf_client:
         namespace = self._xml_sanitise(namespace)
         remotepath = posixpath.join(namespace, filename)
         asset_id = -1
-# query the remote server for file details (if any)
-        try:
-            result = self.aterm_run('asset.get :id "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
-        except Exception as e:
-            self.log("DEBUG", "Not found - creating: [%s]" % remotepath)
-            xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.set">' % self.session
-            xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
-            asset_id = self._post_multipart_buffered(xml_string, filepath)
-            return asset_id
+
+# NEW -only-if-exists=true -> stops the exception / returns none if asset doesn't exists
+        result = self.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
 
 # attempt checksum compare
         try:
@@ -830,13 +833,18 @@ class mf_client:
                 with bytes_sent.get_lock():
                     bytes_sent.value += remote_size
                 return asset_id
+            else:
+                self.log("DEBUG", "Checksum mismatch, local=%X -> remote=%X" % (local_crc32, remote_crc32))
+
         except Exception as e:
-            self.log("ERROR", "Failed to compute checksum: %s" % str(e))
+# file missing or checksum couldn't be computed for some reason -> upload
+            self.log("DEBUG", "Checksum compute error: %s" % str(e))
+            overwrite = True
 
 # local and remote crc32 don't match -> decision time ...
         if overwrite is True:
-            self.log("DEBUG", "Overwriting: [%s]" % remotepath)
-            xml_string = '<request><service name="service.execute" session="%s" seq="0"><args><service name="asset.set">' % self.session
+            self.log("DEBUG", "Uploading: [%s] -> [%s]" % (filepath, remotepath))
+            xml_string = '<request><service name="service.execute" session="%s"><args><service name="asset.set">' % self.session
             xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
             asset_id = self._post_multipart_buffered(xml_string, filepath)
 
