@@ -23,7 +23,6 @@ try:
 except:
     pass
 
-
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
 
@@ -286,8 +285,26 @@ class parser(cmd.Cmd):
         print "Usage: file <filename>\n"
 
     def do_file(self, line):
+# get asset metadata
+        output_list = []
         result = self.mf_client.aterm_run('asset.get :id "path=%s"' % self.absolute_remote_filepath(line))
-        self.mf_client.xml_print(result)
+        elem = result.find(".//asset")
+        output_list.append("%-10s : %s" % ('asset ID', elem.attrib['id']))
+        xpath_list = [".//asset/path", ".//asset/ctime", ".//asset/type", ".//content/size", ".//content/csum"]
+        for xpath in xpath_list:
+            elem = result.find(xpath)
+            if elem is not None:
+                output_list.append("%-10s : %s" % (elem.tag, elem.text))
+# get content status 
+# TODO - migrating direction etc
+        result = self.mf_client.aterm_run('asset.content.status :id "path=%s"' % self.absolute_remote_filepath(line))
+        elem = result.find(".//asset/state")
+        if elem is not None:
+            output_list.append("%-10s : %s" % (elem.tag, elem.text))
+# output info
+        for line in output_list:
+            print line
+
 
 # --- helper
 # immediately return any key pressed as a character
@@ -383,10 +400,8 @@ class parser(cmd.Cmd):
 # number of namespaces and assets to show, given current pagination values
         namespace_todo = max(0, min(page_size, namespace_count - (page-1)*page_size))
         asset_todo = min(page_size, asset_count+namespace_count - (page-1)*page_size) - namespace_todo
-
-#        print "TODO n=%d a=%d" % (namespace_todo, asset_todo)
-
         namespace_page_count = 1 + int((namespace_count-1) / page_count)
+#        print "TODO n=%d a=%d" % (namespace_todo, asset_todo)
 
         if namespace_todo > 0:
             reply = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % namespace)
@@ -396,29 +411,21 @@ class parser(cmd.Cmd):
                 elem = namespace_list[i]
                 print "[Folder] %s" % elem.text
 
-
         if asset_todo > 0:
-
             asset_start = abs(min(0, namespace_count - (page-1)*page_size - namespace_todo))+1
-
-#            print "asset start index = %d, asset count = %d" % (asset_start, asset_todo)
-
             reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :sort < :key name > :action get-values :xpath "id" -ename "id" :xpath "name" -ename "name" :xpath "content/type" -ename "type" :xpath "content/size" -ename "size" :xpath "mtime" -ename "mtime" :size %d :idx %d' % (namespace, pattern.replace("'", "\'"), asset_todo, asset_start))
-
             asset_list = reply.findall('.//asset')
 
-# get the content status - THIS IS SLOW ...
-#            reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :sort < :key name > :action pipe :service -name asset.content.status :size %d :idx %d :pipe-generate-result-xml true' % (namespace, pattern.replace("'", "\'"), page_size, asset_start))
-#            status_list = reply.findall('.//asset/state')
+# get the content status - THIS CAN BE SLOW ... make it optional?
+            reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :sort < :key name > :size %d :idx %d :action pipe :service -name asset.content.status :pipe-generate-result-xml true' % (namespace, pattern.replace("'", "\'"), asset_todo, asset_start))
+            status_list = reply.findall('.//asset/state')
 
+# TODO - extract direction as well from content.status
             asset_name = "?"
             asset_size = self.human_size(0)
+            asset_state = "unknown   |"
 
-#            for i in range(0,asset_todo):
-            for elem in asset_list:
-
-#                elem = asset_list[i] 
-
+            for elem, state in zip(asset_list, status_list):
                 child = elem.find('.//id')
                 asset_id = child.text
                 child = elem.find('.//name')
@@ -427,10 +434,15 @@ class parser(cmd.Cmd):
                 child = elem.find('.//size')
                 if child.text is not None:
                     asset_size = self.human_size(int(child.text))
-                print " %-10s | %s | %s" % (asset_id, asset_size, asset_name)
+                if "online" in state.text:
+                    asset_state = "online    |"
+                else:
+                    asset_state = "%-9s |" % state.text
+# output
+                print " %-10s | %s %s | %s" % (asset_id, asset_state, asset_size, asset_name)
 
-# NEW - removed www.list dependency
-# NB: - content state (online/offline) is currently too expensive to include as it needs a second asset.query with content.state recall
+
+# --- NEW - ls with no dependency on www.list
     def do_ls(self, line):
 
 # make candidate absolute path from input line 
@@ -450,7 +462,6 @@ class parser(cmd.Cmd):
             asset_filter = posixpath.basename(candidate)
             asset_filter = asset_filter.replace("'", "\'")
 # we have a filter -> ignore namespaces
-#            reply = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % cwd)
             namespace_count = 0
 
 # count assets 
@@ -464,7 +475,12 @@ class parser(cmd.Cmd):
         page = 1
         page_size = max(1, min(self.terminal_height - 3, 100))
         canonical_last =  1 + int((namespace_count + asset_count - 1) / page_size )
-        pagination_complete = False
+
+        if canonical_last == 0:
+            pagination_complete = True
+        else:
+            pagination_complete = False
+
         show_header = True
         while pagination_complete is False:
             pagination_footer = None
