@@ -156,7 +156,15 @@ class mf_client:
                 s = socket.socket()
                 s.settimeout(2)
                 s.connect((self.server, 80))
+
+# FIXME - if still get the issue of some network places allowing this connect ... but disallowing actual transport then try:
+#                s.sendall("GET index.html HTTP/1.1\r\nHost: data.pawsey.org.au\r\n\r\n")
+#                data = s.recv(32)
+#                print "data: %r" % repr(data)
+# expected response = 'HTTP/1.1 301 Moved permanently ... etc'
+
                 s.close()
+
 # yes - do unencrypted data transfer (NB: MUST CHANGE URLS)
                 self.encrypted_data = False
                 self.data_put = "%s:%s" % (server, 80)
@@ -238,7 +246,7 @@ class mf_client:
 
 # CURRENT - download
 # BUT - can't use token with outputs-via=session
-# TODO - aternative is outputs-via=response ... but this returns as attachment(s) which must be handled differently
+# TODO - aternative is outputs-via=response ... but this returns as attachment(s) which seem to be handled differently
             url = self.data_get + "?_skey=%s&id=%s" % (self.session, output_id)
             url = url.replace("content", "output")
             filepath = output_local_filepath.replace("file:/", "")
@@ -273,10 +281,8 @@ class mf_client:
         global bytes_sent
 
 # mediaflux seems to have random periods of unresponsiveness - particularly around final ACK of transfer
-        retry_count = 9
-        upload_timeout = 900
-
-#        print "DEBUG: %s" % xml
+# retries don't seem to work at all, but increasing the timeout seems to help cover the problem 
+        upload_timeout = 1800
 
 # setup
         pid = os.getpid()
@@ -298,15 +304,6 @@ class mf_client:
         body = '\r\n'.join(lines)
 # NB - should include everything AFTER the first /r/n after the headers
         total_size = len(body) + os.path.getsize(filepath) + len(boundary) + 8
-        infile = open(filepath, 'rb')
-
-# DEBUG
-#        print "body size = %r" % len(body)
-#        print "file size = %r" % os.path.getsize(filepath)
-#        print "term size = %r" % (len(boundary) + 6)
-#        print "================="
-#        print "Total size = %r" % total_size
-#        print "================="
 
 # different connection object for HTTPS vs HTTP
         if self.encrypted_data is True:
@@ -326,73 +323,38 @@ class mf_client:
         conn.putheader('Content-Type', 'multipart/form-data; boundary=%s' % boundary)
         conn.putheader('Content-Transfer-Encoding', 'binary')
         conn.endheaders()
-
 # data start
         conn.send(body)
 
-# data stream of file contents
-        try:
-            can_recover = True
-            while can_recover:
+# send the data in chunks
+        with open(filepath, 'rb') as infile:
+            while True:
                 chunk = infile.read(self.put_buffer)
                 if not chunk:
                     break
-# retry...
-                i = 0
-                while True:
-                    try:
-                        conn.send(chunk)
-                        break
-
-                    except Exception as e:
-                        i = i+1
-                        if i < retry_count:
-                            self.log("DEBUG", "[pid=%d] Chunk send error [count=%d]: %s" % (pid, i, str(e)))
-                            can_recover = False
-                            break
-                        else:
-                            self.log("ERROR", "[pid=%d] Chunk retry limit reached [count=%d], giving up: %s" % (pid, i, str(e)))
-# multiprocessing-safe byte counter
+                conn.send(chunk)
                 with bytes_sent.get_lock():
                     bytes_sent.value += len(chunk)
-        except Exception as e:
-            self.log("ERROR", "[pid=%d] Fatal send error: %s" % (pid, str(e)))
-            raise
-
-        finally:
-            self.log("DEBUG", "[pid=%d] Closing file: %s" % (pid, filepath))
-            infile.close()
 
 # terminating line (len(boundary) + 8)
         chunk = "\r\n--%s--\r\n" % boundary
         conn.send(chunk)
-
         self.log("DEBUG", "[pid=%d] File send completed, waiting for server..." % pid)
 
 # get ACK from server (asset ID) else error (raise exception)
+        resp = conn.getresponse()
+        reply = resp.read()
+        conn.close()
+        tree = ET.fromstring(reply)
+
         message = "response did not contain an asset ID."
-        for i in range(0, retry_count):
-            try:
-                resp = conn.getresponse()
-                reply = resp.read()
-                conn.close()
-                tree = ET.fromstring(reply)
+        for elem in tree.iter():
+            if elem.tag == 'id':
+                return int(elem.text)
+            if elem.tag == 'message':
+                message = elem.text
 
-# return asset id of uploaded filed or any (error) message
-                for elem in tree.iter():
-                    if elem.tag == 'id':
-                        return int(elem.text)
-                    if elem.tag == 'message':
-                        message = elem.text
-                raise Exception(message)
-
-# re-try if we have a slow server (final ack timeout)
-            except socket.timeout:
-                delay = int(upload_timeout / (retry_count+1))
-                self.log("DEBUG", "[pid=%d] No response from server [count=%d] trying again in [%d seconds] ..." % (pid, i, delay))
-                time.sleep(delay)
-
-        raise Exception("[pid=%d] Giving up on final server ACK." % pid)
+        raise Exception(message)
 
 #------------------------------------------------------------
     @staticmethod
@@ -622,8 +584,6 @@ class mf_client:
         Timestamp based message logging.
         """
 
-#        print "log: %d,%d" % (level, self.debug)
-
         if "DEBUG" in prefix:
             if level > int(self.debug):
                 return
@@ -733,43 +693,27 @@ class mf_client:
         """
         global bytes_recv
 
-# TODO - replace with an aterm asset.get command now that :out is supported
-# build download URL
+# already exists
+        if os.path.isfile(filepath) and not overwrite:
+            self.log("DEBUG", "Local file of that name (%s) already exists, skipping." % filepath)
+            with bytes_recv.get_lock():
+                bytes_recv.value += os.path.getsize(filepath)
+            return
+
+# TODO - re-use code from _post() now that :out is supported (bytes_recv may be an issue)
         url = self.data_get + "?_skey=%s&id=%s" % (self.session, asset_id)
         self.log("DEBUG", "get URL=[%s]" % url, level=2)
         req = urllib2.urlopen(url)
-
-# distinguish between file data and mediaflux error message
-# DEBUG
-#        info = req.info()
-#        print "get info: %s" % info
-#        print "encoding: " , info.getencoding()
-#        print "type: " , info.gettype()
-
-# TODO - auto overwrite if different? (CRC)
-        if os.path.isfile(filepath) and not overwrite:
-            self.log("DEBUG", "Local file of that name (%s) already exists, skipping." % filepath)
-
-# FIXME - this should lower the expected total_bytes by the size of the file ...
-            with bytes_recv.get_lock():
-                bytes_recv.value += os.path.getsize(filepath)
-
-            req.close()
-            return
 
 # buffered write to open file
         with open(filepath, 'wb') as output:
             while True:
                 data = req.read(self.get_buffer)
-                if data:
-                    output.write(data)
-# multiprocessing safe byte counter
-# NOTE - tried decreasing frequency of locks -> had no impact on transfer speed
-                    with bytes_recv.get_lock():
-                        bytes_recv.value += len(data)
-                else:
+                if not data:
                     break
-        output.close()
+                output.write(data)
+                with bytes_recv.get_lock():
+                    bytes_recv.value += len(data)
 
 #------------------------------------------------------------
     def get_managed(self, list_asset_filepath, total_bytes, processes=4):
@@ -873,7 +817,6 @@ class mf_client:
                 try:
                     total_bytes += os.path.getsize(filepath)
                 except:
-# FIXME - this should lower the expected total_bytes by the size of the file ...
                     self.log("DEBUG", "Can't read %s, skipping." % filepath)
 
         self.log("DEBUG", "Total upload bytes: %d" % total_bytes)

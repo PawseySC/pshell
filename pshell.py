@@ -269,6 +269,7 @@ class parser(cmd.Cmd):
 
 # --- helper: convert a relative/absolute mediaflux namespace/asset reference to minimal (non-quoted) absolute form
     def absolute_remote_filepath(self, line):
+
         if line.startswith('"') and line.endswith('"'):
             line = line[1:-1]
 
@@ -278,6 +279,20 @@ class parser(cmd.Cmd):
         fullpath = posixpath.normpath(line)
 
         return fullpath
+
+# --- helper: strip any flags as well as get the path
+    def split_flags_filepath(self, line):
+
+        flags = ""
+        if line.startswith('-'):
+            match = re.match(r"\S*", line) 
+            if match is not None:
+                flags = match.group(0)
+                line = line[match.end(0)+1:]
+
+#        print "flags=[%s] line=[%s]" % (flags, line)
+
+        return flags, self.absolute_remote_filepath(line)
 
 # --- file info
     def help_file(self):
@@ -393,7 +408,7 @@ class parser(cmd.Cmd):
         print "          ls *.txt\n"
 
 # --- paginated ls, requires a pattern ('*' for none)
-    def remote_ls_print(self, namespace, namespace_count, asset_count, page, page_size, pattern):
+    def remote_ls_print(self, namespace, namespace_count, asset_count, page, page_size, pattern, show_content_state=False):
         page_count = max(1, 1+int((namespace_count+asset_count-1) / page_size))
 #        print "remote_ls(): [%s] nc=%d ac=%d - p=%d pc=%d ps=%d - pattern=%s" % (namespace, namespace_count, asset_count, page, page_count, page_size, pattern)
 
@@ -416,16 +431,18 @@ class parser(cmd.Cmd):
             reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :sort < :key name > :action get-values :xpath "id" -ename "id" :xpath "name" -ename "name" :xpath "content/type" -ename "type" :xpath "content/size" -ename "size" :xpath "mtime" -ename "mtime" :size %d :idx %d' % (namespace, pattern.replace("'", "\'"), asset_todo, asset_start))
             asset_list = reply.findall('.//asset')
 
-# get the content status - THIS CAN BE SLOW ... make it optional?
-            reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :sort < :key name > :size %d :idx %d :action pipe :service -name asset.content.status :pipe-generate-result-xml true' % (namespace, pattern.replace("'", "\'"), asset_todo, asset_start))
-            status_list = reply.findall('.//asset/state')
+# get the content status - this can be slow (timeouts) -> make optional 
+            if show_content_state is True:
+                reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :sort < :key name > :size %d :idx %d :action pipe :service -name asset.content.status :pipe-generate-result-xml true' % (namespace, pattern.replace("'", "\'"), asset_todo, asset_start))
+                status_list = reply.findall('.//asset/state')
+            else:
+                status_list = None
 
 # TODO - extract direction as well from content.status
             asset_name = "?"
             asset_size = self.human_size(0)
-            asset_state = "unknown   |"
 
-            for elem, state in zip(asset_list, status_list):
+            for i, elem in enumerate(asset_list):
                 child = elem.find('.//id')
                 asset_id = child.text
                 child = elem.find('.//name')
@@ -434,19 +451,31 @@ class parser(cmd.Cmd):
                 child = elem.find('.//size')
                 if child.text is not None:
                     asset_size = self.human_size(int(child.text))
-                if "online" in state.text:
-                    asset_state = "online    |"
+
+                if status_list:
+                    state = status_list[i]
+                    if "online" in state.text:
+                        asset_state = "online    |"
+                    else:
+                        asset_state = "%-9s |" % state.text
+                    print " %-10s | %s %s | %s" % (asset_id, asset_state, asset_size, asset_name)
                 else:
-                    asset_state = "%-9s |" % state.text
-# output
-                print " %-10s | %s %s | %s" % (asset_id, asset_state, asset_size, asset_name)
+                    print " %-10s | %s | %s" % (asset_id, asset_size, asset_name)
 
 
 # --- NEW - ls with no dependency on www.list
     def do_ls(self, line):
 
 # make candidate absolute path from input line 
-        candidate = self.absolute_remote_filepath(line)
+#        candidate = self.absolute_remote_filepath(line)
+        flags, candidate = self.split_flags_filepath(line)
+
+# if flags contains 'l' -> show_content_state
+        if 'l' in flags:
+            show_more = True
+        else:
+            show_more = False
+
         try:
 # candidate is a namespace reference
             reply = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % candidate)
@@ -491,7 +520,7 @@ class parser(cmd.Cmd):
 
             page = max(1, min(page, canonical_last))
 
-            self.remote_ls_print(cwd, namespace_count, asset_count, page, page_size, asset_filter)
+            self.remote_ls_print(cwd, namespace_count, asset_count, page, page_size, asset_filter, show_content_state=show_more)
 
 # if current display requires no pagination - auto exit in some cases 
             if canonical_last == 1:
@@ -974,8 +1003,9 @@ class parser(cmd.Cmd):
         print "\nDisplay the current remote folder\n"
         print "Usage: pwd\n"
 
+# NEW: use repr to help figure out issues such as invisible characters in folder names
     def do_pwd(self, line):
-        print "Remote: %s" % self.cwd
+        print "Remote: [%s]" % repr(self.cwd)
 
 # --
     def help_mkdir(self):
