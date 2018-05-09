@@ -1005,7 +1005,7 @@ class parser(cmd.Cmd):
 
 # NEW: use repr to help figure out issues such as invisible characters in folder names
     def do_pwd(self, line):
-        print "Remote: [%s]" % repr(self.cwd)
+        print "Remote: %s" % repr(self.cwd)
 
 # --
     def help_mkdir(self):
