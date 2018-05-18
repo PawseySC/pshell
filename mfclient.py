@@ -222,6 +222,7 @@ class mf_client:
         """
         Primitive for sending an XML message to the Mediaflux server
         """
+        global bytes_recv
 
 # dummy mode passback for pshell offline tests
         if self.dummy:
@@ -250,7 +251,6 @@ class mf_client:
             url = self.data_get + "?_skey=%s&id=%s" % (self.session, output_id)
             url = url.replace("content", "output")
             filepath = output_local_filepath.replace("file:/", "")
-            print "Downloading: %s ..." % filepath
 
 # buffered write to open file
             response = urllib2.urlopen(url)
@@ -260,7 +260,8 @@ class mf_client:
                     if not data:
                         break
                     output.write(data)
-# TODO if intercepted for download ... different return?
+                    with bytes_recv.get_lock():
+                        bytes_recv.value += len(data)
 
 # if error - attempt to extract a useful message
         elem = tree.find(".//reply/error")
@@ -700,20 +701,8 @@ class mf_client:
                 bytes_recv.value += os.path.getsize(filepath)
             return
 
-# TODO - re-use code from _post() now that :out is supported (bytes_recv may be an issue)
-        url = self.data_get + "?_skey=%s&id=%s" % (self.session, asset_id)
-        self.log("DEBUG", "get URL=[%s]" % url, level=2)
-        req = urllib2.urlopen(url)
-
-# buffered write to open file
-        with open(filepath, 'wb') as output:
-            while True:
-                data = req.read(self.get_buffer)
-                if not data:
-                    break
-                output.write(data)
-                with bytes_recv.get_lock():
-                    bytes_recv.value += len(data)
+# NEW - normal service call now that _post() supports :out 
+        self.aterm_run("asset.get :id %s :out %s" % (asset_id, filepath))
 
 #------------------------------------------------------------
     def get_managed(self, list_asset_filepath, total_bytes, processes=4):
@@ -841,7 +830,6 @@ class mf_manager:
     task = None
     pool = None
 
-# TODO - will probably need an offline list added to signature ...
     def __init__(self, function, arguments, processes=1, total_bytes=0):
         """
         Args:
