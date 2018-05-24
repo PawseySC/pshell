@@ -408,7 +408,7 @@ class parser(cmd.Cmd):
         print "          ls *.txt\n"
 
 # --- paginated ls, requires a pattern ('*' for none)
-    def remote_ls_print(self, namespace, namespace_count, asset_count, page, page_size, pattern, show_content_state=False):
+    def remote_ls_print(self, namespace, namespace_list, namespace_count, asset_count, page, page_size, pattern, show_content_state=False):
         page_count = max(1, 1+int((namespace_count+asset_count-1) / page_size))
 #        print "remote_ls(): [%s] nc=%d ac=%d - p=%d pc=%d ps=%d - pattern=%s" % (namespace, namespace_count, asset_count, page, page_count, page_size, pattern)
 
@@ -419,8 +419,8 @@ class parser(cmd.Cmd):
 #        print "TODO n=%d a=%d" % (namespace_todo, asset_todo)
 
         if namespace_todo > 0:
-            reply = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % namespace)
-            namespace_list = reply.findall('.//namespace/namespace')
+#            reply = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % namespace)
+#            namespace_list = reply.findall('.//namespace/namespace')
             namespace_start = (page-1) * page_size
             for i in range(namespace_start,namespace_start+namespace_todo):
                 elem = namespace_list[i]
@@ -476,6 +476,7 @@ class parser(cmd.Cmd):
         else:
             show_more = False
 
+        ns_list = []
         try:
 # candidate is a namespace reference
             reply = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % candidate)
@@ -492,6 +493,7 @@ class parser(cmd.Cmd):
             asset_filter = asset_filter.replace("'", "\'")
 # we have a filter -> ignore namespaces
             namespace_count = 0
+
 
 # count assets 
         reply = self.mf_client.aterm_run("asset.query :where \"namespace='%s' and name='%s'\" :action count" % (cwd, asset_filter))
@@ -520,7 +522,7 @@ class parser(cmd.Cmd):
 
             page = max(1, min(page, canonical_last))
 
-            self.remote_ls_print(cwd, namespace_count, asset_count, page, page_size, asset_filter, show_content_state=show_more)
+            self.remote_ls_print(cwd, ns_list, namespace_count, asset_count, page, page_size, asset_filter, show_content_state=show_more)
 
 # if current display requires no pagination - auto exit in some cases 
             if canonical_last == 1:
