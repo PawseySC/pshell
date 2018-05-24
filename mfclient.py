@@ -228,12 +228,16 @@ class mf_client:
         if self.dummy:
             raise Exception(xml_string)
 
+#        print "\nINPUT===================\n"
+#        print xml_string
+#        print "\n===================\n"
+
 # NB: timeout exception if server is unreachable
         request = urllib2.Request(self.post_url, data=xml_string, headers={'Content-Type': 'text/xml'})
         response = urllib2.urlopen(request, timeout=self.timeout)
         xml = response.read()
 
-#        print "\n===================\n"
+#        print "\nOUTPUT===================\n"
 #        print xml
 #        print "\n===================\n"
 
@@ -394,6 +398,13 @@ class mf_client:
             A STRING containing the server reply (if post is TRUE, if false - just the XML for test comparisons)
         """
 
+# NEW - intercept (before lexer!) and remove ampersand at end of line -> background job
+        if aterm_line[-1:] == '&':
+            flag_background = True
+            aterm_line = aterm_line[:-1]
+        else:
+            flag_background = False
+
 # NB - use posix=True as it's the closest to the way aterm processes input strings
         lexer = shlex.shlex(aterm_line, posix=True)
         lexer.whitespace_split = True
@@ -489,11 +500,16 @@ class mf_client:
             args = ET.SubElement(child, "args")
             args.append(xml_root)
         else:
-# NEW - wrap the service call in a service.execute (so we can use background=True in the future)
+# wrap the service call in a service.execute to allow background execution, if desired 
             child.set("name", "service.execute")
 # NB: use of token will bork download via session
             child.set("session", self.session)
             args = ET.SubElement(child, "args")
+# NEW - background execution
+            if flag_background is True:
+                bg = ET.SubElement(args, "background")
+                bg.text = "True"
+
             call = ET.SubElement(args, "service")
             call.set("name", service_call)
             call.append(xml_root)
@@ -514,24 +530,44 @@ class mf_client:
         if post is not True:
             return xml_hidden
 
-# NEW : if auth failure -> redo session with token (if exists)
-        try:
-            reply = self._post(xml_text, output_local_filepath=data_out_name)
-            return reply
-        except Exception as e:
-            message = str(e)
-            self.log("DEBUG", "POST exception: %s" % message)
-            if "session is not valid" in message:
-# TODO - if mf_config has a valid token, but the session is also valid -> mfclient won't get the valid token 
-# can we do something about this in pshell eg record a token if exists anyway???
-                if self.token is not None:
-                    self.log("DEBUG", "We have a token, attempting to establish new session")
-                    self.login(token=self.token)
-                    xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
-                    reply = self._post(xml_text, output_local_filepath=data_out_name)
-                    return reply
+# send the service call and see what happens ...
+        message = "This shouldn't happen"
+        while True:
+            try:
+                reply = self._post(xml_text, output_local_filepath=data_out_name)
+                if flag_background is True:
+                    elem = reply.find(".//id")
+                    job = elem.text
+
+                    while True:
+                        self.log("DEBUG", "Background job [%s] poll..." % job)
+                        xml_poll = self.aterm_run("service.background.describe :id %s" % job)
+                        elem = xml_poll.find(".//task/state")
+#                        print elem.text
+                        if "executing" in elem.text:
+                            time.sleep(5)
+                            continue
+                        else:
+                            break
+# NB: it is an exception (error) to get results UNTIL it's completed
+                    self.log("DEBUG", "Background job [%s] complete, getting results" % job)
+                    xml_poll = self.aterm_run("service.background.results.get :id %s" % job)
+                    return xml_poll
                 else:
-                    self.log("DEBUG", "We have no token.")
+                    return reply
+
+            except Exception as e:
+                message = str(e)
+                self.log("DEBUG", "POST exception: %s" % message)
+                if "session is not valid" in message:
+# FIXME - if mf_config has a valid session it will stop and not read the token (even if the token is valid)
+# TODO - we could restart the session if we can implement a way to always grab the token if it's there
+                    if self.token is not None:
+                        self.log("DEBUG", "We have a token, attempting to establish new session")
+                        self.login(token=self.token)
+                        xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
+                        pass
+                break
 
 # couldn't post without an error - give up
         raise Exception(message)
