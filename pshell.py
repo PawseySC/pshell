@@ -416,11 +416,8 @@ class parser(cmd.Cmd):
         namespace_todo = max(0, min(page_size, namespace_count - (page-1)*page_size))
         asset_todo = min(page_size, asset_count+namespace_count - (page-1)*page_size) - namespace_todo
         namespace_page_count = 1 + int((namespace_count-1) / page_count)
-#        print "TODO n=%d a=%d" % (namespace_todo, asset_todo)
 
         if namespace_todo > 0:
-#            reply = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % namespace)
-#            namespace_list = reply.findall('.//namespace/namespace')
             namespace_start = (page-1) * page_size
             for i in range(namespace_start,namespace_start+namespace_todo):
                 elem = namespace_list[i]
@@ -462,14 +459,11 @@ class parser(cmd.Cmd):
                 else:
                     print " %-10s | %s | %s" % (asset_id, asset_size, asset_name)
 
-
 # --- NEW - ls with no dependency on www.list
     def do_ls(self, line):
 
 # make candidate absolute path from input line 
-#        candidate = self.absolute_remote_filepath(line)
         flags, candidate = self.split_flags_filepath(line)
-
 # if flags contains 'l' -> show_content_state
         if 'l' in flags:
             show_more = True
@@ -493,7 +487,6 @@ class parser(cmd.Cmd):
             asset_filter = asset_filter.replace("'", "\'")
 # we have a filter -> ignore namespaces
             namespace_count = 0
-
 
 # count assets 
         reply = self.mf_client.aterm_run("asset.query :where \"namespace='%s' and name='%s'\" :action count" % (cwd, asset_filter))
