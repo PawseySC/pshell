@@ -900,9 +900,7 @@ class parser(cmd.Cmd):
             line = os.path.abspath(line)
             parent = os.path.normpath(os.path.join(line, ".."))
             for root, directory_list, name_list in os.walk(line):
-# convert a local relative path - which could contain either windows or *nix path separators - to a remote path, which must be *nix style
                 local_relpath = os.path.relpath(path=root, start=parent)
-# split on LOCAL separator (whatever that may be) then join on remote *nix separator
                 relpath_list = local_relpath.split(os.sep)
                 remote_relpath = "/".join(relpath_list)
                 remote = posixpath.join(self.cwd, remote_relpath)
@@ -917,16 +915,14 @@ class parser(cmd.Cmd):
                             upload_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name))))
         else:
             self.print_over("Building file list... ")
-            if meta is False:
-                upload_list = [(self.cwd, os.path.join(os.getcwd(), name)) for name in glob.glob(line)]
-            else:
-                for name in glob.glob(line):
-                    if name.lower().endswith('.meta'):
-                        pass
-                    else:
-                        upload_list.append((self.cwd, os.path.join(os.getcwd(), name)))
-
-# DEBUG - window's path
+            for name in glob.glob(line):
+                local_fullpath = os.path.abspath(name)
+                if os.path.isfile(local_fullpath):
+                    if meta is True:
+                        if name.lower().endswith('.meta'):
+                            pass
+                    upload_list.append((self.cwd, local_fullpath))
+# DEBUG
 #        for dest,src in upload_list:
 #            print "put: %s -> %s" % (src, dest)
 
