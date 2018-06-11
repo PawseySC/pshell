@@ -795,19 +795,21 @@ class mf_client:
             remote_crc32 = int(elem.text, 16)
             elem = result.find(".//size")
             remote_size = int(elem.text)
-            local_crc32 = self.get_local_checksum(filepath)
-            if local_crc32 == remote_crc32:
-# if local and remote are identical -> update progress and exit
-                self.log("DEBUG", "Checksum match, skipping [%s] -> [%s]" % (filepath, remotepath))
+# NB: checksum calc on large files (several GB+) on an external HDD can be slower than uploading the file again
+#            local_crc32 = self.get_local_checksum(filepath)
+            local_size = int(os.path.getsize(filepath))
+#            if local_crc32 == remote_crc32:
+            if local_size == remote_size:
+                self.log("DEBUG", "Match; skipping [%s] -> [%s]" % (filepath, remotepath))
                 with bytes_sent.get_lock():
                     bytes_sent.value += remote_size
                 return asset_id
             else:
-                self.log("DEBUG", "Checksum mismatch, local=%X -> remote=%X" % (local_crc32, remote_crc32))
+                self.log("DEBUG", "Mismatch; local=%r -> remote=%r" % (local_size, remote_size))
 
         except Exception as e:
-# file missing or checksum couldn't be computed for some reason -> upload
-            self.log("DEBUG", "Checksum compute error: %s" % str(e))
+            self.log("DEBUG", "Mismatch: %s" % str(e))
+# file is missing -> exception -> flag upload
             overwrite = True
 
 # local and remote crc32 don't match -> decision time ...
