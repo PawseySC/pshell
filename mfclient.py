@@ -795,7 +795,7 @@ class mf_client:
             remote_crc32 = int(elem.text, 16)
             elem = result.find(".//size")
             remote_size = int(elem.text)
-# NB: checksum calc on large files (several GB+) on an external HDD can be slower than uploading the file again
+# NB: checksum calc on large files (several GB+) on an external HDD can be SLOW - slower than uploading the file again
 #            local_crc32 = self.get_local_checksum(filepath)
             local_size = int(os.path.getsize(filepath))
 #            if local_crc32 == remote_crc32:

@@ -1341,23 +1341,61 @@ class parser(cmd.Cmd):
 # TODO - checksum compares as well?
         print "=== Compare complete ==="
 
+
+# NEW - generic operation that returns an unknown number of results from the server, so chunking must be used
+    def mf_iter(self, iter_command, iter_callback, iter_size):
+# NB: we expect cmd to have ":as iterator" in it
+        result = self.mf_client.aterm_run(iter_command)
+        elem = result.find(".//iterator")
+        iter_id = elem.text
+        while True:
+            self.mf_client.log("DEBUG", "Online iterator chunk")
+            result = self.mf_client.aterm_run("asset.query.iterate :id %s :size %d" % (iter_id, iter_size))
+#  action the callback for this iteration
+            iter_callback(result)
+# if current iteration is flagged as completed -> we're done
+            elem = result.find(".//iterated")
+            state = elem.get('complete')
+            if "true" in state:
+                self.mf_client.log("DEBUG", "iteration completed")
+                break
+
+# -- callback for do_publish url printing 
+    def print_published_urls(self, result):
+        for elem in result.iter("path"):
+            public_url = '%s://%s/download/%s' % (self.mf_client.protocol, self.mf_client.server, urllib2.quote(elem.text[10:]))
+            print public_url
+
 # --
     def help_publish(self):
-        print "\nReturn a public, downloadable URL for a file\nRequires public sharing to be enabled by the project administrator\n"
-        print "Usage: publish <filename>\n"
+        print "\nReturn a public, downloadable URL for a file or files\nRequires public sharing to be enabled by the project administrator\n"
+        print "Usage: publish <file(s)>\n"
 
 # --
     def do_publish(self, line):
         fullpath = self.absolute_remote_filepath(line)
-        self.mf_client.aterm_run('asset.label.add :id "path=%s" :label PUBLISHED' % fullpath)
-# generate URL (assumes Pawsey setup)
-        public_url = '%s://%s/download/%s' % (self.mf_client.protocol, self.mf_client.server, urllib2.quote(fullpath[10:]))
-        try:
-            urllib2.urlopen(public_url)
-            print public_url
-        except Exception as e:
-            self.mf_client.log("DEBUG", str(e))
-            raise Exception("Error: public sharing not enabled")
+        pattern = posixpath.basename(fullpath)
+        namespace = posixpath.dirname(fullpath)
+# publish everything that matches
+# TODO - this could take some time ... run in the background via & ???
+        self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :action pipe :service -name asset.label.add < :label PUBLISHED >' % (namespace, pattern))
+# iterate to display downloadable URLs
+        iter_cmd = 'asset.query :where "namespace=\'%s\' and name=\'%s\'" :as iterator :action get-path' % (namespace, pattern)
+        self.mf_iter(iter_cmd, self.print_published_urls, 10)
+
+# --
+    def help_unpublish(self):
+        print "\nRemove public access for a file or files\n"
+        print "Usage: unpublish <file(s)>\n"
+
+# --
+    def do_unpublish(self, line):
+        fullpath = self.absolute_remote_filepath(line)
+        pattern = posixpath.basename(fullpath)
+        namespace = posixpath.dirname(fullpath)
+# un-publish everything that matches
+# TODO - this could take some time ... run in the background via & ???
+        self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :action pipe :service -name asset.label.remove < :label PUBLISHED >' % (namespace, pattern))
 
 # --
     def help_quit(self):
