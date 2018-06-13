@@ -316,10 +316,16 @@ class parser(cmd.Cmd):
         elem = result.find(".//asset/state")
         if elem is not None:
             output_list.append("%-10s : %s" % (elem.tag, elem.text))
+
+# published (public URL)
+        result = self.mf_client.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % self.absolute_remote_filepath(line))
+        elem = result.find(".//exists")
+        if elem is not None:
+            output_list.append("published  : %s" % elem.text)
+
 # output info
         for line in output_list:
             print line
-
 
 # --- helper
 # immediately return any key pressed as a character
@@ -958,6 +964,7 @@ class parser(cmd.Cmd):
                 manager.cleanup()
 
 # TODO - pop some of the metadata imports in the upload cycle if it helps the efficiency (measure!)
+# TODO - or include it directly in the assset.set XML ...
         fail = 0
         for asset_id, remote_ns, local_filepath in manager.summary:
             if asset_id < 0:
