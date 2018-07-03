@@ -1430,7 +1430,9 @@ class parser(cmd.Cmd):
 
             except Exception as e:
 # exit on the EOF case ie where stdin/file is force fed via command line redirect
+# FIXME - this can sometimes occur in some mediaflux error messages
                 if "EOF" in str(e):
+                    print "Exit: encountered EOF"
                     return
                 print str(e)
 # TODO - handle via custom exception ?
