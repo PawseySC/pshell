@@ -413,10 +413,10 @@ class parser(cmd.Cmd):
         print "Examples: ls /projects/my project/some folder"
         print "          ls *.txt\n"
 
-# --- paginated ls, requires a pattern ('*' for none)
-    def remote_ls_print(self, namespace, namespace_list, namespace_count, asset_count, page, page_size, pattern, show_content_state=False):
+# --- paginated ls
+    def remote_ls_print(self, namespace, namespace_list, namespace_count, asset_count, page, page_size, query, show_content_state=False):
         page_count = max(1, 1+int((namespace_count+asset_count-1) / page_size))
-#        print "remote_ls(): [%s] nc=%d ac=%d - p=%d pc=%d ps=%d - pattern=%s" % (namespace, namespace_count, asset_count, page, page_count, page_size, pattern)
+#        print "remote_ls(): [%s] nc=%d ac=%d - p=%d pc=%d ps=%d - query=%s" % (namespace, namespace_count, asset_count, page, page_count, page_size, query)
 
 # number of namespaces and assets to show, given current pagination values
         namespace_todo = max(0, min(page_size, namespace_count - (page-1)*page_size))
@@ -431,12 +431,12 @@ class parser(cmd.Cmd):
 
         if asset_todo > 0:
             asset_start = abs(min(0, namespace_count - (page-1)*page_size - namespace_todo))+1
-            reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :sort < :key name > :action get-values :xpath "id" -ename "id" :xpath "name" -ename "name" :xpath "content/type" -ename "type" :xpath "content/size" -ename "size" :xpath "mtime" -ename "mtime" :size %d :idx %d' % (namespace, pattern.replace("'", "\'"), asset_todo, asset_start))
+            reply = self.mf_client.aterm_run('asset.query :where "%s" :sort < :key name > :action get-values :xpath "id" -ename "id" :xpath "name" -ename "name" :xpath "content/type" -ename "type" :xpath "content/size" -ename "size" :xpath "mtime" -ename "mtime" :size %d :idx %d' % (query, asset_todo, asset_start))
             asset_list = reply.findall('.//asset')
 
 # get the content status - this can be slow (timeouts) -> make optional 
             if show_content_state is True:
-                reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :sort < :key name > :size %d :idx %d :action pipe :service -name asset.content.status :pipe-generate-result-xml true' % (namespace, pattern.replace("'", "\'"), asset_todo, asset_start))
+                reply = self.mf_client.aterm_run('asset.query :where "%s" :sort < :key name > :size %d :idx %d :action pipe :service -name asset.content.status :pipe-generate-result-xml true' % (query, asset_todo, asset_start))
                 status_list = reply.findall('.//asset/state')
             else:
                 status_list = None
@@ -465,9 +465,8 @@ class parser(cmd.Cmd):
                 else:
                     print " %-10s | %s | %s" % (asset_id, asset_size, asset_name)
 
-# --- NEW - ls with no dependency on www.list
+# --- ls with no dependency on www.list
     def do_ls(self, line):
-
 # make candidate absolute path from input line 
         flags, candidate = self.split_flags_filepath(line)
 # if flags contains 'l' -> show_content_state
@@ -485,6 +484,7 @@ class parser(cmd.Cmd):
             asset_filter = "*"
             ns_list = reply.findall('.//namespace/namespace')
             namespace_count = len(ns_list)
+            query = "namespace='%s'" % cwd
 
         except Exception as e:
 # candidate is not a namespace -> assume input line is a filter
@@ -493,19 +493,16 @@ class parser(cmd.Cmd):
             asset_filter = asset_filter.replace("'", "\'")
 # we have a filter -> ignore namespaces
             namespace_count = 0
+            query = "namespace='%s' and name='%s'" % (cwd, asset_filter)
 
 # count assets 
-        reply = self.mf_client.aterm_run("asset.query :where \"namespace='%s' and name='%s'\" :action count" % (cwd, asset_filter))
+        reply = self.mf_client.aterm_run("asset.query :where \"%s\" :action count" % query)
         elem = reply.find(".//value")
         asset_count = int(elem.text)
-
 # setup pagination
-#        print "# namespaces =", namespace_count
-#        print "# assets =", asset_count
         page = 1
         page_size = max(1, min(self.terminal_height - 3, 100))
         canonical_last =  1 + int((namespace_count + asset_count - 1) / page_size )
-
         if canonical_last == 0:
             pagination_complete = True
         else:
@@ -514,14 +511,13 @@ class parser(cmd.Cmd):
         show_header = True
         while pagination_complete is False:
             pagination_footer = None
-
             if show_header:
                 print "%d items, %d items per page, remote folder: %s" % (namespace_count+asset_count, page_size, cwd)
                 show_header = False
-
             page = max(1, min(page, canonical_last))
 
-            self.remote_ls_print(cwd, ns_list, namespace_count, asset_count, page, page_size, asset_filter, show_content_state=show_more)
+# print the current page
+            self.remote_ls_print(cwd, ns_list, namespace_count, asset_count, page, page_size, query, show_content_state=show_more)
 
 # if current display requires no pagination - auto exit in some cases 
             if canonical_last == 1:
