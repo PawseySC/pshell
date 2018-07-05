@@ -481,7 +481,6 @@ class parser(cmd.Cmd):
             reply = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % candidate)
             cwd = candidate
 # count namespaces 
-            asset_filter = "*"
             ns_list = reply.findall('.//namespace/namespace')
             namespace_count = len(ns_list)
             query = "namespace='%s'" % cwd
@@ -489,11 +488,11 @@ class parser(cmd.Cmd):
         except Exception as e:
 # candidate is not a namespace -> assume input line is a filter
             cwd = posixpath.dirname(candidate)
-            asset_filter = posixpath.basename(candidate)
-            asset_filter = asset_filter.replace("'", "\'")
+            name_filter = posixpath.basename(candidate)
+            name_filter = name_filter.replace("'", "\'")
 # we have a filter -> ignore namespaces
             namespace_count = 0
-            query = "namespace='%s' and name='%s'" % (cwd, asset_filter)
+            query = "namespace='%s' and name='%s'" % (cwd, name_filter)
 
 # count assets 
         reply = self.mf_client.aterm_run("asset.query :where \"%s\" :action count" % query)
@@ -519,26 +518,18 @@ class parser(cmd.Cmd):
 # print the current page
             self.remote_ls_print(cwd, ns_list, namespace_count, asset_count, page, page_size, query, show_content_state=show_more)
 
-# if current display requires no pagination - auto exit in some cases 
-            if canonical_last == 1:
-                if asset_filter is None:
-                    break
-                if pagination_footer is None:
-                    break
-
-            pagination_footer = "Page %r of %r, file filter [%r]: " % (page, canonical_last, asset_filter)
-
-# just displayed last page - exit
+# auto exit on last page
             if page == canonical_last:
                 break
 
-# non-interactive - iterate through remaining pages
+# non-interactive - auto iterate through remaining pages
             if self.interactive is False:
                 time.sleep(1)
                 page = page + 1
                 continue
 
-# pagination controls
+# pagination control
+            pagination_footer = "=== Page %r/%r (enter = next, number = jump, q = quit) === " % (page, canonical_last)
             response = self.pagination_controller(pagination_footer)
             if response is not None:
                 try:
