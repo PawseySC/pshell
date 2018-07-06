@@ -39,7 +39,7 @@ class parser(cmd.Cmd):
     cwd = '/projects'
     interactive = True
     need_auth = True
-    transfer_processes = 4
+    transfer_processes = 1
     terminal_height = 25
 
 # --- initial setup of prompt
@@ -1508,6 +1508,7 @@ def main():
 # FIXME - the argument count is getting a bit ridiculous
     try:
         mf_client = mfclient.mf_client(protocol=protocol, port=port, server=server, domain=domain, session=session, enforce_encrypted_login=encrypt, debug=debug, dummy=dummy)
+
     except Exception as e:
         print "Failed to establish network connection to: %s" % current
         print "Error: %s" % str(e)
@@ -1549,6 +1550,13 @@ def main():
     my_parser.config = config
     my_parser.need_auth = need_auth
     my_parser.terminal_height = size[0]
+# HACK - auto adjust process count based on network capability 
+# the main issue is low capability drives being overstressed by too many random requests
+# FIXME - ideally we'd sample rw io for disk and net to compute the sweet spot
+    if mf_client.encrypted_data:
+       my_parser.transfer_processes = 2
+    else:
+       my_parser.transfer_processes = 4
 
 # TAB completion
 # strange hackery required to get tab completion working under OS-X and also still be able to use the b key

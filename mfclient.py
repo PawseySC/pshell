@@ -150,22 +150,15 @@ class mf_client:
         s.connect((self.server, self.port))
         s.close()
 
-# check if we're on internal Pawsey (ie https, but can do http as well)
+# check if we're on the internal network (ie https, but can do http as well)
         if self.protocol == 'https':
             try:
                 s = socket.socket()
                 s.settimeout(2)
                 s.connect((self.server, 80))
-
-# FIXME - if still get the issue of some network places allowing this connect ... but disallowing actual transport then try:
-#                s.sendall("GET index.html HTTP/1.1\r\nHost: data.pawsey.org.au\r\n\r\n")
-#                data = s.recv(32)
-#                print "data: %r" % repr(data)
-# expected response = 'HTTP/1.1 301 Moved permanently ... etc'
-
                 s.close()
 
-# yes - do unencrypted data transfer (NB: MUST CHANGE URLS)
+# yes - do unencrypted data transfer (significantly faster)
                 self.encrypted_data = False
                 self.data_put = "%s:%s" % (server, 80)
                 self.data_get = "http://%s/mflux/content.mfjp" % server
