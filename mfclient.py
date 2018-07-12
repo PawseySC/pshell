@@ -253,10 +253,20 @@ class mf_client:
             response = urllib2.urlopen(url)
             with open(filepath, 'wb') as output:
                 while True:
-                    data = response.read(self.get_buffer)
+# NEW - specifically trap network IO issues
+                    try:
+                        data = response.read(self.get_buffer)
+                    except Exception as e:
+                        raise Exception("Network read error: %s" % str(e))
+# exit condition
                     if not data:
                         break
-                    output.write(data)
+# NEW - specifically trap disk IO issues
+                    try:
+                        output.write(data)
+                    except Exception as e:
+                        raise Exception("File write error: %s" % str(e))
+# record progress
                     with bytes_recv.get_lock():
                         bytes_recv.value += len(data)
 
@@ -321,16 +331,25 @@ class mf_client:
         conn.putheader('Content-Type', 'multipart/form-data; boundary=%s' % boundary)
         conn.putheader('Content-Transfer-Encoding', 'binary')
         conn.endheaders()
-# data start
-        conn.send(body)
 
-# send the data in chunks
+# start sending the file
+        conn.send(body)
         with open(filepath, 'rb') as infile:
             while True:
-                chunk = infile.read(self.put_buffer)
+# NEW - specifically trap disk IO issues
+                try:
+                    chunk = infile.read(self.put_buffer)
+                except Exception as e:
+                    raise Exception("File read error: %s" % str(e))
+# exit condition
                 if not chunk:
                     break
-                conn.send(chunk)
+# NEW - specifically trap network IO issues
+                try:
+                    conn.send(chunk)
+                except Exception as e:
+                    raise Exception("Network send error: %s" % str(e))
+# record progress
                 with bytes_sent.get_lock():
                     bytes_sent.value += len(chunk)
 

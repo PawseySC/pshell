@@ -1294,8 +1294,14 @@ class parser(cmd.Cmd):
         if self.mf_client.namespace_exists(remote_fullpath) is False:
             print "Could not find remote folder: %s" % remote_fullpath
             return
-        remote_basename = posixpath.basename(remote_fullpath)
-        local_fullpath = os.path.join(os.getcwd(), remote_basename)
+
+# if no (or current) folder specified - compare local and remote working directories 
+        if remote_fullpath == self.cwd:
+            local_fullpath = os.getcwd()
+        else:
+            remote_basename = posixpath.basename(remote_fullpath)
+            local_fullpath = os.path.join(os.getcwd(), remote_basename)
+
         if os.path.exists(local_fullpath) is False:
             print "Could not find local folder: %s" % local_fullpath
             return

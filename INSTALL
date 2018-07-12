@@ -1,0 +1,7 @@
+
+### Create binary installer for windows (tested against miniconda)
+
+python setup.py bdist --formats=wininst
+
+dist/pshell-1.0.macosx-10.6-intel.exe 
+
