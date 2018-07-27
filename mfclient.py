@@ -144,26 +144,29 @@ class mf_client:
         if dummy:
             return
 
-# initial connection check 
-# FIXME - this does not properly raise a timeout exception in some rare cases when the server is having issues
-        s = socket.socket(socket.AF_INET)
+# initial connection check
+        s = socket.socket()
         s.settimeout(7)
         s.connect((self.server, self.port))
         s.close()
-
-# check if we're on the internal network (ie https, but can do http as well)
-        if self.protocol == 'https':
-            try:
-                s = socket.socket()
-                s.settimeout(2)
-                s.connect((self.server, 80))
-                s.close()
-# yes - do unencrypted data transfer (significantly faster)
-                self.encrypted_data = False
-                self.data_put = "%s:%s" % (server, 80)
-                self.data_get = "http://%s/mflux/content.mfjp" % server
-            except Exception as e:
-                pass
+# allow unencrypted transfers if on the internal network
+        try:
+            s = socket.socket()
+            s.settimeout(2)
+            s.connect((self.server, 80))
+            client_ip = s.getsockname()
+            server_ip = s.getpeername()
+            m1 = re.match(r"\d+.\d+", server_ip[0])
+            m2 = re.match(r"\d+.\d+", client_ip[0])
+# can open 80 and appear to be on the same network => you lucky duck
+            if m1 and m2:
+                if m1.group(0) == m2.group(0):
+                    self.encrypted_data = False
+                    self.data_put = "%s:%s" % (server, 80)
+                    self.data_get = "http://%s/mflux/content.mfjp" % server
+            s.close()
+        except Exception as e:
+            pass
 
 # if required, attempt to display more connection info
         if self.debug > 0:
