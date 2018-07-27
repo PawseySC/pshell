@@ -145,7 +145,8 @@ class mf_client:
             return
 
 # initial connection check 
-        s = socket.socket()
+# FIXME - this does not properly raise a timeout exception in some rare cases when the server is having issues
+        s = socket.socket(socket.AF_INET)
         s.settimeout(7)
         s.connect((self.server, self.port))
         s.close()
@@ -157,7 +158,6 @@ class mf_client:
                 s.settimeout(2)
                 s.connect((self.server, 80))
                 s.close()
-
 # yes - do unencrypted data transfer (significantly faster)
                 self.encrypted_data = False
                 self.data_put = "%s:%s" % (server, 80)
@@ -561,7 +561,7 @@ class mf_client:
                             continue
                         else:
                             break
-# NB: it is an exception (error) to get results UNTIL it's completed
+# NB: it is an exception (error) to get results BEFORE completion
                     self.log("DEBUG", "Background job [%s] complete, getting results" % job)
                     xml_poll = self.aterm_run("service.background.results.get :id %s" % job)
                     return xml_poll

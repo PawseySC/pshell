@@ -431,12 +431,12 @@ class parser(cmd.Cmd):
 
         if asset_todo > 0:
             asset_start = abs(min(0, namespace_count - (page-1)*page_size - namespace_todo))+1
-            reply = self.mf_client.aterm_run('asset.query :where "%s" :sort < :key name > :action get-values :xpath "id" -ename "id" :xpath "name" -ename "name" :xpath "content/type" -ename "type" :xpath "content/size" -ename "size" :xpath "mtime" -ename "mtime" :size %d :idx %d' % (query, asset_todo, asset_start))
+            reply = self.mf_client.aterm_run('asset.query :where "%s" :sort < :key name :nulls include > :action get-values :xpath "id" -ename "id" :xpath "name" -ename "name" :xpath "content/type" -ename "type" :xpath "content/size" -ename "size" :xpath "mtime" -ename "mtime" :size %d :idx %d' % (query, asset_todo, asset_start))
             asset_list = reply.findall('.//asset')
 
 # get the content status - this can be slow (timeouts) -> make optional 
             if show_content_state is True:
-                reply = self.mf_client.aterm_run('asset.query :where "%s" :sort < :key name > :size %d :idx %d :action pipe :service -name asset.content.status :pipe-generate-result-xml true' % (query, asset_todo, asset_start))
+                reply = self.mf_client.aterm_run('asset.query :where "%s" :sort < :key name :nulls include > :size %d :idx %d :action pipe :service -name asset.content.status :pipe-generate-result-xml true' % (query, asset_todo, asset_start))
                 status_list = reply.findall('.//asset/state')
             else:
                 status_list = None
