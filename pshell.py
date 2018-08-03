@@ -1535,11 +1535,7 @@ def main():
             except Exception as e:
                 mf_client.log("WARNING", "Delegate authentication failed.")
                 mf_client.log("DEBUG", str(e))
-                # NEW - everything failed - wipe
-                config.set(current, 'session', '')
-                config.set(current, 'token', '')
-                config_changed = True
-
+# NEW - don't wipe the delegate - login may have failed for other reasons (eg too many connections or server down)
 
 # save config - should only ever happen on first time run 
     if config_changed:
