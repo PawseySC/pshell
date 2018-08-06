@@ -40,7 +40,7 @@ class parser(cmd.Cmd):
     interactive = True
     need_auth = True
     transfer_processes = 1
-    terminal_height = 25
+    terminal_height = 20
 
 # --- initial setup of prompt
     def preloop(self):
@@ -1508,7 +1508,7 @@ def main():
         size = struct.unpack('hh', fcntl.ioctl(0, termios.TIOCGWINSZ, '1234'))
     except:
 # FIXME - make this work with windows
-        size = (80, 25)
+        size = (80, 20)
 
 # mediaflux client
 # FIXME - the argument count is getting a bit ridiculous
@@ -1551,7 +1551,8 @@ def main():
     my_parser.config_filepath = config_filepath
     my_parser.config = config
     my_parser.need_auth = need_auth
-    my_parser.terminal_height = size[0]
+# just in case the terminal height calculation returns a very low value
+    my_parser.terminal_height = max(size[0], my_parser.terminal_height)
 # HACK - auto adjust process count based on network capability 
 # the main issue is low capability drives being overstressed by too many random requests
 # FIXME - ideally we'd sample rw io for disk and net to compute the sweet spot
