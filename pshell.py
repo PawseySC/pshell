@@ -553,7 +553,10 @@ class parser(cmd.Cmd):
 
         count_files = 0
         count_bytes = 0
-        result = self.mf_client.aterm_run('asset.content.status.statistics :where "%s"' % base_query)
+
+# NEW - run in background as this can timeout on larger DMF folders
+        self.mf_client.log("DEBUG", "Polling online/offline statistics...") 
+        result = self.mf_client.aterm_run('asset.content.status.statistics :where "%s" &' % base_query)
 
         for elem in result.iter("statistics"):
             state = elem.attrib.get('state', elem.text)
@@ -584,6 +587,10 @@ class parser(cmd.Cmd):
         online = dict()
         list_local_path = {}
 
+# TODO - pending feedback from Arcitecta to solve or fix the issue
+# hmmm backgrounding doesnt appear to for iterators ...
+# result seems the same background or not ... but MF gives an error when using the background one (no session for iterator => MF bug?)
+        self.mf_client.log("DEBUG", "Getting download iterator...")
         result = self.mf_client.aterm_run('asset.query :where "%s and content online" :as iterator :action get-values :xpath -ename id id :xpath -ename namespace namespace :xpath -ename filename name' % base_query)
 
         elem = result.find(".//iterator")
@@ -640,7 +647,6 @@ class parser(cmd.Cmd):
                 os.makedirs(local_path)
             except Exception as e:
 # TODO - this is too noisy currently as we're doing this more than we should, but unavoidable until the split out above *** is done
-#                self.mf_client.log("DEBUG", "%s" % str(e))
                 pass
 
         return online
@@ -752,6 +758,7 @@ class parser(cmd.Cmd):
 # possible download on namespace
         candidate = posixpath.join(namespace, basename)
 
+# FIXME - get <relative-namespace> => results in asset_qeury (basename) of relative-namespace ... which is wrong ...
         self.mf_client.log("DEBUG", "do_get(): namespace=[%s] , asset_query=[%s] , candidate_namespace=[%s]" % (namespace, basename, candidate))
 
 # this requires different escaping to an asset.query
@@ -798,13 +805,14 @@ class parser(cmd.Cmd):
         unavailable_files = todo - stats['online-files']
         if unavailable_files > 0:
             user_msg += ", migrating files=%d, please be patient ...  " % unavailable_files
+# NEW - migration can take a while (backgrounded) so print feedback first
+            print user_msg
 # recall all offline files
-            xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" >' % base_query
+            xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" > &' % base_query
             self.mf_client.aterm_run(xml_command)
         else:
             user_msg += ", transferring ...  "
-
-        print user_msg
+            print user_msg
 
 # overall transfer loop
 # TODO - time expired breakout?
