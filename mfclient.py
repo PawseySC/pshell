@@ -558,11 +558,15 @@ class mf_client:
                         self.log("DEBUG", "Background job [%s] poll..." % job)
                         xml_poll = self.aterm_run("service.background.describe :id %s" % job)
                         elem = xml_poll.find(".//task/state")
-#                        print elem.text
+                        item = xml_poll.find(".//task/exec-time")
+                        text = elem.text + " [ " + item.text + " " + item.attrib['unit'] + "(s) ]"
                         if "executing" in elem.text:
+                            sys.stdout.write("\r"+text)
+                            sys.stdout.flush()
                             time.sleep(5)
                             continue
                         else:
+                            print "\r%s    " % text
                             break
 # NB: it is an exception (error) to get results BEFORE completion
                     self.log("DEBUG", "Background job [%s] complete, getting results" % job)
