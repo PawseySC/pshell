@@ -1131,7 +1131,7 @@ class parser(cmd.Cmd):
         if elem is not None:
             return elem.text
 
-        return "unknown"
+        return "never"
 
 # ---
     def help_whoami(self):
@@ -1140,13 +1140,16 @@ class parser(cmd.Cmd):
 
     def do_whoami(self, line):
         result = self.mf_client.aterm_run("actor.self.describe")
+# main identity
         for elem in result.iter('actor'):
-            name = elem.attrib['name']
-            if ":" in name:
-                print "actor = %s" % name
+            user_name = elem.attrib['name']
+            user_type = elem.attrib['type']
+            if 'identity' in user_type:
+                expiry = self.delegate_actor_expiry(user_name)
+                print "user = delegate (expires %s)" % expiry
             else:
-                expiry = self.delegate_actor_expiry(name)
-                print "actor = delegate (expiry %s)" % expiry
+                print "%s = %s" % (user_type, user_name)
+# associated roles
         for elem in result.iter('role'):
             print "  role = %s" % elem.text
 
@@ -1204,23 +1207,31 @@ class parser(cmd.Cmd):
     def do_delegate(self, line):
 # argument parse
         dt = delegate_default
+        destroy_session = False
         if line:
             if line == "off":
                 try:
-#                     self.mf_client.run("secure.identity.token.destroy.all")
-# NB: mediaflux version changed the API at some point
                     self.mf_client.aterm_run("secure.identity.token.all.destroy")
-                    print "Delegate credentials removed."
+                    self.mf_client.log("DEBUG", "Removed secure tokens from server")
+# figure out the current session
+                    reply = self.mf_client.aterm_run("actor.self.describe")
+                    if 'identity' in reply.find(".//actor").attrib['type']:
+                        destroy_session = True
                 except:
-                    print "No delegate credentials found."
-                use_token = False
+# probably a bad session (eg generated from an expired token)
+                    self.mf_client.log("DEBUG", "Failed to remove secure tokens from server")
+                    destroy_session = True
 # remove all auth info and update config
+                use_token = False
                 self.config.remove_option(self.config_name, 'token')
-                self.config.remove_option(self.config_name, 'session')
+# if current session is delegate based - destroy it too
+                if destroy_session:
+                    self.config.remove_option(self.config_name, 'session')
+                    self.need_auth = True
                 f = open(self.config_filepath, "w")
                 self.config.write(f)
                 f.close()
-                self.need_auth = True
+                print "Delegate credentials removed."
                 return
             else:
                 try:
