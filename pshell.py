@@ -1007,7 +1007,14 @@ class parser(cmd.Cmd):
 
     def do_mkdir(self, line):
         ns_target = self.absolute_remote_filepath(line)
-        self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % ns_target.replace('"', '\\\"'))
+        try:
+            self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % ns_target.replace('"', '\\\"'))
+        except Exception as e:
+            if "already exists" in str(e):
+                print "Folder already exists: %s" % ns_target
+                pass
+            else:
+                raise e
 
 # --
     def help_rm(self):
