@@ -254,6 +254,9 @@ class mf_client:
 
 # buffered write to open file
             response = urllib2.urlopen(url)
+
+# DEBUG - large file download
+#            with open(os.devnull, 'wb') as output:
             with open(filepath, 'wb') as output:
                 while True:
 # NEW - specifically trap network IO issues

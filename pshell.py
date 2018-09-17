@@ -721,7 +721,8 @@ class parser(cmd.Cmd):
 # update the asset metadata
             self.mf_client.aterm_run(xml_command)
 # re-analyze the content - stricly only needs to be done if type/ctype/lctype was changed
-            self.mf_client.aterm_run("asset.reanalyze :id %r" % asset_id)
+# NEW - don't do this by default - it will generate stacktrace in mediaflux for DMF (offline) files
+#            self.mf_client.aterm_run("asset.reanalyze :id %r" % asset_id)
 
         except Exception as e:
             self.mf_client.log("WARNING", "Metadata population failed: %s" % str(e))
