@@ -1547,7 +1547,7 @@ def main():
         print "Error: %s" % str(e)
         exit(-1)
 
-# NEW - simplified auth reasoning
+# auth reasoning
     need_auth = True
     if mf_client.authenticated():
         need_auth = False
@@ -1562,8 +1562,7 @@ def main():
             except Exception as e:
                 mf_client.log("WARNING", "Delegate authentication failed.")
                 mf_client.log("DEBUG", str(e))
-# NEW - don't wipe the delegate - login may have failed for other reasons (eg too many connections or server down)
-
+# NB: don't wipe the delegate - login may have failed for other reasons (eg too many connections or server down)
 # save config - should only ever happen on first time run 
     if config_changed:
         mf_client.log("DEBUG", "Writing config...")

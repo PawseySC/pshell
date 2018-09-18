@@ -703,7 +703,9 @@ class mf_client:
         if self.dummy:
             return True
         try:
-            self.aterm_run("actor.self.describe")
+# NEW - this approach seems to work better for the expired token + valid session edge case
+#            self.aterm_run("actor.self.describe")
+            self.aterm_run("system.session.self.describe")
             return True
         except Exception as e:
             self.session = ""
