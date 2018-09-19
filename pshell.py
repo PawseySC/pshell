@@ -554,7 +554,7 @@ class parser(cmd.Cmd):
         count_files = 0
         count_bytes = 0
 
-# NEW - run in background as this can timeout on larger DMF folders
+# run in background as this can timeout on larger DMF folders
         self.mf_client.log("DEBUG", "Polling online/offline statistics...") 
         result = self.mf_client.aterm_run('asset.content.status.statistics :where "%s" &' % base_query)
 
@@ -806,7 +806,7 @@ class parser(cmd.Cmd):
         unavailable_files = todo - stats['online-files']
         if unavailable_files > 0:
             user_msg += ", migrating files=%d, please be patient ...  " % unavailable_files
-# NEW - migration can take a while (backgrounded) so print feedback first
+# migration can take a while (backgrounded) so print feedback first
             print user_msg
 # recall all offline files
             xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" > &' % base_query
@@ -880,7 +880,6 @@ class parser(cmd.Cmd):
         if fail != 0:
             raise Exception("\nFailed to download %d file(s)." % fail)
         else:
-# NEW
             elapsed = time.time() - start_time
             average = stats['total-bytes'] / elapsed
             average = average / 1000000.0
@@ -997,7 +996,7 @@ class parser(cmd.Cmd):
         print "\nDisplay the current remote folder\n"
         print "Usage: pwd\n"
 
-# NEW: use repr to help figure out issues such as invisible characters in folder names
+# use repr to help figure out issues such as invisible characters in folder names
     def do_pwd(self, line):
         print "Remote: %s" % repr(self.cwd)
 
@@ -1369,7 +1368,7 @@ class parser(cmd.Cmd):
         print "=== Compare complete ==="
 
 
-# NEW - generic operation that returns an unknown number of results from the server, so chunking must be used
+# generic operation that returns an unknown number of results from the server, so chunking must be used
     def mf_iter(self, iter_command, iter_callback, iter_size):
 # NB: we expect cmd to have ":as iterator" in it
         result = self.mf_client.aterm_run(iter_command)

@@ -254,12 +254,9 @@ class mf_client:
 
 # buffered write to open file
             response = urllib2.urlopen(url)
-
-# DEBUG - large file download
-#            with open(os.devnull, 'wb') as output:
             with open(filepath, 'wb') as output:
                 while True:
-# NEW - specifically trap network IO issues
+# trap network IO issues
                     try:
                         data = response.read(self.get_buffer)
                     except Exception as e:
@@ -267,7 +264,7 @@ class mf_client:
 # exit condition
                     if not data:
                         break
-# NEW - specifically trap disk IO issues
+# trap disk IO issues
                     try:
                         output.write(data)
                     except Exception as e:
@@ -342,7 +339,7 @@ class mf_client:
         conn.send(body)
         with open(filepath, 'rb') as infile:
             while True:
-# NEW - specifically trap disk IO issues
+# trap disk IO issues
                 try:
                     chunk = infile.read(self.put_buffer)
                 except Exception as e:
@@ -350,7 +347,7 @@ class mf_client:
 # exit condition
                 if not chunk:
                     break
-# NEW - specifically trap network IO issues
+# trap network IO issues
                 try:
                     conn.send(chunk)
                 except Exception as e:
@@ -416,7 +413,7 @@ class mf_client:
             A STRING containing the server reply (if post is TRUE, if false - just the XML for test comparisons)
         """
 
-# NEW - intercept (before lexer!) and remove ampersand at end of line -> background job
+# intercept (before lexer!) and remove ampersand at end of line -> background job
         if aterm_line[-1:] == '&':
             flag_background = True
             aterm_line = aterm_line[:-1]
@@ -523,7 +520,7 @@ class mf_client:
 # NB: use of token will bork download via session
             child.set("session", self.session)
             args = ET.SubElement(child, "args")
-# NEW - background execution
+# background execution
             if flag_background is True:
                 bg = ET.SubElement(args, "background")
                 bg.text = "True"
@@ -704,7 +701,6 @@ class mf_client:
             return True
         try:
 # NEW - this approach seems to work better for the expired token + valid session edge case
-#            self.aterm_run("actor.self.describe")
             self.aterm_run("system.session.self.describe")
             return True
         except Exception as e:
@@ -754,14 +750,12 @@ class mf_client:
         """
         global bytes_recv
 
-# already exists
         if os.path.isfile(filepath) and not overwrite:
             self.log("DEBUG", "Local file of that name (%s) already exists, skipping." % filepath)
             with bytes_recv.get_lock():
                 bytes_recv.value += os.path.getsize(filepath)
             return
 
-# NEW - normal service call now that _post() supports :out 
         self.aterm_run("asset.get :id %s :out %s" % (asset_id, filepath))
 
 #------------------------------------------------------------
@@ -808,7 +802,7 @@ class mf_client:
         remotepath = posixpath.join(namespace, filename)
         asset_id = -1
 
-# NEW -only-if-exists=true -> stops the exception / returns none if asset doesn't exists
+# NB: avoid generating exception if asset doesn't exist 
         result = self.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
 
 # attempt checksum compare
@@ -907,7 +901,6 @@ class mf_manager:
         global bytes_recv
 
 # fail if there is already a managed transfer (there can only be one!)
-# FIXME - not really an informative exception ...
         if not manage_lock.acquire(block=False):
             raise TypeError
 
