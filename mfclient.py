@@ -442,6 +442,8 @@ class mf_client:
         else:
             self.log("DEBUG", "aterm_run() input: %s" % aterm_line, level=2)
 
+# NEW - better handling of deletions to the XML
+        xml_unwanted = None
         try:
             while token:
                 if token[0] == ':':
@@ -490,7 +492,8 @@ class mf_client:
                     if child.tag.lower() == "out":
                         data_out_name = child.text
                         data_out_min = 1
-                        xml_node.remove(child)
+# NEW - schedule for deletion but don't delete yet due to potentially multiple passthroughs 
+                        xml_unwanted = child
 
 # don't treat quotes as special characters in password string
                 if "password" in token:
@@ -504,6 +507,10 @@ class mf_client:
         except Exception as e:
             self.log("DEBUG", "aterm_run() error: %s" % str(e))
             raise SyntaxError
+
+# NEW - do any deletions to the tree after processing 
+        if xml_unwanted is not None:
+            xml_node.remove(xml_unwanted)
 
 # wrap with session/service call
         xml = ET.Element("request")
