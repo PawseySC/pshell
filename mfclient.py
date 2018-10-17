@@ -525,7 +525,10 @@ class mf_client:
 # wrap the service call in a service.execute to allow background execution, if desired 
             child.set("name", "service.execute")
 # NB: use of token will bork download via session
-            child.set("session", self.session)
+            if self.session is not None:
+                child.set("session", self.session)
+            else:
+                child.set("session", "")
             args = ET.SubElement(child, "args")
 # background execution
             if flag_background is True:
@@ -592,7 +595,7 @@ class mf_client:
                         self.log("DEBUG", "We have a token, attempting to establish new session")
                         self.login(token=self.token)
                         xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
-                        pass
+                        continue
                 break
 
 # couldn't post without an error - give up

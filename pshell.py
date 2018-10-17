@@ -434,36 +434,51 @@ class parser(cmd.Cmd):
             reply = self.mf_client.aterm_run('asset.query :where "%s" :sort < :key name :nulls include > :action get-values :xpath "id" -ename "id" :xpath "name" -ename "name" :xpath "content/type" -ename "type" :xpath "content/size" -ename "size" :xpath "mtime" -ename "mtime" :size %d :idx %d' % (query, asset_todo, asset_start))
             asset_list = reply.findall('.//asset')
 
-# get the content status - this can be slow (timeouts) -> make optional 
+# get the content status - this can be slow (timeouts) -> optional 
             if show_content_state is True:
-                reply = self.mf_client.aterm_run('asset.query :where "%s" :sort < :key name :nulls include > :size %d :idx %d :action pipe :service -name asset.content.status :pipe-generate-result-xml true' % (query, asset_todo, asset_start))
-                status_list = reply.findall('.//asset/state')
-            else:
-                status_list = None
+                xml_reply_state = self.mf_client.aterm_run('asset.query :where "%s" :sort < :key name :nulls include > :size %d :idx %d :action pipe :service -name asset.content.status :pipe-generate-result-xml true' % (query, asset_todo, asset_start))
 
-# TODO - extract direction as well from content.status
+# NEW - for robustness - match asset IDs from the 2 separate queries to populate a single document
+            for elem in reply.findall('.//asset'):
+                child = elem.find('.//id')
+                asset_id = child.text
+
+                elem_state = ET.SubElement(elem, 'state')
+                try:
+                    xml_state = xml_reply_state.find(".//asset[@id='%s']/state" % asset_id)
+                    elem_state.text = xml_state.text
+                except:
+                    elem_state.text = "?"
+
+# TODO - extract direction from content.status
             asset_name = "?"
-            asset_size = self.human_size(0)
 
             for i, elem in enumerate(asset_list):
                 child = elem.find('.//id')
                 asset_id = child.text
+
                 child = elem.find('.//name')
                 if child.text is not None:
                     asset_name = child.text
+                else:
+                    asset_name = "?"
+
                 child = elem.find('.//size')
                 if child.text is not None:
                     asset_size = self.human_size(int(child.text))
+                else:
+                    asset_size = self.human_size(0)
 
-                if status_list:
-                    state = status_list[i]
-                    if "online" in state.text:
+                if show_content_state is True:
+                    child = elem.find('.//state')
+                    if "online" in child.text:
                         asset_state = "online    |"
                     else:
-                        asset_state = "%-9s |" % state.text
+                        asset_state = "%-9s |" % child.text
                     print " %-10s | %s %s | %s" % (asset_id, asset_state, asset_size, asset_name)
                 else:
                     print " %-10s | %s | %s" % (asset_id, asset_size, asset_name)
+
 
 # --- ls with no dependency on www.list
     def do_ls(self, line):
