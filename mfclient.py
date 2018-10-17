@@ -563,7 +563,6 @@ class mf_client:
                 if flag_background is True:
                     elem = reply.find(".//id")
                     job = elem.text
-
                     while True:
                         self.log("DEBUG", "Background job [%s] poll..." % job)
                         xml_poll = self.aterm_run("service.background.describe :id %s" % job)
@@ -595,6 +594,7 @@ class mf_client:
                         self.log("DEBUG", "We have a token, attempting to establish new session")
                         self.login(token=self.token)
                         xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
+                        self.log("DEBUG", "Session restored, retrying command")
                         continue
                 break
 
@@ -836,9 +836,14 @@ class mf_client:
                 self.log("DEBUG", "Mismatch; local=%r -> remote=%r" % (local_size, remote_size))
 
         except Exception as e:
-            self.log("DEBUG", "Mismatch: %s" % str(e))
-# file is missing -> exception -> flag upload
-            overwrite = True
+            if "NoneType" in str(e):
+# the file doesn't exist or has no content -> trigger upload
+                self.log("DEBUG", "No remote file found: [%s]" % remotepath)
+                overwrite = True
+            else:
+# I'm horribly confused -> report error and don't do anything
+                self.log("ERROR", str(e))
+                overwrite = False
 
 # local and remote crc32 don't match -> decision time ...
         if overwrite is True:
