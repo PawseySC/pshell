@@ -239,39 +239,18 @@ class mf_client:
 
         tree = ET.fromstring(xml)
 
-# NEW - outputs-via = session
-# HACK - MF returns multiple outputs (some are metadata I think?) lets go with the first as the requested data
-        elem = tree.find(".//outputs/id")
-        if elem is not None:
-            output_id = elem.text
-
-# CURRENT - download
-# BUT - can't use token with outputs-via=session
-# TODO - aternative is outputs-via=response ... but this returns as attachment(s) which seem to be handled differently
+# outputs-via = session
+# NB: outputs-via attachements has an attachment element with an id ATTRIBUTE - that can be used in the same way
+        elem_output = tree.find(".//outputs")
+        if elem_output is not None:
+            # TODO - findall ...
+            elem_id = elem_output.find(".//id")
+            output_id = elem_id.text
             url = self.data_get + "?_skey=%s&id=%s" % (self.session, output_id)
             url = url.replace("content", "output")
-            filepath = output_local_filepath.replace("file:/", "")
-
-# buffered write to open file
-            response = urllib2.urlopen(url)
-            with open(filepath, 'wb') as output:
-                while True:
-# trap network IO issues
-                    try:
-                        data = response.read(self.get_buffer)
-                    except Exception as e:
-                        raise Exception("Network read error: %s" % str(e))
-# exit condition
-                    if not data:
-                        break
-# trap disk IO issues
-                    try:
-                        output.write(data)
-                    except Exception as e:
-                        raise Exception("File write error: %s" % str(e))
-# record progress
-                    with bytes_recv.get_lock():
-                        bytes_recv.value += len(data)
+            self.log("DEBUG", "_post() appending output url: [%s]" % url)
+            elem_url = ET.SubElement(elem_output, "url")
+            elem_url.text = url
 
 # if error - attempt to extract a useful message
         elem = tree.find(".//reply/error")
@@ -766,7 +745,31 @@ class mf_client:
                 bytes_recv.value += os.path.getsize(filepath)
             return
 
-        self.aterm_run("asset.get :id %s :out %s" % (asset_id, filepath))
+# NEW - filename is ignored ... 
+# TODO - wrap the processing of the output URL in aterm_run ... ?
+# a bit tricky as we want the control for chunked FUSE data requests
+        reply = self.aterm_run("asset.get :id %s :out %s" % (asset_id, filepath))
+        elem = reply.find(".//outputs/url")
+        url = elem.text
+        response = urllib2.urlopen(url)
+        with open(filepath, 'wb') as output:
+            while True:
+# trap network IO issues
+                try:
+                    data = response.read(self.get_buffer)
+                except Exception as e:
+                    raise Exception("Network read error: %s" % str(e))
+# exit condition
+                if not data:
+                    break
+# trap disk IO issues
+                try:
+                    output.write(data)
+                except Exception as e:
+                    raise Exception("File write error: %s" % str(e))
+# record progress
+                with bytes_recv.get_lock():
+                    bytes_recv.value += len(data)
 
 #------------------------------------------------------------
     def get_managed(self, list_asset_filepath, total_bytes, processes=4):
