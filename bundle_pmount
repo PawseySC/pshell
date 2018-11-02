@@ -1,0 +1,7 @@
+cp pmount.py __main__.py
+zip pmount.zip __main__.py fuse.py mfclient.py 
+echo "#!/usr/bin/env python" > pmount
+cat pmount.zip >> pmount
+chmod u+x pmount
+#rm pmount.zip
+rm __main__.py

@@ -129,6 +129,7 @@ class mfclient_syntax(unittest.TestCase):
         self.assertEqual(reply, '<request><service name="service.execute" session="..."><args><service name="asset.get" outputs="1"><id>123</id><format>extended</format></service><outputs-via>session</outputs-via></args></service></request>')
 
 
+
 ########################################
 # convenience wrapper for squishing bugs
 ########################################
@@ -137,11 +138,10 @@ class mfclient_bugs(unittest.TestCase):
         global mf_client
         self.mf_client = mf_client
 
-
-    def test_asset_out_element(self):
-        reply = self.mf_client.aterm_run('asset.get :id 123 :format extended :out /Users/sean/test123', post=False)
-        self.assertEqual(reply, '<request><service name="service.execute" session="..."><args><service name="asset.get" outputs="1"><id>123</id><format>extended</format></service><outputs-via>session</outputs-via></args></service></request>')
-
+# TODO
+    def test_nested_document(self):
+        reply = self.mf_client.aterm_run('service.execute :service -name "asset.create < :namespace "folder" :name "file" > " :input-ticket 1')
+        print reply
 
 
 
