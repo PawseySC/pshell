@@ -511,7 +511,7 @@ class pmount(Operations):
 
 # --- 
     def utimens(self, path, times=None):
-        # everything's ok ...
+        self.log.debug("utimens() : path=%s " % path)
         return 0
 
 # --- TODO - metadata via extended attributes?
@@ -566,6 +566,7 @@ class pmount(Operations):
 
 # ---
     def open(self, path, flags):
+        self.log.debug("open() : path=%s" % path)
 
         if flags & os.O_RDWR:
             # not sure we can ever support this
@@ -617,7 +618,7 @@ class pmount(Operations):
 
 # ---
     def create(self, path, mode, fi=None):
-
+        self.log.debug("create() : path=%s" % path)
         if self.readonly:
             raise FuseOSError(errno.EACCES)
 
@@ -700,21 +701,23 @@ class pmount(Operations):
 
 # ---
     def chmod(self, path, mode):
-        # everything's ok ...
+        self.log.debug("chmod() : path=%s, mode=%d" % (path, mode))
         return 0
 
 # ---
     def chown(self, path, uid, gid):
-        raise FuseOSError(errno.EACCES)
+        self.log.debug("chown() : path=%s, uid=%d, gid=%d" % (path, uid, gid))
+        return 0
 
 # ---
     def rename(self, old, new):
-        # TODO
+        self.log.debug("rename() TODO : old=%s, new=%d" % (old, new))
         raise FuseOSError(errno.EACCES)
 
 # --- 
     def truncate(self, path, length, fh=None):
-        raise FuseOSError(errno.EACCES)
+        self.log.debug("truncate() : path=%s, length=%d" % (path, length))
+        return 0
 
 # ---
     def unlink(self, path):
@@ -739,11 +742,13 @@ class pmount(Operations):
 
 # ---
     def flush(self, path, fh):
-        return
+        self.log.debug("flush() : path=%s, fh=%d" % (path, fh))
+        return 0
 
 # ---
     def lock(self, path, fip, cmd, lock):
-        raise FuseOSError(errno.EACCES)
+        self.log.debug("lock() : path=%s, fip=%r, cmd=%r, lock=%r" % (path, fip, cmd, lock))
+        return 0
 
 # ---
 # NB - release() return code/exceptions are ignored by FUSE - so there's no way to fail the operation from this method
