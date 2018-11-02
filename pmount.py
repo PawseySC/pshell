@@ -253,8 +253,15 @@ class pmount(Operations):
                 print "Authentication failed"
                 exit(-1)
 # success
+        self.verbose = args.verbose
         self.log.info("init(): connection established")
 
+
+# --- triggered on ctrl-C or unmount
+    def destroy(self, path):
+        if self.verbose:
+            self.iostats.display()
+        return 0
 
 # --- fake filehandle for download (read only)
     def mf_ronly_open(self, namespace, filename):
@@ -278,7 +285,6 @@ class pmount(Operations):
                 return fh
 
         raise FuseOSError(errno.EMFILE)
-
 
 # --- fake filehandle for upload (write only)
     def mf_wonly_open(self, folder, filename):
@@ -354,8 +360,6 @@ class pmount(Operations):
 # --- get asset metadata for single item (not commonly invoked)
     @iostats.record
     def get_asset(self, namespace, filename):
-
-        self.log.debug("get_asset() : namespace [%s], filename [%s]" % (namespace, filename))
         try:
             reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :action get-meta' % (namespace, filename))
             # no match? => doesn't exist
@@ -399,7 +403,6 @@ class pmount(Operations):
 # check the temporary cache
         inode = self.inode_cache.get(path)
         if inode is not None:
-            self.log.debug("getattr(): returning cached inode for [%s]" % path)
             return inode
 
         fullpath = self._remote_fullpath(path)
@@ -563,12 +566,10 @@ class pmount(Operations):
 
 # ---
     def open(self, path, flags):
-        self.log.debug("open() : path=%s : flags=%r" % (path, flags))
 
         if flags & os.O_RDWR:
             # not sure we can ever support this
             raise FuseOSError(errno.EPERM)
-
         if flags & os.O_WRONLY:
             # TODO - can we use server.io.write to do this ... only if we can set/change the filepath it resolves to ...
             raise FuseOSError(errno.EPERM)
@@ -617,7 +618,6 @@ class pmount(Operations):
 # ---
     def create(self, path, mode, fi=None):
 
-        self.log.debug("create() : path=%s : mode=%r" % (path, mode))
         if self.readonly:
             raise FuseOSError(errno.EACCES)
 
@@ -625,12 +625,9 @@ class pmount(Operations):
         namespace = posixpath.dirname(fullpath)
         filename = posixpath.basename(fullpath)
 
-# turd files
 # TODO - OS-X ... windows has it's own flavour - combine in a method
         if filename.startswith("._"):
             raise FuseOSError(errno.EPERM)
-
-        self.log.debug("create() : full=%s , folder=%s, filename=%s" % (fullpath, namespace, filename))
 
 # get ref to use as filehandle for write()
         fakehandle = self.mf_wonly_open(namespace, filename)
@@ -724,7 +721,6 @@ class pmount(Operations):
         fullpath = self._remote_fullpath(path)
         namespace = posixpath.dirname(fullpath)
         filename = posixpath.basename(fullpath)
-        self.log.debug("unlink() : fullpath=%s" % fullpath)
         if self.readonly:
             raise FuseOSError(errno.EACCES)
 
@@ -752,7 +748,6 @@ class pmount(Operations):
 # ---
 # NB - release() return code/exceptions are ignored by FUSE - so there's no way to fail the operation from this method
     def release(self, path, fh):
-        self.log.debug("release() : path=%s : fh=%d" % (path, fh))
 # init
         fullpath = self._remote_fullpath(path)
         namespace = posixpath.dirname(fullpath)
@@ -811,7 +806,7 @@ if __name__ == '__main__':
     parser.add_argument("-v", "--verbose", help="Activate verbose logging", action="store_true")
     args = parser.parse_args()
 
-# default protocol 
+# default protocol for mediaflux
     if args.port == 80:
         args.protocol = "http"
         args.encrypt = False
@@ -822,7 +817,4 @@ if __name__ == '__main__':
 # main call
 # NB: disallow threads (httplib/urllib2 are not thread safe)
     FUSE(pmount(args), args.path, nothreads=True, foreground=not args.background)
-
-# NEW - display performance of read/write primitives
-    pmount.iostats.display()
 
