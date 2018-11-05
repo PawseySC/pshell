@@ -23,13 +23,63 @@ import mfclient
 try:
     from fuse import FUSE, FuseOSError, Operations
 except:
-    print "This system does not seem to have FUSE installed."
+    print "Error: this system does not seem to have FUSE installed."
 
+# ===
+class mfread():
+    """
+    Handle downloads from mediaflux
+    """
+    def __init__(self, response):
+        self.response = response
+        self.offset = 0
 
-# --- priority: local query -> cached mediaflux response -> direct mediaflux call
+# ===
+class mfwrite():
+    """
+    Handle buffered uploads to Mediaflux
+    """
+    def __init__(self, store=None, tmpfile=None):
+        self.buffer = bytearray()
+        self.length = 0
+        self.offset = 0
+        self.total = 0
+        self.tmpfile = tmpfile
+        self.store = store
+
+    def inject(self, buff, offset):
+        size = len(buff)
+        if offset == self.total:
+            # sequential buffer extend
+            self.buffer.extend(buff)
+            self.length += size
+            self.total += size
+        else:
+            # inject at unexpected (non-sequential) offset ... shouldn't happen???
+            print "inject() A: buffer => offset=%d,length=%d,total=%d : input => offset=%d,size=%d" % (self.offset,self.length,self.total,offset,size)
+            if offset == self.offset:
+                # case 1 - restart at same offset as the current buffer -> truncate buffer to the current input 
+                self.buffer[0:] = buff
+                self.length = size
+                self.total = self.offset + size
+                print "inject() B: buffer => offset=%d,length=%d,total=%d" % (self.offset,self.length,self.total)
+            else:
+                # case 2 - random buffer insert??? ... I give up
+                raise FuseOSError(errno.EILSEQ)
+        return size
+
+    def truncate(self):
+        self.buffer = self.buffer[:0]
+        self.offset = self.total
+        self.length = 0
+
+# ===
 class pmount(Operations):
+    """
+    FUSE implementation for mounting a Mediaflux namespace as a local folder
+    """
 
-# --- record/display disk / net performance
+# --- performance decorators 
     class iostats():
         t_count = dict()
         t_bytes = dict()
@@ -98,51 +148,7 @@ class pmount(Operations):
             return wrapper
 
 
-# TODO - move these 2 buffer classes outside main class as we don't need to run iostats on them
-# handle downloads from mediaflux
-    class mfread():
-        def __init__(self, response):
-            self.response = response
-            self.offset = 0
-
-# handle buffered uploads to mediaflux
-    class mfwrite():
-        def __init__(self, store=None, tmpfile=None):
-            self.buffer = bytearray()
-            self.length = 0
-            self.offset = 0
-            self.total = 0
-            self.tmpfile = tmpfile
-            self.store = store
-
-        def inject(self, buff, offset):
-            size = len(buff)
-            if offset == self.total:
-                # sequential buffer extend
-                self.buffer.extend(buff)
-                self.length += size
-                self.total += size
-            else:
-                # inject at unexpected (non-sequential) offset ... shouldn't happen???
-                print "inject() A: buffer => offset=%d,length=%d,total=%d : input => offset=%d,size=%d" % (self.offset,self.length,self.total,offset,size)
-                if offset == self.offset:
-                    # case 1 - restart at same offset as the current buffer -> truncate buffer to the current input 
-                    self.buffer[0:] = buff
-                    self.length = size
-                    self.total = self.offset + size
-                    print "inject() B: buffer => offset=%d,length=%d,total=%d" % (self.offset,self.length,self.total)
-                else:
-                    # case 2 - random buffer insert??? ... I give up
-                    raise FuseOSError(errno.EILSEQ)
-            return size
-
-        def truncate(self):
-            self.buffer = self.buffer[:0]
-            self.offset = self.total
-            self.length = 0
-
-
-# --- FUSE filesystem init
+# --- MAIN setup
     def __init__(self, args):
 
 # debugging
@@ -259,10 +265,8 @@ class pmount(Operations):
         self.verbose = args.verbose
         self.log.info("init(): connection established")
 
-
 # --- triggered on ctrl-C or unmount
     def destroy(self, path):
-#        if self.verbose:
         self.iostats.display(self.log)
         return 0
 
@@ -295,7 +299,7 @@ class pmount(Operations):
 # FIXME - end of range = max open files ...
         for fh in range(1,100):
             if self.mf_ronly.get(fh) is None:
-                self.mf_ronly[fh] = pmount.mfread(response)
+                self.mf_ronly[fh] = mfread(response)
                 return fh
 
         raise FuseOSError(errno.EMFILE)
@@ -316,7 +320,7 @@ class pmount(Operations):
         reply = self.mf_client.aterm_run("server.io.job.describe :ticket %d" % ticket)
         elem = reply.find(".//path")
         tmpfile = elem.text
-        self.mf_wonly[ticket] = pmount.mfwrite(store=store, tmpfile=tmpfile)
+        self.mf_wonly[ticket] = mfwrite(store=store, tmpfile=tmpfile)
         self.log.debug("mf_wonly_open(): backing store=%s, tmpfile=%s, ticket=%s" % (store, tmpfile, ticket))
         return ticket
 
@@ -660,12 +664,12 @@ class pmount(Operations):
 # ---
     @iostats.record
     def read(self, path, size, offset, fh):
-        mfread = self.mf_ronly[fh]
+        mfobj = self.mf_ronly[fh]
 # if offset matches our mediaflux stream object - continue the sequential read (faster)
-        if offset == mfread.offset and mfread.response is not None:
+        if offset == mfobj.offset and mfobj.response is not None:
             try:
-                data = mfread.response.read(size)
-                mfread.offset += len(data)
+                data = mfobj.response.read(size)
+                mfobj.offset += len(data)
                 return data
 
             except Exception as e:
@@ -673,7 +677,7 @@ class pmount(Operations):
                 pass
         else:
 # ensure we stick to random access mode
-            mfread.reponse = None
+            mfobj.reponse = None
 # fallback to slower random access method
             fullpath = self._remote_fullpath(path)
             reply = self.mf_client.aterm_run('asset.content.get :id "path=%s" :length %d :offset %d :out dummy' % (fullpath, size, offset))
