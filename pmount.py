@@ -158,7 +158,7 @@ class pmount(Operations):
         else:
             logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 
-# NB: always attempt to use config file as we want a secure location to store the authentication token
+# NB: always use config file as we want a secure location to store the authentication token
         token = "xyz123"
         try:
             config_filepath = os.path.expanduser("~/.mf_config")
@@ -220,7 +220,7 @@ class pmount(Operations):
         self.buffer_max = 100000000
 
 # attempt to connect and authenticate
-        self.log.info("init(): protocol=[%s], server=[%s], port=[%s], domain=[%s], encrypt=[%r]" % (args.protocol, args.server, args.port, args.domain, args.encrypt))
+        self.log.info("init(): protocol=%s, server=%s, port=%s, encrypt=%r, domain=%s, namespace=%s" % (args.protocol, args.server, args.port, args.encrypt, args.domain, args.namespace))
         self.mf_client = mfclient.mf_client(protocol=args.protocol, server=args.server, port=args.port, domain=args.domain, enforce_encrypted_login=eval(args.encrypt), debug=0)
         try:
             self.mf_client.login(token=token)
@@ -853,12 +853,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
 # default protocol for mediaflux
-    if args.port == 80:
+    if int(args.port) == 80:
         args.protocol = "http"
-        args.encrypt = False
+        args.encrypt = "False"
     else:
         args.protocol = "https"
-        args.encrypt = True
+        args.encrypt = "True"
 
 # main call
 # NB: disallow threads (httplib/urllib2 are not thread safe)
