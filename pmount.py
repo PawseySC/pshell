@@ -26,11 +26,10 @@ except:
     print "This system does not seem to have FUSE installed."
 
 
-# priority: local query -> cached mediaflux response -> direct mediaflux call
+# --- priority: local query -> cached mediaflux response -> direct mediaflux call
 class pmount(Operations):
 
-# TODO - overhaul a bit to include timings on normal server calls 
-# measure disk / net performance
+# --- record/display disk / net performance
     class iostats():
         t_count = dict()
         t_bytes = dict()
@@ -50,21 +49,22 @@ class pmount(Operations):
             return "%s %-s" % (f, units[rank])
 
         @classmethod
-        def display(mystats):
-            print "\n === iostats times ==="
+        def display(mystats, logger):
+            logger.info(" === iostats times ===")
             for fname in mystats.t_count.keys():
                 size = mystats.t_bytes[fname]
                 time = mystats.t_time[fname]
                 if size == 0:
-                   print "%-20s : %d calls : total time = %f s" % (fname, mystats.t_count[fname], time) 
-            print "\n === iostats rates ==="
+                    logger.info("%-20s : %d calls : total time = %f s" % (fname, mystats.t_count[fname], time))
+
+            logger.info(" === iostats rates ===")
             for fname in mystats.t_count.keys():
                 time = max(0.1, mystats.t_time[fname])
                 size = mystats.t_bytes[fname]
                 if size != 0:
                     rate = float(size) / time
                     h_rate = mystats.human(rate)
-                    print "%-20s : %d bytes @ %s/s" % (fname, mystats.t_bytes[fname], h_rate)
+                    logger.info("%-20s : %d bytes @ %s/s" % (fname, mystats.t_bytes[fname], h_rate))
 
         @classmethod
         def record(mystats, func):
@@ -117,29 +117,25 @@ class pmount(Operations):
 
         def inject(self, buff, offset):
             size = len(buff)
-#            if self.length == 0:
-#                print "inject() START: buffer => offset=%d,length=%d,total=%d : input => offset=%d,size=%d" % (self.offset,self.length,self.total,offset,size)
-
             if offset == self.total:
                 # sequential buffer extend
                 self.buffer.extend(buff)
                 self.length += size
                 self.total += size
             else:
-                # shouldn't happen ... TODO - check the logic just in case ...
+                # inject at unexpected (non-sequential) offset ... shouldn't happen???
                 print "inject() A: buffer => offset=%d,length=%d,total=%d : input => offset=%d,size=%d" % (self.offset,self.length,self.total,offset,size)
                 if offset == self.offset:
-                    # case 1 - restart at same offset -> truncate buffer to the current input 
+                    # case 1 - restart at same offset as the current buffer -> truncate buffer to the current input 
                     self.buffer[0:] = buff
                     self.length = size
                     self.total = self.offset + size
                     print "inject() B: buffer => offset=%d,length=%d,total=%d" % (self.offset,self.length,self.total)
                 else:
-                    # case 2 - insert somewhere random ... shouldn't happen?
+                    # case 2 - random buffer insert??? ... I give up
                     raise FuseOSError(errno.EILSEQ)
             return size
 
-# TODO - lower buffer size and check this holds under load
         def truncate(self):
             self.buffer = self.buffer[:0]
             self.offset = self.total
@@ -151,9 +147,16 @@ class pmount(Operations):
 
 # debugging
         self.log = logging.getLogger('pmount')
-        logging.basicConfig(format='%(asctime)s - %(name)s - %(message)s')
         if args.verbose:
             self.log.setLevel(logging.DEBUG)
+        else:
+            self.log.setLevel(logging.INFO)
+        if args.logfile:
+            logfile = datetime.now().strftime('pmount-%Y-%m-%d-%H:%M:%S.log')
+            print "Writing log to: %s" % logfile
+            logging.basicConfig(filename=logfile, format='%(asctime)s - %(levelname)s - %(message)s')
+        else:
+            logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
 
 # NB: always attempt to use config file as we want a secure location to store the authentication token
         token = "xyz123"
@@ -217,7 +220,7 @@ class pmount(Operations):
         self.buffer_max = 100000000
 
 # attempt to connect and authenticate
-        self.log.debug("init(): protocol=[%s], server=[%s], port=[%s], domain=[%s], encrypt=[%r]" % (args.protocol, args.server, args.port, args.domain, args.encrypt))
+        self.log.info("init(): protocol=[%s], server=[%s], port=[%s], domain=[%s], encrypt=[%r]" % (args.protocol, args.server, args.port, args.domain, args.encrypt))
         self.mf_client = mfclient.mf_client(protocol=args.protocol, server=args.server, port=args.port, domain=args.domain, enforce_encrypted_login=eval(args.encrypt), debug=0)
         try:
             self.mf_client.login(token=token)
@@ -259,25 +262,36 @@ class pmount(Operations):
 
 # --- triggered on ctrl-C or unmount
     def destroy(self, path):
-        if self.verbose:
-            self.iostats.display()
+#        if self.verbose:
+        self.iostats.display(self.log)
         return 0
 
 # --- fake filehandle for download (read only)
     def mf_ronly_open(self, namespace, filename):
 
+ # get the asset ID (NB: asset.query with :get-content-status True doesn't work)
         reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'"' % (namespace, filename))
         elem = reply.find(".//id")
         if elem is not None:
             asset_id = int(elem.text)
         else:
-            self.log.debug("mf_ronly_open() ERROR: couldn't find asset [%s] in namespace [%s]" % (filename, namespace))
+            self.log.debug("mf_ronly_open(): couldn't find asset [%s] in namespace [%s]" % (filename, namespace))
             raise FuseOSError(errno.ENOENT)
+# get the content status
+        reply = self.mf_client.aterm_run('asset.content.status :id %d' % asset_id)
+        elem = reply.find(".//asset/state")
+        if elem is not None:
+# recall if offline and raise a "Try Again" ref: https://github.com/sahlberg/libnfs/issues/164
+            if "online" not in elem.text:
+                self.log.info("mf_ronly_open(): asset [%s] in namespace [%s] is OFFLINE -> migrating [%d] ONLINE" % (filename, namespace, asset_id))
+                self.mf_client.aterm_run("asset.content.migrate :id %d :destination 'online'" % asset_id)
+                raise FuseOSError(errno.EAGAIN)
+        else:
+            self.log.warning("mf_ronly_open(): failed to retrieve content status for asset [%s] in namespace [%s]" % (filename, namespace))
 
 # construct URL to the file and open 
         url = self.mf_client.data_get + "?_skey=%s&id=%d" % (self.mf_client.session, asset_id)
         response = urllib2.urlopen(url, timeout=self.timeout)
-
 # FIXME - end of range = max open files ...
         for fh in range(1,100):
             if self.mf_ronly.get(fh) is None:
@@ -297,17 +311,13 @@ class pmount(Operations):
             raise FuseOSError(errno.ENODATA)
 
         reply = self.mf_client.aterm_run("server.io.job.create :store 'asset:%s'" % store)
-
         elem = reply.find(".//ticket")
         ticket = int(elem.text)
-
         reply = self.mf_client.aterm_run("server.io.job.describe :ticket %d" % ticket)
-
         elem = reply.find(".//path")
         tmpfile = elem.text
-
         self.mf_wonly[ticket] = pmount.mfwrite(store=store, tmpfile=tmpfile)
-
+        self.log.debug("mf_wonly_open(): backing store=%s, tmpfile=%s, ticket=%s" % (store, tmpfile, ticket))
         return ticket
 
 # --- convert virtual path to the server path
@@ -357,7 +367,7 @@ class pmount(Operations):
         elem = reply.find(".//iterator")
         return elem.text
 
-# --- get asset metadata for single item (not commonly invoked)
+# --- get asset metadata for single item 
     @iostats.record
     def get_asset(self, namespace, filename):
         try:
@@ -526,55 +536,119 @@ class pmount(Operations):
     def mkdir(self, path, mode):
         if self.readonly:
             raise FuseOSError(errno.EACCES)
-# build and run the command
+# build paths
         fullpath = self._remote_fullpath(path)
         parent = posixpath.dirname(fullpath)
         child = posixpath.basename(fullpath)
-        self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % fullpath)
-# update cache
-        namespace_cache = self.namespace_cache.get(parent)
-        if namespace_cache is not None:
-            namespace_cache[child] = self.inode_new(stat.S_IFDIR | 0500, 2)
+# run mkdir command and update cache on success
+        try:
+            self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % fullpath)
+            namespace_cache = self.namespace_cache.get(parent)
+            if namespace_cache is not None:
+                namespace_cache[child] = self.inode_new(stat.S_IFDIR | 0500, 2)
+            return
+        except Exception as e:
+# any error is treated as no permission
+            self.log.debug("mkdir(): %s" % str(e))
+            pass
+        raise FuseOSError(errno.EACCES)
 
 # ---
     def rmdir(self, path):
         if self.readonly:
             raise FuseOSError(errno.EACCES)
-# build and run the command
+# check if there is any content under this folder
         fullpath = self._remote_fullpath(path)
         parent = posixpath.dirname(fullpath)
         child = posixpath.basename(fullpath)
-        self.mf_client.aterm_run('asset.namespace.destroy :namespace "%s"' % fullpath)
-# update cache
-        namespace_cache = self.namespace_cache.get(parent)
-        if namespace_cache is not None:
-            del self.namespace_cache[parent][child]
+        reply = self.mf_client.aterm_run('asset.query :where "namespace>=\'%s\'" :action count :size 1' % fullpath)
+        elem = reply.find(".//value")
+        count = int(elem.text)
+# delete ony if there is absolutely no content (helps me sleep better at nights)
+        if count == 0:
+            self.log.info("rmdir(): removing empty folder: %s" % fullpath)
+            try:
+                self.mf_client.aterm_run('asset.namespace.destroy :namespace "%s"' % fullpath)
+                namespace_cache = self.namespace_cache.get(parent)
+                if namespace_cache is not None:
+                    del self.namespace_cache[parent][child]
+                return
+            except Exception as e:
+# FIXME - any error in server call is treated as no permission
+                self.log.debug("rmdir(): %s" % str(e))
+                raise FuseOSError(errno.EACCES)
+# non empty folder error
+        raise FuseOSError(errno.ENOTEMPTY)
+
+# ---
+    def rename(self, old, new):
+        if self.readonly:
+            raise FuseOSError(errno.EACCES)
+# build source and destination paths
+        old_fullpath = self._remote_fullpath(old)
+        oldname = posixpath.basename(old_fullpath)
+        new_fullpath = self._remote_fullpath(new)
+        namespace = posixpath.dirname(new_fullpath)
+        newname = posixpath.basename(new_fullpath)
+# run rename command and update cache on success
+        try:
+            self.mf_client.aterm_run('asset.move :id "path=%s" :namespace "%s" :name "%s"' % (old_fullpath, namespace, newname))
+            asset_cache = self.asset_cache.get(namespace)
+            if asset_cache is not None:
+                asset_cache[newname] = asset_cache.pop(oldname)
+            return
+        except Exception as e:
+# any error is treated as no permission
+            self.log.debug("rename(): %s" % str(e))
+            pass
+        raise FuseOSError(errno.EACCES)
+
+# ---
+    def unlink(self, path):
+        if self.readonly:
+            raise FuseOSError(errno.EACCES)
+        fullpath = self._remote_fullpath(path)
+        namespace = posixpath.dirname(fullpath)
+        filename = posixpath.basename(fullpath)
+# run delete command and remove from cache on success
+        try:
+            self.mf_client.aterm_run('asset.destroy :id "path=%s"' % fullpath)
+            asset_cache = self.asset_cache.get(namespace)
+            if asset_cache is not None:
+                del asset_cache[filename]
+            return
+        except:
+# any failure is treated as no permission
+# FIXME - raise the correct error for other cases (eg doesn't exist, deleted from the server by 3rd party)
+            pass
+        raise FuseOSError(errno.EACCESS)
 
 # --- not supported
-
     def mknod(self, path, mode, dev):
+        self.log.debug("mknod() : path=%s" % path)
         raise FuseOSError(errno.EACCES)
 
     def readlink(self, path):
+        self.log.debug("readlink() : path=%s" % path)
         raise FuseOSError(errno.EPERM)
 
     def symlink(self, name, target):
+        self.log.debug("symlink() : name=%s, target=%s" % (name, target))
         raise FuseOSError(errno.EPERM)
 
     def link(self, target, name):
+        self.log.debug("link() : target=%s, name=%s" % (target, name))
         raise FuseOSError(errno.EPERM)
 
 # ---
     def open(self, path, flags):
         self.log.debug("open() : path=%s" % path)
-
         if flags & os.O_RDWR:
             # not sure we can ever support this
             raise FuseOSError(errno.EPERM)
         if flags & os.O_WRONLY:
             # TODO - can we use server.io.write to do this ... only if we can set/change the filepath it resolves to ...
             raise FuseOSError(errno.EPERM)
-
 # init paths
         fullpath = self._remote_fullpath(path)
         namespace = posixpath.dirname(fullpath)
@@ -587,7 +661,6 @@ class pmount(Operations):
     @iostats.record
     def read(self, path, size, offset, fh):
         mfread = self.mf_ronly[fh]
-
 # if offset matches our mediaflux stream object - continue the sequential read (faster)
         if offset == mfread.offset and mfread.response is not None:
             try:
@@ -618,7 +691,7 @@ class pmount(Operations):
 
 # ---
     def create(self, path, mode, fi=None):
-        self.log.debug("create() : path=%s" % path)
+        self.log.debug("create() : path=%s, mode=%d" % (path, mode))
         if self.readonly:
             raise FuseOSError(errno.EACCES)
 
@@ -638,10 +711,8 @@ class pmount(Operations):
 
         return fakehandle
 
-
 # --- write the current buffer to the io job ticket
     def mf_write(self, mfbuffer, ticket):
-
         if mfbuffer.length == 0:
             return
 
@@ -684,11 +755,9 @@ class pmount(Operations):
         reply = resp.read()
         conn.close()
 
-
 # --- buffer the data and send when limit has been exceeded
     @iostats.record
     def write(self, path, buf, offset, fh):
-#        print "write(): path=%s, size=%d, offset=%d, ticket=%d" % (path, len(buf), offset, fh)
         mfbuffer = self.mf_wonly[fh]
         size = mfbuffer.inject(buf, offset)
         if mfbuffer.length > self.buffer_max:
@@ -699,56 +768,31 @@ class pmount(Operations):
         inode['st_size'] = mfbuffer.total
         return size
 
+# CURRENT - pretend these worked and return success ... 
+# TODO - explore implications/better solutions?
 # ---
     def chmod(self, path, mode):
         self.log.debug("chmod() : path=%s, mode=%d" % (path, mode))
         return 0
-
 # ---
     def chown(self, path, uid, gid):
         self.log.debug("chown() : path=%s, uid=%d, gid=%d" % (path, uid, gid))
         return 0
-
-# ---
-    def rename(self, old, new):
-        self.log.debug("rename() TODO : old=%s, new=%d" % (old, new))
-        raise FuseOSError(errno.EACCES)
-
 # --- 
     def truncate(self, path, length, fh=None):
         self.log.debug("truncate() : path=%s, length=%d" % (path, length))
         return 0
-
-# ---
-    def unlink(self, path):
-        fullpath = self._remote_fullpath(path)
-        namespace = posixpath.dirname(fullpath)
-        filename = posixpath.basename(fullpath)
-        if self.readonly:
-            raise FuseOSError(errno.EACCES)
-
-        try:
-            self.mf_client.aterm_run('asset.destroy :id "path=%s"' % fullpath)
-# remove from cache (if exists)
-            asset_cache = self.asset_cache.get(namespace)
-            if asset_cache is not None:
-                del asset_cache[filename]
-            return
-        except:
-# any failure is treated as no permission
-# FIXME - handle other cases (eg doesn't exist, deleted from the server by 3rd party)
-            pass
-        raise FuseOSError(errno.EPERM)
-
-# ---
-    def flush(self, path, fh):
-        self.log.debug("flush() : path=%s, fh=%d" % (path, fh))
-        return 0
-
 # ---
     def lock(self, path, fip, cmd, lock):
         self.log.debug("lock() : path=%s, fip=%r, cmd=%r, lock=%r" % (path, fip, cmd, lock))
         return 0
+# ---
+    def flush(self, path, fh):
+        self.log.debug("flush() : path=%s, fh=%d" % (path, fh))
+        return 0
+# ---
+    def fsync(self, path, fdatasync, fh):
+        return self.flush(path, fh)
 
 # ---
 # NB - release() return code/exceptions are ignored by FUSE - so there's no way to fail the operation from this method
@@ -791,10 +835,6 @@ class pmount(Operations):
 # path2 - open() was used for the file handle
             del self.mf_ronly[fh]
 
-# ---
-    def fsync(self, path, fdatasync, fh):
-        return self.flush(path, fh)
-
 
 # --- main: process arguments and pass to FUSE
 if __name__ == '__main__':
@@ -808,6 +848,7 @@ if __name__ == '__main__':
     parser.add_argument("-n", dest="namespace", default="/projects", help="Top level mediaflux namespace")
     parser.add_argument("-b", "--background", help="Run in the background", action="store_true")
     parser.add_argument("-r", "--readonly", help="Mount as readonly", action="store_true")
+    parser.add_argument("-l", "--logfile", help="Create timestamped logfile", action="store_true")
     parser.add_argument("-v", "--verbose", help="Activate verbose logging", action="store_true")
     args = parser.parse_args()
 
