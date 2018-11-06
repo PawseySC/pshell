@@ -356,6 +356,14 @@ class pmount(Operations):
             path = path[:-1]
         return path
 
+# --- TODO - window's metadata files too?
+    def _should_ignore(self, filename):
+        if filename.startswith(".local"):
+            return True
+        if filename.startswith("._"):
+            return True
+        return False
+
 # --- create a new attribute dictionary
     def inode_new(self, mode, links, size=0, mtime=-1):
         if self.readonly is False:
@@ -439,10 +447,8 @@ class pmount(Operations):
         name = posixpath.basename(fullpath)
         parent = posixpath.dirname(fullpath)
 
-# ignore these silly OS-X metadata files which shouldn't exist 
-        if name.startswith(".local"):
-            raise FuseOSError(errno.ENOENT)
-        if name.startswith("._"):
+# ignore silly metadata files which shouldn't exist (or be silently created by the OS)
+        if self._should_ignore(name):
             raise FuseOSError(errno.ENOENT)
 
 # attempt to get parent namespace's namespace listing, else generate
@@ -566,12 +572,9 @@ class pmount(Operations):
             namespace_cache = self.namespace_cache.get(parent)
             if namespace_cache is not None:
                 namespace_cache[child] = self.inode_new(stat.S_IFDIR | 0500, 2)
-            return
         except Exception as e:
-# any error is treated as no permission
             self.log.debug("mkdir(): %s" % str(e))
-            pass
-        raise FuseOSError(errno.EACCES)
+            raise FuseOSError(errno.EACCES)
 
 # ---
     def rmdir(self, path):
@@ -594,7 +597,6 @@ class pmount(Operations):
                     del self.namespace_cache[parent][child]
                 return
             except Exception as e:
-# FIXME - any error in server call is treated as no permission
                 self.log.debug("rmdir(): %s" % str(e))
                 raise FuseOSError(errno.EACCES)
 # non empty folder error
@@ -604,24 +606,31 @@ class pmount(Operations):
     def rename(self, old, new):
         if self.readonly:
             raise FuseOSError(errno.EACCES)
-# build source and destination paths
-        old_fullpath = self._remote_fullpath(old)
-        oldname = posixpath.basename(old_fullpath)
-        new_fullpath = self._remote_fullpath(new)
-        namespace = posixpath.dirname(new_fullpath)
-        newname = posixpath.basename(new_fullpath)
-# run rename command and update cache on success
         try:
-            self.mf_client.aterm_run('asset.move :id "path=%s" :namespace "%s" :name "%s"' % (old_fullpath, namespace, newname))
-            asset_cache = self.asset_cache.get(namespace)
-            if asset_cache is not None:
-                asset_cache[newname] = asset_cache.pop(oldname)
-            return
+# build source and destination paths
+            old_fullpath = self._remote_fullpath(old)
+            oldname = posixpath.basename(old_fullpath)
+            new_fullpath = self._remote_fullpath(new)
+            namespace = posixpath.dirname(new_fullpath)
+            newname = posixpath.basename(new_fullpath)
+# file
+            inode = self.getattr(old)
+            if inode['st_mode'] & stat.S_IFREG:
+                self.mf_client.aterm_run('asset.move :id "path=%s" :namespace "%s" :name "%s"' % (old_fullpath, namespace, newname))
+                asset_cache = self.asset_cache.get(namespace)
+                if asset_cache is not None:
+                    asset_cache[newname] = asset_cache.pop(oldname)
+# directory
+# NB: mediaflux command only seems to allow rename ... can't move a folder into another folder (for example)
+            if inode['st_mode'] & stat.S_IFDIR:
+                self.mf_client.aterm_run('asset.namespace.rename :namespace "%s" :name "%s"' % (old_fullpath, newname))
+                namespace_cache = self.namespace_cache.get(namespace)
+                if namespace_cache is not None:
+                    namespace_cache[newname] = namespace_cache.pop(oldname)
+
         except Exception as e:
-# any error is treated as no permission
             self.log.debug("rename(): %s" % str(e))
-            pass
-        raise FuseOSError(errno.EACCES)
+            raise FuseOSError(errno.EACCES)
 
 # ---
     def unlink(self, path):
@@ -636,12 +645,10 @@ class pmount(Operations):
             asset_cache = self.asset_cache.get(namespace)
             if asset_cache is not None:
                 del asset_cache[filename]
-            return
-        except:
-# any failure is treated as no permission
+        except Exception as e:
 # FIXME - raise the correct error for other cases (eg doesn't exist, deleted from the server by 3rd party)
-            pass
-        raise FuseOSError(errno.EACCESS)
+            self.log.debug("unlink(): %s" % str(e))
+            raise FuseOSError(errno.EACCESS)
 
 # --- not supported
     def mknod(self, path, mode, dev):
@@ -719,8 +726,8 @@ class pmount(Operations):
         namespace = posixpath.dirname(fullpath)
         filename = posixpath.basename(fullpath)
 
-# TODO - OS-X ... windows has it's own flavour - combine in a method
-        if filename.startswith("._"):
+# don't allow the OS to silently pollute
+        if self._should_ignore(filename):
             raise FuseOSError(errno.EPERM)
 
 # get ref to use as filehandle for write()
