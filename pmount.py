@@ -39,13 +39,14 @@ class mfwrite():
     """
     Handle buffered uploads to Mediaflux
     """
-    def __init__(self, store=None, tmpfile=None):
+    def __init__(self, store=None, quota=None, tmpfile=None):
         self.buffer = bytearray()
         self.length = 0
         self.offset = 0
         self.total = 0
         self.tmpfile = tmpfile
         self.store = store
+        self.quota = quota
 
     def inject(self, buff, offset):
         size = len(buff)
@@ -66,6 +67,12 @@ class mfwrite():
             else:
                 # case 2 - random buffer insert??? ... I give up
                 raise FuseOSError(errno.EILSEQ)
+
+# fail if we've exceed the destination store quota
+        if self.quota is not None:
+            if self.total > self.quota:
+                raise FuseOSError(errno.EDQUOT)
+
         return size
 
     def truncate(self):
@@ -227,7 +234,11 @@ class pmount(Operations):
 
 # attempt to connect and authenticate
         self.log.info("init(): protocol=%s, server=%s, port=%s, encrypt=%r, domain=%s, namespace=%s" % (args.protocol, args.server, args.port, args.encrypt, args.domain, args.namespace))
-        self.mf_client = mfclient.mf_client(protocol=args.protocol, server=args.server, port=args.port, domain=args.domain, enforce_encrypted_login=eval(args.encrypt), debug=0)
+        try:
+            self.mf_client = mfclient.mf_client(protocol=args.protocol, server=args.server, port=args.port, domain=args.domain, enforce_encrypted_login=eval(args.encrypt), debug=0)
+        except Exception as e:
+            self.log.error("init(): failed to connect: %s" % str(e))
+            exit(-1)
         try:
             self.mf_client.login(token=token)
         except Exception as e:
@@ -301,27 +312,37 @@ class pmount(Operations):
             if self.mf_ronly.get(fh) is None:
                 self.mf_ronly[fh] = mfread(response)
                 return fh
-
+# couldn't get a free filehandle - give up
         raise FuseOSError(errno.EMFILE)
 
 # --- fake filehandle for upload (write only)
     def mf_wonly_open(self, folder, filename):
-
-        reply = self.mf_client.aterm_run("asset.namespace.describe :namespace %s" % folder)
-        elem = reply.find(".//store")
-        if elem is not None:
+# get info on destination
+        try:
+            reply = self.mf_client.aterm_run("asset.namespace.describe :namespace %s" % folder)
+            elem = reply.find(".//store")
             store = elem.text
-        else:
+# NB: doesn't fit the namespace quota scheme
+            reply = self.mf_client.aterm_run("asset.store.describe :name %s" % store)
+            elem = reply.find(".//mount/free")
+            quota = int(elem.text)
+        except Exception as e:
+            self.log.error("mf_wonly_open() : %s" % str(e))
             raise FuseOSError(errno.ENODATA)
+# create server upload job
+        try:
+            reply = self.mf_client.aterm_run("server.io.job.create :store 'asset:%s'" % store)
+            elem = reply.find(".//ticket")
+            ticket = int(elem.text)
+            reply = self.mf_client.aterm_run("server.io.job.describe :ticket %d" % ticket)
+            elem = reply.find(".//path")
+            tmpfile = elem.text
+            self.mf_wonly[ticket] = mfwrite(store=store, quota=quota, tmpfile=tmpfile)
+        except Exception as e:
+            self.log.error("mf_wonly_open() : %s" % str(e))
+            raise FuseOSError(errno.EPERM)
 
-        reply = self.mf_client.aterm_run("server.io.job.create :store 'asset:%s'" % store)
-        elem = reply.find(".//ticket")
-        ticket = int(elem.text)
-        reply = self.mf_client.aterm_run("server.io.job.describe :ticket %d" % ticket)
-        elem = reply.find(".//path")
-        tmpfile = elem.text
-        self.mf_wonly[ticket] = mfwrite(store=store, tmpfile=tmpfile)
-        self.log.debug("mf_wonly_open(): backing store=%s, tmpfile=%s, ticket=%s" % (store, tmpfile, ticket))
+        self.log.debug("mf_wonly_open(): backing store=%s, quota=%d, tmpfile=%s, ticket=%s" % (store, quota, tmpfile, ticket))
         return ticket
 
 # --- convert virtual path to the server path
@@ -333,7 +354,6 @@ class pmount(Operations):
         path = os.path.join(self.remote_root, partial)
         if path.endswith('/'):
             path = path[:-1]
-
         return path
 
 # --- create a new attribute dictionary
@@ -344,7 +364,6 @@ class pmount(Operations):
             mtime = self.st_time
 
         attr = { 'st_uid':self.uid, 'st_gid':self.gid, 'st_size':size, 'st_mode':mode, 'st_nlinks':links, 'st_mtime':mtime }
-
         return attr
 
 # --- namespace only population of inode and directory listing caches
@@ -352,15 +371,12 @@ class pmount(Operations):
     @iostats.record
     def get_namespaces(self, fullpath):
 
-# server call
+# add inodes for all child namespaces and populate directory listing 
         reply = self.mf_client.aterm_run('asset.namespace.list :namespace %s' % fullpath)
-
-# add inodes for all child namespaces and populate directory listing from the server call reply
         this_folder = dict()
         for elem in reply.findall(".//namespace/namespace"):
             folder = posixpath.join(fullpath, elem.text)
             this_folder[elem.text] = self.inode_new(stat.S_IFDIR | 0500, 2)
-
 # cache the directory listing (namespaces only)
         self.namespace_cache[fullpath] = this_folder
 
