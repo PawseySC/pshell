@@ -32,3 +32,9 @@ It features:
 * SFTP-like syntax
 * Tab completion
 * Basic support for mediaflux aterm commands
+
+
+### FUSE filesystem client ###
+
+pmount.py - FUSE filesystem implementation for mounting a mediaflux namespace as a local folder.
+
