@@ -1,7 +1,7 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 """
-This module is a Python 2.7.x (standard lib only) implementation of a mediaflux client
+This module is a Python 3.x (standard lib only) implementation of a mediaflux client
 Author: Sean Fleming
 """
 
@@ -16,8 +16,8 @@ import random
 import string
 import socket
 import signal
-import urllib2
-import httplib
+import urllib.request, urllib.error, urllib.parse
+import http.client
 import datetime
 import functools
 import mimetypes
@@ -170,15 +170,15 @@ class mf_client:
 
 # if required, attempt to display more connection info
         if self.debug > 0:
-            print "POST-URL: %s" % self.post_url
-            print "DATA-GET: %s" % self.data_get
-            print "DATA-PUT: %s" % self.data_put
+            print("POST-URL: %s" % self.post_url)
+            print("DATA-GET: %s" % self.data_get)
+            print("DATA-PUT: %s" % self.data_put)
             if self.protocol == "https":
 # first line of python version info is all we're interested in
                 version = sys.version
                 i = version.find("\n")
-                print "  PYTHON: %s" % version[:i]
-                print " OPENSSL:", ssl.OPENSSL_VERSION
+                print("  PYTHON: %s" % version[:i])
+                print(" OPENSSL:", ssl.OPENSSL_VERSION)
 # early versions of python 2.7.x are missing the SSL context method
                 try:
                     context = ssl.create_default_context()
@@ -186,9 +186,9 @@ class mf_client:
                     context.check_hostname = True
                     c = context.wrap_socket(socket.socket(socket.AF_INET), server_hostname=self.server)
                     c.connect((self.server, self.port))
-                    print "  CIPHER:", c.cipher()
+                    print("  CIPHER:", c.cipher())
                 except Exception as e:
-                    print " WARNING: %s" % str(e)
+                    print(" WARNING: %s" % str(e))
 
 #------------------------------------------------------------
     @staticmethod
@@ -229,9 +229,9 @@ class mf_client:
 #        print "\n===================\n"
 
 # NB: timeout exception if server is unreachable
-        request = urllib2.Request(self.post_url, data=xml_string, headers={'Content-Type': 'text/xml'})
-        response = urllib2.urlopen(request, timeout=self.timeout)
-        xml = response.read()
+        request = urllib.request.Request(self.post_url, data=xml_string.encode('utf-8'), headers={'Content-Type': 'text/xml'})
+        response = urllib.request.urlopen(request, timeout=self.timeout)
+        xml = response.read().decode('utf-8')
 
 #        print "\nOUTPUT===================\n"
 #        print xml
@@ -298,10 +298,10 @@ class mf_client:
 # different connection object for HTTPS vs HTTP
         if self.encrypted_data is True:
             self.log("DEBUG", "Using https for data: [%s]" % self.data_put, level=2)
-            conn = httplib.HTTPSConnection(self.data_put, timeout=upload_timeout)
+            conn = http.client.HTTPSConnection(self.data_put, timeout=upload_timeout)
         else:
             self.log("DEBUG", "Using http for data: [%s]" % self.data_put, level=2)
-            conn = httplib.HTTPConnection(self.data_put, timeout=upload_timeout)
+            conn = http.client.HTTPConnection(self.data_put, timeout=upload_timeout)
 
 # kickoff
         self.log("DEBUG", "[pid=%d] File send starting: %s" % (pid, filepath))
@@ -518,10 +518,10 @@ class mf_client:
                 output.text = "session"
 
 # convert XML to string for posting ...
-        xml_text = ET.tostring(xml, method = 'xml')
+        xml_text = ET.tostring(xml, method = 'xml').decode('utf-8')
 
 # debug - password hiding for system.logon ...
-        xml_hidden = self._xml_cloak(xml_text) 
+        xml_hidden = self._xml_cloak(xml_text)
         self.log("DEBUG", "XML out: %s" % xml_hidden, level=2)
 
 # testing hook
@@ -548,7 +548,7 @@ class mf_client:
                             time.sleep(5)
                             continue
                         else:
-                            print "\r%s    " % text
+                            print("\r%s    " % text)
                             break
 # NB: it is an exception (error) to get results BEFORE completion
                     self.log("DEBUG", "Background job [%s] complete, getting results" % job)
@@ -584,7 +584,7 @@ class mf_client:
             text += ' '*self.indent + '%s="%s"    ' % (elem.tag, elem.text)
         else:
             text += ' '*self.indent + '%s    ' % elem.tag
-        for key, value in elem.attrib.iteritems():
+        for key, value in elem.attrib.items():
             text += ' -%s="%s"' % (key, value)
         text += '\n'
 
@@ -612,9 +612,9 @@ class mf_client:
             elem = xml_tree
         if elem is not None:
             for child in list(elem):
-                print self._xml_recurse(child).strip('\n')
+                print(self._xml_recurse(child).strip('\n'))
         else:
-            print "Empty XML document"
+            print("Empty XML document")
         return
 
 #------------------------------------------------------------
@@ -630,7 +630,7 @@ class mf_client:
         ts = time.time()
         st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
         message = st + " >>> " + message
-        print "%8s: %s" % (prefix, message)
+        print("%8s: %s" % (prefix, message))
 
 #------------------------------------------------------------
     def logout(self):
@@ -745,7 +745,7 @@ class mf_client:
         reply = self.aterm_run("asset.get :id %s :out %s" % (asset_id, filepath))
         elem = reply.find(".//outputs/url")
         url = elem.text
-        response = urllib2.urlopen(url)
+        response = urllib.request.urlopen(url)
         with open(filepath, 'wb') as output:
             while True:
 # trap network IO issues
@@ -878,7 +878,7 @@ class mf_client:
 
         self.log("DEBUG", "Total upload bytes: %d" % total_bytes)
         if total_bytes == 0:
-            print
+            print()
             raise Exception("No data to upload")
 
 # shenanigans to enable mfclient method to be called from the global process pool (python can't serialize instance methods)

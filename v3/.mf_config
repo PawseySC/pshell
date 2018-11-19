@@ -1,0 +1,155 @@
+[pawsey]
+server = data.pawsey.org.au
+protocol = https
+port = 443
+encrypt = True
+debug = False
+domain = ivec
+session = 166ec40b5cfGUwiNDPaTXZf1mSQ9TNCWA8sZZwLT1Fj315
+token = 6tn4zgkhjxo8IGnaMRx94UDjpfd8Ifcc63BsxGfu8ICY2dVHKkXKLb6qQhj5nUvHVC6MWNXgmMVkso4wVV106731243
+
+[monitor]
+server = data.pawsey.org.au
+protocol = https
+port = 443
+encrypt = True
+debug = False
+domain = ivec
+namespace = /projects
+token = M8sdRZ1ohxZojbecDqLNpFU3UldSAbq3106730942
+session = 165410dba66FdZkkq3CjmvzA1M7HPk7Chi92gappXOk309
+
+[public]
+server = data.pawsey.org.au
+protocol = https
+port = 443
+encrypt = True
+debug = False
+domain = public
+session = 164c5a0b9784smIE9e76h4hG6evVYJZnPswimrM4GCt308
+
+[unsafe]
+server = data.pawsey.org.au
+protocol = http
+port = 80
+encrypt = False
+domain = ivec
+namespace = /projects
+session = 15e5f50d28fuGPic6fF4rLmhgcAFDY26KxwshjAGhTo
+
+[unsafemaster]
+server = data.pawsey.org.au
+protocol = http
+port = 80
+encrypt = False
+domain = system
+namespace = /projects
+session = 15e07dab635jHgZdtGmErF6DRm4OZPeQv9NAJgxCQ6e
+
+[master]
+server = data.pawsey.org.au
+protocol = https
+port = 443
+encrypt = True
+debug = False
+domain = system
+session = 166f0dd88f7Xp4zvH5EdyAeiIKQCSc1NCOE8nHnbPeZ315
+
+[cou]
+server = data.pawsey.org.au
+protocol = https
+port = 443
+encrypt = True
+debug = False
+domain = ivec
+token = fR91lbSnlzVpaM4p106724942
+session = 15ce296ffedyIqiqkmt3BW7gU7iPK1vevQI7XNya61X
+
+[test]
+server = mfvm2.test.pawsey.org.au
+protocol = http
+port = 80
+encrypt = False
+debug = True
+domain = ivec
+namespace = /projects/Data Team
+token = BS3Te4VO3hPKIBfJ2kM21ojPVOaT4sADsVmSOcTyOlDIRWOp5FeFkj52kzbNy59M1Ep598751
+session = 162b8b89fceeykbugeOvpVNnCdGF65f3CRYtLAkhJvk
+
+[testmaster]
+server = mfvm2.test.pawsey.org.au
+protocol = http
+port = 80
+encrypt = False
+debug = False
+domain = system
+session = 162b8b8d2a91zQjubq2i1xgYKA86NkxxhYBxCe55pWY
+
+[local]
+server = 0.0.0.0
+protocol = http
+port = 80
+encrypt = False
+debug = False
+domain = ivec
+token = 3T9naDp2gbDfaoqLiULVwRutoAbm7fnj7EUwb1HWjIW91Q5lOD33Cbc2n4XfsOgg3JR6sEu1lIqbAcOidLI59821
+session = 1634d1ecb70xzeassqIZVlVT6UJQCumzW2gJJ2TJlRy
+
+[localmaster]
+server = 0.0.0.0
+protocol = http
+port = 80
+encrypt = False
+debug = False
+domain = system
+token = 
+session = 165e5728e21XYYVn1ynNp3IMm7XrvxTsRtWdDhSQPzt1
+
+[devmaster]
+server = 172.16.76.141
+protocol = http
+port = 80
+encrypt = False
+debug = False
+domain = system
+namespace = /projects
+session = 166ec55cc80pfVI8OxrtLAwQuKopODfJRiuB4DY4BHt
+token = MsJzFunorpuhxSChls7ucPrbDpL1vnUTcvVkCmUKj5AG93SrbjwOrbAjFgj7NQnMpfIYO2aA5981037
+
+[dev]
+server = 172.16.76.141
+protocol = http
+port = 80
+encrypt = False
+debug = False
+domain = ivec
+token = MJnGjVZISrcnUYf9OuJuHTt2xxTyxWT71gAqgKVPve8ZbGfm1CaI5pvaZAuAi1UnyHcp8uABAJ3DVPHgQyCou5CEGUdt7atP5981001
+session = 16294ca78f1lOda92aEZHETgjQ147sIgAoAYH5j94LD
+
+[dummy]
+server = localhost
+protocol = http
+port = 80
+domain = system
+dummy = True
+
+[new]
+server = 172.16.76.141
+protocol = http
+port = 80
+encrypt = False
+domain = system
+namespace = /projects/Data Team
+session = 166e2eff26fTn23GFpXSbO9wwERdWJqdbxRafuTdT7x
+token = Xh6kT3f16FIX1lmwPWosess1oqZj5981039
+
+[gok]
+server = 172.16.76.141
+protocol = http
+port = 80
+encrypt = False
+domain = system
+namespace = /projects/Data Team
+session = 166e2f33654bSMPE4rfnRvMPkOzT1R3VeL1SzvFfCzP
+token = 127os8qkbsSXcmLeIdLOqMe8H7wKDC24WqbPxnhaLPgoIpbcvfQDkuWV25co1ksONqQR4q3fBQXxli6FUULyae59810311
+

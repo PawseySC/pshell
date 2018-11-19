@@ -1,0 +1,11 @@
+FROM alpine:3.8
+
+RUN apk add bash
+RUN apk add python2
+
+#COPY mfclient.py /
+#COPY pshell.py /
+
+ENTRYPOINT ["/bin/bash"]
+
+#ENTRYPOINT ["python", "pshell.py"]

@@ -1,16 +1,16 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import os
 import sys
 import time
 import shutil
 import getpass
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import binascii
 import unittest
 import mfclient
 import posixpath
-import ConfigParser
+import configparser
 
 # global mfclient instance to avoid setup for every test class
 mf_client = None
@@ -142,11 +142,11 @@ if __name__ == '__main__':
 # acquire a dummy (non-connected/authenticated) client instance
     try:
         mf_client = mfclient.mf_client("http", "80", "localhost", dummy=True)
-        print "\n----------------------------------------------------------------------"
-        print "Running offline tests for: mfclient module"
-        print "----------------------------------------------------------------------\n"
+        print("\n----------------------------------------------------------------------")
+        print("Running offline tests for: mfclient module")
+        print("----------------------------------------------------------------------\n")
     except Exception as e:
-        print str(e)
+        print(str(e))
         exit(-1)
 
 
