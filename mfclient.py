@@ -380,7 +380,7 @@ class mf_client:
         return text3
 
 #------------------------------------------------------------
-    def aterm_run(self, service_call, post=True):
+    def aterm_run(self, input_line, post=True):
         """
         Method for parsing aterm's compressed XML syntax and sending to the Mediaflux server
 
@@ -393,14 +393,14 @@ class mf_client:
         """
 
 # intercept (before lexer!) and remove ampersand at end of line -> background job
-        if service_call[-1:] == '&':
+        if input_line[-1:] == '&':
             flag_background = True
-            service_call = aterm_line[:-1]
+            input_line = input_line[:-1]
         else:
             flag_background = False
 
 # NB - use posix=True as it's the closest to the way aterm processes input strings
-        lexer = shlex.shlex(service_call, posix=True)
+        lexer = shlex.shlex(input_line, posix=True)
         lexer.whitespace_split = True
         xml_root = ET.Element(None)
         xml_node = xml_root

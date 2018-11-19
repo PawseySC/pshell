@@ -6,6 +6,15 @@ encrypt = True
 domain = ivec
 namespace = /projects
 
+[mflux]
+server = mflux
+protocol = http
+port = 80
+encrypt = False
+debug = False
+domain = system
+namespace = /
+
 [dummy]
 server = localhost
 protocol = http
