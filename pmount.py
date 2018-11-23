@@ -221,8 +221,13 @@ class pmount(Operations):
         self.mf_ronly = dict()
         self.mf_wonly = dict()
 # ownership cheat
-        self.uid = os.getuid()
-        self.gid = os.getgid()
+#        self.uid = os.getuid()
+#        self.gid = os.getgid()
+# NEW - match ownership to mount path
+        stat_info = os.stat(args.path)
+        self.uid = stat_info.st_uid
+        self.gid = stat_info.st_gid
+
 # mtime cheat
         delta = datetime.utcnow() - datetime(1970, 1, 1)
         self.st_time = delta.total_seconds()

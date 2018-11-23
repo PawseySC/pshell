@@ -400,7 +400,9 @@ class mf_client:
             flag_background = False
 
 # NB - use posix=True as it's the closest to the way aterm processes input strings
-        lexer = shlex.shlex(input_line, posix=True)
+# NEW - python 2.6 fix
+        lexer = shlex.shlex(input_line.encode('utf-8'), posix=True)
+
         lexer.whitespace_split = True
         xml_root = ET.Element(None)
         xml_node = xml_root
@@ -488,17 +490,24 @@ class mf_client:
         xml = ET.Element("request")
         child = ET.SubElement(xml, "service")
 
+# NEW - xmltree append() doesn't like it if xml_root contains *multiple* elements ... so it injects a <None> parent ...
+# NEW - xmltree extend() works as intended ... but it's not available in python 2.6
+
 # special case for "system.login" as it does not work when wrapped with "service.execute" - which requires a valid session
         if service_call == "system.logon":
             child.set("name", service_call)
             args = ET.SubElement(child, "args")
-            args.append(xml_root)
+            for item in xml_root.findall("*"):
+                args.append(item)
+
 # special case for calls that are already wrapped in a service.execute 
         elif service_call == 'service.execute':
             child.set("name", service_call)
             child.set("session", self.session)
             args = ET.SubElement(child, "args")
-            args.append(xml_root)
+            for item in xml_root.findall("*"):
+                args.append(item)
+
 # FIXME - this should better merge with below so we also cover the case with outputs ...
         else:
 # wrap the service call in a service.execute to allow background execution, if desired 
@@ -510,7 +519,9 @@ class mf_client:
                 bg.text = "True"
             call = ET.SubElement(args, "service")
             call.set("name", service_call)
-            call.append(xml_root)
+            for item in xml_root.findall("*"):
+                call.append(item)
+
 # return data via the output URL
             if data_out_min > 0:
                 call.set("outputs", "%s" % data_out_min)
@@ -518,7 +529,9 @@ class mf_client:
                 output.text = "session"
 
 # convert XML to string for posting ...
-        xml_text = ET.tostring(xml, method = 'xml')
+# FIXME - python 2.6 doesn't like the method = ...
+#        xml_text = ET.tostring(xml, method = 'xml')
+        xml_text = ET.tostring(xml)
 
 # debug - password hiding for system.logon ...
         xml_hidden = self._xml_cloak(xml_text) 

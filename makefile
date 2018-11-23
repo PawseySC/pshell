@@ -1,5 +1,7 @@
-PY_VERSION?=2
+# spin up 2 containers: mediaflux & python + pshell
+# we could use docker compose - but there are a lot of config variables to pass around which makes it more awkward
 
+PY_VERSION?=2
 PY_DOCKERFILE=Dockerfile.py2env
 PY_IMAGE=seanfleming/python-$(PY_VERSION)
 PY_CONTAINER=py-container
@@ -10,6 +12,7 @@ MF_CONTAINER=mf-container
 MF_NET=mflux
 # the server= setting in .mf_config
 MF_SERVER=mflux
+
 
 mfenv:
 	docker network create -d bridge mflux
@@ -32,8 +35,8 @@ pyenv: $(PY_DOCKERFILE) mfenv
 pshell: mfclient.py pshell.py pyenv mfenv
 	docker cp mfclient.py $(PY_CONTAINER):/mfclient.py
 	docker cp pshell.py $(PY_CONTAINER):/pshell.py
-	docker exec -ti $(PY_CONTAINER) sh -c "/pshell.py -c mflux"
-#	docker exec -ti $(PY_CONTAINER) bash
+	docker exec -ti $(PY_CONTAINER) sh -c "sleep 10 && /pshell.py -c mflux"
+# FIXME - sleep for 10 is a hack to allow mediaflux to fully boot in the other container ...
 
 
 clean:
