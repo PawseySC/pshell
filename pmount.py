@@ -375,8 +375,7 @@ class pmount(Operations):
             mode = mode | 0200
         if mtime == -1:
             mtime = self.st_time
-
-        attr = { 'st_uid':self.uid, 'st_gid':self.gid, 'st_size':size, 'st_mode':mode, 'st_nlinks':links, 'st_mtime':mtime }
+        attr = { 'st_uid':self.uid, 'st_gid':self.gid, 'st_size':size, 'st_mode':mode, 'st_nlink':links, 'st_mtime':mtime }
         return attr
 
 # --- namespace only population of inode and directory listing caches
