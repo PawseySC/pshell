@@ -281,6 +281,13 @@ class pmount(Operations):
         self.verbose = args.verbose
         self.log.info("init(): connection established")
 
+# ---
+    def _debug_namespace_cache(self):
+        for namespace in self.namespace_cache:
+            print("[%s]" % namespace)
+            for child in self.namespace_cache[namespace]:
+                print("  - %s : %r" % (child, self.namespace_cache[namespace][child]))
+
 # --- triggered on ctrl-C or unmount
     def destroy(self, path):
         self.iostats.display(self.log)
@@ -347,7 +354,7 @@ class pmount(Operations):
             self.log.error("mf_wonly_open() : %s" % str(e))
             raise FuseOSError(errno.EPERM)
 
-        self.log.debug("mf_wonly_open(): backing store=%s, quota=%d, tmpfile=%s, ticket=%s" % (store, quota, tmpfile, ticket))
+        self.log.debug("mf_wonly_open() : backing store=%s, quota=%d, tmpfile=%s, ticket=%s" % (store, quota, tmpfile, ticket))
         return ticket
 
 # --- convert virtual path to the server path
@@ -382,7 +389,6 @@ class pmount(Operations):
 # NB: assumes this inode and content listing are not cached & creates new entries
     @iostats.record
     def get_namespaces(self, fullpath):
-
 # add inodes for all child namespaces and populate directory listing 
         reply = self.mf_client.aterm_run('asset.namespace.list :namespace %s' % fullpath)
         this_folder = dict()
@@ -424,7 +430,7 @@ class pmount(Operations):
             return { 'st_uid':self.uid, 'st_gid':self.gid, 'st_size':size, 'st_mode':stat.S_IFREG | 0400, 'st_nlink':1, 'st_mtime':mtime }
 
         except Exception as e:
-            self.log.error("get_asset(): %s" % str(e))
+            self.log.error("get_asset() : %s" % str(e))
 
         return None
 
@@ -441,7 +447,7 @@ class pmount(Operations):
 # --- get file/folder attributes 
     @iostats.record
     def getattr(self, path, fh=None):
-
+#        self.log.debug("getattr() : path=%s" % path)
 # check the temporary cache
         inode = self.inode_cache.get(path)
         if inode is not None:
@@ -455,32 +461,27 @@ class pmount(Operations):
         if self._should_ignore(name):
             raise FuseOSError(errno.ENOENT)
 
-# attempt to get parent namespace's namespace listing, else generate
-        namespace_cache = self.namespace_cache.get(parent)
-        if namespace_cache is None:
+# generate parent namespace's namespace cache if it doesn't exist
+        if parent not in self.namespace_cache:
             self.get_namespaces(parent)
+# return the inode (value) if the name (key) exists in the parent's namespace cache
+        if name in self.namespace_cache[parent]:
+            return self.namespace_cache[parent][name]
 
-# attempt to find in parent namespace
-        inode = self.namespace_cache[parent].get(name)
-        if inode is not None:
-            return inode
-
-# attempt to get parent namespace's asset listing
-        asset_cache = self.asset_cache.get(parent)
-        if asset_cache is not None:
-            inode = asset_cache.get(name)
-            if inode is not None:
-                return inode
+# NB: asset caching is handled differently to the namespace caching above - see readir() implementation for why
+# if the parent namespace has an asset cache and the filename appears - return the inode
+        if parent in self.asset_cache:
+            if name in self.asset_cache[parent]:
+                return self.asset_cache[parent][name]
 
 # triggered on non-navigational file query (eg file /some/random/path/file)
         inode = self.get_asset(parent, name)
         if inode is not None:
-            self.log.debug("getattr(): returning standalone inode for [%s/%s]" % (parent, name))
+            self.log.debug("getattr() : returning standalone inode for [%s/%s]" % (parent, name))
             return inode
 
 # I got nothing
         raise FuseOSError(errno.ENOENT)
-
 
 # --- display cached entries, otherwise lookup
     @iostats.record
@@ -590,7 +591,7 @@ class pmount(Operations):
         reply = self.mf_client.aterm_run('asset.query :where "namespace>=\'%s\'" :action count :size 1' % fullpath)
         elem = reply.find(".//value")
         count = int(elem.text)
-# delete ony if there is absolutely no content (helps me sleep better at nights)
+# delete only if there is absolutely no content (helps me sleep better at nights)
         if count == 0:
             self.log.info("rmdir(): removing empty folder: %s" % fullpath)
             try:
@@ -606,33 +607,56 @@ class pmount(Operations):
         raise FuseOSError(errno.ENOTEMPTY)
 
 # ---
+# ref: http://pubs.opengroup.org/onlinepubs/9699919799/utilities/mv.html
+# NB: mv file folder ... gets mapped to rename file folder/file
     def rename(self, old, new):
+        self.log.debug("rename(): %s -> %s" % (old, new))
         if self.readonly:
             raise FuseOSError(errno.EACCES)
-        try:
-# build source and destination paths
-            old_fullpath = self._remote_fullpath(old)
-            oldname = posixpath.basename(old_fullpath)
-            new_fullpath = self._remote_fullpath(new)
-            namespace = posixpath.dirname(new_fullpath)
-            newname = posixpath.basename(new_fullpath)
-# file
-            inode = self.getattr(old)
-            if inode['st_mode'] & stat.S_IFREG:
-                self.mf_client.aterm_run('asset.move :id "path=%s" :namespace "%s" :name "%s"' % (old_fullpath, namespace, newname))
-                asset_cache = self.asset_cache.get(namespace)
-                if asset_cache is not None:
-                    asset_cache[newname] = asset_cache.pop(oldname)
-# directory
-# NB: mediaflux command only seems to allow rename ... can't move a folder into another folder (for example)
-            if inode['st_mode'] & stat.S_IFDIR:
-                self.mf_client.aterm_run('asset.namespace.rename :namespace "%s" :name "%s"' % (old_fullpath, newname))
-                namespace_cache = self.namespace_cache.get(namespace)
-                if namespace_cache is not None:
-                    namespace_cache[newname] = namespace_cache.pop(oldname)
 
+# get origin inode (if exists)
+        try:
+            inode = self.getattr(old)
+        except:
+            raise FuseOSError(errno.ENOENT)
+
+# build source and destination paths
+        old_fullpath = self._remote_fullpath(old)
+        oldname = posixpath.basename(old_fullpath)
+        oldspace = posixpath.dirname(old_fullpath)
+        new_fullpath = self._remote_fullpath(new)
+        newspace = posixpath.dirname(new_fullpath)
+        newname = posixpath.basename(new_fullpath)
+
+# mediaflux call block
+        try:
+            if inode['st_mode'] & stat.S_IFREG:
+# move the file and update the cache (if any) 
+                self.mf_client.aterm_run('asset.move :id "path=%s" :namespace "%s" :name "%s"' % (old_fullpath, newspace, newname))
+                if oldspace in self.asset_cache:
+                    del self.asset_cache[oldspace][oldname]
+                if newspace in self.asset_cache:
+                    self.asset_cache[newspace][newname] = inode
+            elif inode['st_mode'] & stat.S_IFDIR:
+                if oldspace == newspace:
+# rename folder (parent stays the same) and update cache
+                    self.mf_client.aterm_run('asset.namespace.rename :namespace "%s" :name "%s"' % (old_fullpath, newname))
+                    if oldspace in self.namespace_cache:
+                        self.namespace_cache[oldspace][newname] = self.namespace_cache[oldspace].pop(oldname)
+                else:
+# CURRENT - FUSE cache gets really screwed up and ends up bugging the shell os.cwd
+                    raise Exception("Operation not implemented")
+# this works (on the mediaflux side) but at a low level, FUSE is caching something that causes a problem when statefully navigating the filesystem
+#                    self.mf_client.aterm_run('asset.namespace.move :namespace "%s" :to "%s"' % (old_fullpath, newspace))
+#                    if oldspace in self.namespace_cache:
+#                        del self.namespace_cache[oldspace][oldname]
+#                    if newspace in self.namespace_cache:
+#                        self.namespace_cache[newspace][newname] = inode
         except Exception as e:
-            self.log.debug("rename(): %s" % str(e))
+            self.log.error("rename(): %s" % str(e))
+            # could be either:
+            # no permission
+            # destination already exists (file -> file)
             raise FuseOSError(errno.EACCES)
 
 # ---
@@ -671,20 +695,30 @@ class pmount(Operations):
         raise FuseOSError(errno.EPERM)
 
 # ---
+# FIXME - flags can be 0 sometimes which doesn't match any of the 3 modes it must be in [ O_RDWR, O_WRONLY, or O_RDONLY] 
+# CURRENT - just assume it's rdonly ... 
     def open(self, path, flags):
         self.log.debug("open() : path=%s, flags=%r" % (path, flags))
-        if flags & os.O_RDWR:
-            # not sure we can ever support this
-            raise FuseOSError(errno.EPERM)
-        if flags & os.O_WRONLY:
-            # TODO - might be able to use the create() upload path here ...
-            raise FuseOSError(errno.EPERM)
 # init paths
         fullpath = self._remote_fullpath(path)
         namespace = posixpath.dirname(fullpath)
         filename = posixpath.basename(fullpath)
 
-# start the download and associate with a fake filehandle
+# it will be difficult to implement this mode
+        if flags & os.O_RDWR:
+            raise FuseOSError(errno.EPERM)
+
+# this path gets hit on overwrite else it does a create()
+        if flags & os.O_WRONLY:
+            if self.readonly:
+                raise FuseOSError(errno.EPERM)
+# FIXME - size = 0? bit of a hack as the truncate() is technically what should be doing this ...
+# ie can we just update the cache (if exists?)
+            self.inode_cache[path] = self.inode_new(mode=stat.S_IFREG | 0400, links=1, size=0)
+            # fake filehandle for writing
+            return self.mf_wonly_open(namespace, filename)
+
+# fake filehandle for reading
         return self.mf_ronly_open(namespace, filename)
 
 # ---
@@ -699,7 +733,7 @@ class pmount(Operations):
                 return data
 
             except Exception as e:
-                self.log.error("read() sequential access ERROR: %s" % str(e))
+                self.log.error("read() sequential: %s" % str(e))
                 pass
         else:
 # ensure we stick to random access mode
@@ -714,7 +748,7 @@ class pmount(Operations):
                 return response.read(size)
 
             except Exception as e:
-                self.log.error("read() random access ERROR: %s" % str(e))
+                self.log.error("read() random: %s" % str(e))
                 pass
 
         raise FuseOSError(errno.EREMOTEIO)
@@ -744,6 +778,7 @@ class pmount(Operations):
 # --- write the current buffer to the io job ticket
     def mf_write(self, mfbuffer, ticket):
         if mfbuffer.length == 0:
+            self.log.debug("mf_write(): ticket=%d, 0 bytes -> %s" % (ticket, mfbuffer.tmpfile))
             return
 
 # custom multipart post to mediaflux
@@ -798,73 +833,66 @@ class pmount(Operations):
         inode['st_size'] = mfbuffer.total
         return size
 
-# CURRENT - pretend these worked and return success ... 
-# TODO - explore implications/better solutions?
+# Not implemented - but pretend everything's fine
 # ---
     def chmod(self, path, mode):
-        self.log.debug("chmod() : path=%s, mode=%d" % (path, mode))
         return 0
 # ---
     def chown(self, path, uid, gid):
-        self.log.debug("chown() : path=%s, uid=%d, gid=%d" % (path, uid, gid))
-        return 0
-# --- 
-    def truncate(self, path, length, fh=None):
-# if length=0, could use asset.content.remove() ... but doesn't seem to be a general solution
-        self.log.debug("truncate() : path=%s, length=%d" % (path, length))
         return 0
 # ---
     def lock(self, path, fip, cmd, lock):
-        self.log.debug("lock() : path=%s, fip=%r, cmd=%r, lock=%r" % (path, fip, cmd, lock))
         return 0
 # ---
     def flush(self, path, fh):
-        self.log.debug("flush() : path=%s, fh=%d" % (path, fh))
         return 0
 # ---
     def fsync(self, path, fdatasync, fh):
         return self.flush(path, fh)
 
-# ---
+# --- 
+    def truncate(self, path, length, fh=None):
+        fullpath = self._remote_fullpath(path)
+        try:
+            if length == 0:
+                self.mf_client.aterm_run('asset.content.remove :id "path=%s" :action truncate' % fullpath)
+            else:
+                raise Exception("Non-zero length truncation is not implemented")
+        except Exception as e:
+            self.log.warning("truncate() : %s" % str(e))
+        return 0
+
 # NB - release() return code/exceptions are ignored by FUSE - so there's no way to fail the operation from this method
     def release(self, path, fh):
-# init
         fullpath = self._remote_fullpath(path)
         namespace = posixpath.dirname(fullpath)
         filename = posixpath.basename(fullpath)
 
         mfobj = self.mf_wonly.get(fh)
         if mfobj is not None:
-# path1 - create() was used for the file handle - empty the buffer (if needed) and tell the server the job is done
+# path1 - WRONLY
             try:
                 self.mf_write(mfobj, fh)
             except Exception as e:
-                self.log.error("release(1): %s" % str(e))
+                self.log.error("release(1) : %s" % str(e))
             try:
                 self.mf_client.aterm_run("server.io.write.finish :ticket %d" % fh)
             except Exception as e:
-                self.log.error("release(2): %s" % str(e))
+                self.log.error("release(2) : %s" % str(e))
             try:
-# create the asset
-# NB: explicitly set the store here to workaround mediaflux bug
-#                xml_string = '<request><service name="service.execute" session="%s"><args><service name="asset.create">' % self.mf_client.session
-#                xml_string += '<namespace>%s</namespace><name>%s</name><store>%s</store>'% (namespace, filename, mfobj.store)
-#                xml_string += '</service><input-ticket>%d</input-ticket></args></service></request>' % fh
-#                reply = self.mf_client._post(xml_string)
-# NEW - fixed mfclient to cope with this case
-                reply = self.mf_client.aterm_run('service.execute :service -name "asset.create" < :namespace "%s" :name "%s" :store "%s" > :input-ticket %d' % (namespace, filename, mfobj.store, fh))
-
+# allow both create new or overwrite existing
+                reply = self.mf_client.aterm_run('service.execute :service -name "asset.set" < :id "path=%s/%s" :store "%s" :create True > :input-ticket %d' % (namespace, filename, mfobj.store, fh))
 # update directory cache if it exists (if it doesn't it'll be generated by a server call when needed anyway)
                 asset_cache = self.asset_cache.get(namespace)
                 if asset_cache is not None:
                     asset_cache[filename] = self.inode_new(mode=stat.S_IFREG | 0400, links=1, size=mfobj.total) 
             except Exception as e:
-                self.log.error("release(3): %s" % str(e))
+                self.log.error("release(3) : %s" % str(e))
 # cleanup 
             del self.inode_cache[path]
             self.mf_wonly[fh] = None
         else:
-# path2 - open() was used for the file handle
+# path2 - RDONLY
             del self.mf_ronly[fh]
 
 
