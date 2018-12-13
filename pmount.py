@@ -33,6 +33,8 @@ class mfread():
     def __init__(self, response):
         self.response = response
         self.offset = 0
+        self.total = 0
+        self.start = time.time()
 
 # ===
 class mfwrite():
@@ -47,6 +49,7 @@ class mfwrite():
         self.tmpfile = tmpfile
         self.store = store
         self.quota = quota
+        self.start = time.time()
 
     def inject(self, buff, offset):
         size = len(buff)
@@ -124,15 +127,26 @@ class pmount(Operations):
                     logger.info("%-20s : %d bytes @ %s/s" % (fname, mystats.t_bytes[fname], h_rate))
 
         @classmethod
+        def insert(mystats, fname, size, elapsed):
+            if fname in mystats.t_count.keys():
+                mystats.t_count[fname] += 1
+                mystats.t_bytes[fname] += size
+                mystats.t_time[fname] += elapsed
+            else:
+                mystats.t_count[fname] = 1
+                mystats.t_bytes[fname] = size
+                mystats.t_time[fname] = elapsed
+
+        @classmethod
         def record(mystats, func):
             def wrapper(*args):
 # setup for stats recording
                 if func.__name__ == 'read':
-                    fname = "net_r"
+                    fname = "network_r"
                     size = int(args[2])
-                elif func.__name__ == 'write':
-                    fname = "net_w"
-                    size = len(args[2])
+                elif func.__name__ == 'mf_write':
+                    fname = "network_w"
+                    size = args[3]
                 else:
                     fname = func.__name__
                     size = 0
@@ -142,14 +156,7 @@ class pmount(Operations):
                 elapsed = time.time() - start
 
 # fill out dictionaries
-                if fname in mystats.t_count.keys():
-                    mystats.t_count[fname] += 1
-                    mystats.t_bytes[fname] += size
-                    mystats.t_time[fname] += elapsed
-                else:
-                    mystats.t_count[fname] = 1
-                    mystats.t_bytes[fname] = size
-                    mystats.t_time[fname] = elapsed
+                mystats.insert(fname, size, elapsed)
 
                 return res
             return wrapper
@@ -483,27 +490,23 @@ class pmount(Operations):
 # I got nothing
         raise FuseOSError(errno.ENOENT)
 
-# --- display cached entries, otherwise lookup
+# --- display cached entries, otherwise lookup (NB: assets are only cached if we've FULLY iterated them all)
     @iostats.record
     def readdir(self, path, fh):
         namespace = self._remote_fullpath(path)
 
 # namespace entries
-        items = self.namespace_cache.get(namespace)
-        if items is None:
+        if namespace not in self.namespace_cache:
             self.log.debug("readdir() : namespace listing server call needed [%s]" % namespace)
             self.get_namespaces(namespace)
         for item in self.namespace_cache[namespace].keys():
             yield item
-
 # asset entries
-        items = self.asset_cache.get(namespace)
-        if items is not None:
-            for item in items.keys():
+        if namespace in self.asset_cache:
+            for item in self.asset_cache[namespace].keys():
                 yield item
         else:
             self.log.debug("readdir() : asset listing server call needed [%s]" % namespace)
-
 # NB: we do the asset query inline (with yield) for performance reasons on very large directories
             iterator = self.get_asset_iter(namespace)
             done = False
@@ -536,7 +539,6 @@ class pmount(Operations):
                     state = elem.get('complete')
                     if "true" in state:
                         done = True
-
 # completed ... now we can cache the full asset listing
             self.asset_cache[namespace] = this_folder
 
@@ -561,6 +563,8 @@ class pmount(Operations):
 #    def listxattr(self, path):
 #        self.log.debug("listxattr() : path=%s" % path)
 #        return ["xpath1", "xpath2"]
+#   def setxattr(self, path, name, value, size, options, *args):
+#   def removexattr(self, path, name):
 
 # --- 
     def mkdir(self, path, mode):
@@ -725,11 +729,13 @@ class pmount(Operations):
     @iostats.record
     def read(self, path, size, offset, fh):
         mfobj = self.mf_ronly[fh]
-# if offset matches our mediaflux stream object - continue the sequential read (faster)
+# if offset matches our mediaflux stream object - continue the sequential read
         if offset == mfobj.offset and mfobj.response is not None:
             try:
                 data = mfobj.response.read(size)
-                mfobj.offset += len(data)
+# TODO - if len(data) != size ... we have a problem, raise?
+                mfobj.offset += size
+                mfobj.total += size
                 return data
 
             except Exception as e:
@@ -738,13 +744,14 @@ class pmount(Operations):
         else:
 # ensure we stick to random access mode
             mfobj.reponse = None
-# fallback to slower random access method
+# random access method (unzip -v will hit this code path)
             fullpath = self._remote_fullpath(path)
             reply = self.mf_client.aterm_run('asset.content.get :id "path=%s" :length %d :offset %d :out dummy' % (fullpath, size, offset))
             try:
                 elem = reply.find(".//outputs/url")
                 url = elem.text
                 response = urllib2.urlopen(url, timeout=self.timeout)
+                mfobj.total += size
                 return response.read(size)
 
             except Exception as e:
@@ -776,24 +783,25 @@ class pmount(Operations):
         return fakehandle
 
 # --- write the current buffer to the io job ticket
-    def mf_write(self, mfbuffer, ticket):
-        if mfbuffer.length == 0:
-            self.log.debug("mf_write(): ticket=%d, 0 bytes -> %s" % (ticket, mfbuffer.tmpfile))
+    @iostats.record
+    def mf_write(self, tmpfile, data, length, offset, ticket):
+        if length == 0:
+            self.log.debug("mf_write(): ticket=%d, 0 bytes -> %s" % (ticket, tmpfile))
             return
 
 # custom multipart post to mediaflux
         xml_string = '<request><service name="service.execute" session="%s"><args><service name="server.io.write">' % self.mf_client.session
-        xml_string += '<ticket>%d</ticket><offset>%d</offset></service></args></service></request>' % (ticket, mfbuffer.offset)
+        xml_string += '<ticket>%d</ticket><offset>%d</offset></service></args></service></request>' % (ticket, offset)
         boundary = ''.join(random.choice(string.digits + string.ascii_letters) for i in range(30))
         mimetype = 'application/octet-stream'
         lines = []
         lines.extend(('--%s' % boundary, 'Content-Disposition: form-data; name="request"', '', str(xml_string),))
         lines.extend(('--%s' % boundary, 'Content-Disposition: form-data; name="nb-data-attachments"', '', "1",))
 # NB: the tmp file name is required (otherwise the bytes go into a black hole)
-        lines.extend(('--%s' % boundary, 'Content-Disposition: form-data; name="filename"; filename="%s"' % mfbuffer.tmpfile, 'Content-Type: %s' % mimetype, '', ''))
+        lines.extend(('--%s' % boundary, 'Content-Disposition: form-data; name="filename"; filename="%s"' % tmpfile, 'Content-Type: %s' % mimetype, '', ''))
 
         body = '\r\n'.join(lines)
-        total_size = len(body) + mfbuffer.length + len(boundary) + 8
+        total_size = len(body) + length + len(boundary) + 8
 
         if self.mf_client.encrypted_data is True:
             conn = httplib.HTTPSConnection(self.mf_client.data_put, timeout=self.timeout)
@@ -810,7 +818,7 @@ class pmount(Operations):
 
 # main send
         conn.send(body)
-        conn.send(mfbuffer.buffer)
+        conn.send(data)
 
 # terminating line (len(boundary) + 8)
         tail = "\r\n--%s--\r\n" % boundary
@@ -821,12 +829,11 @@ class pmount(Operations):
         conn.close()
 
 # --- buffer the data and send when limit has been exceeded
-    @iostats.record
     def write(self, path, buf, offset, fh):
         mfbuffer = self.mf_wonly[fh]
         size = mfbuffer.inject(buf, offset)
         if mfbuffer.length > self.buffer_max:
-            self.mf_write(mfbuffer, fh)
+            self.mf_write(mfbuffer.tmpfile, mfbuffer.buffer, mfbuffer.length, mfbuffer.offset, fh)
             mfbuffer.truncate()
 # NB: update inode immediately to stop the system retrying write() chunks
         inode = self.inode_cache[path]
@@ -872,7 +879,8 @@ class pmount(Operations):
         if mfobj is not None:
 # path1 - WRONLY
             try:
-                self.mf_write(mfobj, fh)
+#                self.mf_write(mfobj, fh)
+                self.mf_write(mfobj.tmpfile, mfobj.buffer, mfobj.length, mfobj.offset, fh)
             except Exception as e:
                 self.log.error("release(1) : %s" % str(e))
             try:
@@ -883,16 +891,20 @@ class pmount(Operations):
 # allow both create new or overwrite existing
                 reply = self.mf_client.aterm_run('service.execute :service -name "asset.set" < :id "path=%s/%s" :store "%s" :create True > :input-ticket %d' % (namespace, filename, mfobj.store, fh))
 # update directory cache if it exists (if it doesn't it'll be generated by a server call when needed anyway)
-                asset_cache = self.asset_cache.get(namespace)
-                if asset_cache is not None:
-                    asset_cache[filename] = self.inode_new(mode=stat.S_IFREG | 0400, links=1, size=mfobj.total) 
+                if namespace in self.asset_cache:
+                    self.asset_cache[namespace][filename] = self.inode_new(mode=stat.S_IFREG | 0400, links=1, size=mfobj.total) 
+
             except Exception as e:
                 self.log.error("release(3) : %s" % str(e))
 # cleanup 
             del self.inode_cache[path]
+# stat for total (end to end) time
+            self.iostats.insert('overall_w', mfobj.total, time.time() - mfobj.start)
             self.mf_wonly[fh] = None
         else:
 # path2 - RDONLY
+# stat for total (end to end) time
+            self.iostats.insert('overall_r', self.mf_ronly[fh].total, time.time() - self.mf_ronly[fh].start)
             del self.mf_ronly[fh]
 
 
@@ -921,6 +933,9 @@ if __name__ == '__main__':
         args.encrypt = "True"
 
 # main call
-# NB: disallow threads (httplib/urllib2 are not thread safe)
-    FUSE(pmount(args), args.path, nothreads=True, foreground=not args.background)
+    try:
+        FUSE(pmount(args), args.path, nothreads=True, foreground=not args.background)
+    except Exception as e:
+        print("Mount failed: %s" % str(e))
+        exit(-1)
 
