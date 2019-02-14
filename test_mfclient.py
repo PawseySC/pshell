@@ -27,7 +27,7 @@ class mfclient_syntax(unittest.TestCase):
 
 # --- helper: remove common XML wrapper
     def _peel(self, text):
-        prefix = '<request><service name="service.execute" session="..."><args>'
+        prefix = '<request><service name="service.execute" session=""><args>'
         postfix = '</args></service></request>'
         if text.startswith(prefix):
             text = text[len(prefix):]
@@ -117,7 +117,15 @@ class mfclient_syntax(unittest.TestCase):
 
     def test_service_execute(self):
         reply = self.mf_client.aterm_run('service.execute :service -name "asset.create" < :namespace "folder" :name "file" > :input-ticket 1', post=False)
-        self.assertEqual(reply, '<request><service name="service.execute" session="..."><args><service name="asset.create"><namespace>folder</namespace><name>file</name></service><input-ticket>1</input-ticket></args></service></request>')
+        self.assertEqual(reply, '<request><service name="service.execute" session=""><args><service name="asset.create"><namespace>folder</namespace><name>file</name></service><input-ticket>1</input-ticket></args></service></request>')
+
+# regression test for special characters in password
+    def test_sanitise_login_password(self):
+        password = 'a?|:;(){}[  ]#@$%&* b.,c~123!> </\\\\'
+        line = "system.logon :domain ivec :user sean :password %s" % password
+        reply = self.mf_client.aterm_run(line, post=False)
+#        print reply
+        self.assertEqual(reply, '<request><service name="system.logon"><args><domain>ivec</domain><user>sean</user><password>%s</password></args></service></request>' % self.mf_client._xml_sanitise(password))
 
 
 ########################################
@@ -128,14 +136,14 @@ class mfclient_bugs(unittest.TestCase):
         global mf_client
         self.mf_client = mf_client
 
-# DONE
-
-    def test_service_add(self):
-        line = 'system.service.add :name custom.service :access ACCESS :definition < :element -name arg1 -type string -min-occurs 0 -default ""  > :execute \"return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $arg1] ]]\"'
+# regression test for special characters in password
+    def test_sanitise_login_password(self):
+        password = 'a?|:;(){}[  ]#@$%&* b.,c~123!> </\\\\'
+        line = "system.logon :domain ivec :user sean :password %s" % password
         reply = self.mf_client.aterm_run(line, post=False)
-        print reply
+#        print reply
+        self.assertEqual(reply, '<request><service name="system.logon"><args><domain>ivec</domain><user>sean</user><password>%s</password></args></service></request>' % self.mf_client._xml_sanitise(password))
 
-#        self.assertEqual(reply, '<service name="system.service.add"><name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string" /><element default=" " min-occurs="0" name="arg2" type="string" /><element default="false" min-occurs="0" name="arg3" type="boolean" /></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute></service>')
 
 
 ######

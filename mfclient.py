@@ -448,7 +448,7 @@ class mf_client:
                         child.set(key, value)
                         self.log("DEBUG", "XML prop [%r = %r]" % (key, value), level=2)
                 else:
-# FIXME - potentially some issues here with data strings with multiple spaces (ie we are doing a whitespace split & only adding one back)
+# FIXME - some issues here with data strings with multiple spaces (ie we are doing a whitespace split & only adding one back)
                     if child.text is not None:
                         child.text += " " + token
                     else:
@@ -456,9 +456,16 @@ class mf_client:
                             child.text = token[1:-1]
                         else:
                             child.text = token
+
 # don't display sensitive info
                     if child.tag.lower() == "password" or child.tag.lower() == 'token':
                         self.log("DEBUG", "XML text [xxxxxxxx]", level=2)
+# NEW - cope with special characters that may bork parsing
+# NB: assumes :password is the LAST element in the service call
+# use everything (to EOL) after :password as the password
+                        index = input_line.find(" :password")
+                        if index > 10:
+                            child.text = input_line[index+11:]
                     else:
                         self.log("DEBUG", "XML text [%s]" % child.text, level=2)
 
@@ -466,7 +473,7 @@ class mf_client:
                     if child.tag.lower() == "out":
                         data_out_name = child.text
                         data_out_min = 1
-# NEW - schedule for deletion but don't delete yet due to potentially multiple passthroughs 
+# schedule for deletion but don't delete yet due to potentially multiple passthroughs 
                         xml_unwanted = child
 
 # don't treat quotes as special characters in password string
@@ -539,7 +546,7 @@ class mf_client:
 
 # testing hook
         if post is not True:
-            return xml_hidden
+            return xml_text
 
 # send the service call and see what happens ...
         message = "This shouldn't happen"
