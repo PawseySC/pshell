@@ -76,7 +76,7 @@ class pshell_bugs(unittest.TestCase):
 if __name__ == '__main__':
 
     print "\n----------------------------------------------------------------------"
-    print "Running offline tests for: pshell"
+    print "Running tests for: pshell"
     print "----------------------------------------------------------------------\n"
 
 # classes to test
