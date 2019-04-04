@@ -10,3 +10,5 @@ pipelines:
     - step:
         script: 
           - echo "testing"
+          - pwd
+          - ls
