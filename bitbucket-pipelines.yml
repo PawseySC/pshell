@@ -10,5 +10,4 @@ pipelines:
     - step:
         script: 
           - echo "testing"
-          - pwd
-          - ls
+          - python test_mfclient.py
