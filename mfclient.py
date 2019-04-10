@@ -24,6 +24,7 @@ import mimetypes
 import posixpath
 import multiprocessing
 import xml.etree.ElementTree as ET
+import ConfigParser
 
 # Globals - multiprocess IO monitoring is hard
 manage_lock = multiprocessing.Lock()
@@ -661,13 +662,15 @@ class mf_client:
         self.session = ""
 
 #------------------------------------------------------------
-    def login(self, user=None, password=None, token=None):
+    def login(self, user=None, password=None, token=None, config_file=None, config_section=None):
         """
         Authenticate to the current Mediaflux server and record the session ID on success
 
         Input:
             user, password: STRINGS specifying user login details
-            token: STRING specifying a delegate credential
+                     token: STRING specifying a delegate credential
+               config_file: STRING indicating full path location to an INI style config file
+            config_section: STRING indicating section in the config file to use for credentials
 
         Raises:
             An error if authentication fails
@@ -678,19 +681,28 @@ class mf_client:
                 raise Exception("Forbidding unencrypted password post")
             else:
                 self.log("DEBUG", "Permitting unencrypted login; I hope you know what you're doing.")
-# attempt token authentication first (if supplied)
-        if token is not None:
+
+# NEW - priority order and auto lookup of token or session in appropriate config file section
+# NB: failed login calls raise an exception in aterm_run post XML handling
+        reply = None
+        if user is not None and password is not None:
+            reply = self.aterm_run("system.logon :domain %s :user %s :password %s" % (self.domain, user, password))
+        elif token is not None:
+            reply = self.aterm_run("system.logon :token %s" % token)
+            self.token = token
+        elif config_file is not None and config_section is not None:
+            config = ConfigParser.ConfigParser()
+            config.read(config_file)
+            token = config.get(config_section, 'token')
             reply = self.aterm_run("system.logon :token %s" % token)
             self.token = token
         else:
-            reply = self.aterm_run("system.logon :domain %s :user %s :password %s" % (self.domain, user, password))
-# extract session key
-        elem = reply.find(".//session")
-        if elem is not None:
-            self.session = elem.text
-            return
+            raise Exception("Invalid login call.")
 
-        raise Exception("Login failed")
+# if no exception has been raised, we should have a valid reply from the server at this point
+        elem = reply.find(".//session")
+        self.session = elem.text
+
 
 #------------------------------------------------------------
     def authenticated(self):
