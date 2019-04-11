@@ -15,38 +15,38 @@ class pshell_syntax(unittest.TestCase):
     pshell_exe = "pshell"
 
     def test_cd(self):
-        proc = subprocess.Popen([self.pshell_exe, "-c", "dummy", "cd /projects\"'"], stdout=subprocess.PIPE)
+        proc = subprocess.Popen(["python", self.pshell_exe, "-c", "dummy", "cd /projects\"'"], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "request" in line:
                 self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.namespace.exists"><namespace>/projects"\'</namespace></service></args></service></request>')
 
     def test_rm(self):
-        proc = subprocess.Popen([self.pshell_exe, "-c", "dummy", "rm *\'*"], stdout=subprocess.PIPE)
+        proc = subprocess.Popen(["python", self.pshell_exe, "-c", "dummy", "rm *\'*"], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "request" in line:
                 self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.query"><where>namespace=\'/projects\' and name=\'*\\\'*\'</where><action>count</action></service></args></service></request>')
 
     def test_file(self):
-        proc = subprocess.Popen([self.pshell_exe, "-c", "dummy", r'file "/dir1/../dir2/test_!@#\""'], stdout=subprocess.PIPE)
+        proc = subprocess.Popen(["python", self.pshell_exe, "-c", "dummy", r'file "/dir1/../dir2/test_!@#\""'], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "request" in line:
                 self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.get"><id>path=/dir2/test_!@#"</id></service></args></service></request>')
 
     def test_mkdir(self):
-        proc = subprocess.Popen([self.pshell_exe, "-c", "dummy", "mkdir /dir1/../dir2/namespace\"'"], stdout=subprocess.PIPE)
+        proc = subprocess.Popen(["python", self.pshell_exe, "-c", "dummy", "mkdir /dir1/../dir2/namespace\"'"], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "request" in line:
                 self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.namespace.create"><namespace>/dir2/namespace"\'</namespace></service></args></service></request>')
 
     def test_rmdir(self):
-        proc = subprocess.Popen([self.pshell_exe, "-c", "dummy", "rmdir sean's dir"], stdout=subprocess.PIPE)
+        proc = subprocess.Popen(["python", self.pshell_exe, "-c", "dummy", "rmdir sean's dir"], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "request" in line:
                 self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.namespace.exists"><namespace>/projects/sean\'s dir</namespace></service></args></service></request>')
 
 # expected response from server is "invalid session" ... anything else is a server connection problem
     def test_server_responding(self):
-        proc = subprocess.Popen(["pshell", "whoami"], stdout=subprocess.PIPE)
+        proc = subprocess.Popen(["python", "pshell", "whoami"], stdout=subprocess.PIPE)
         for line in proc.stdout:
             if "Failed to establish network connection" in line:
                 raise Exception("Server failed to respond.")
