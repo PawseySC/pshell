@@ -43,14 +43,19 @@ def put_jump(mfclient, data):
         triplet of STRINGS (asset_ID/status, 2 input arguments) which will be concatenated on the mf_manager's summary list
     """
 
-    try:
-        mfclient.log("DEBUG", "[pid=%d] put_jump(%s,%s)" % (os.getpid(), data[0], data[1]))
-        asset_id = mfclient.put(data[0], data[1])
-    except Exception as e:
-        mfclient.log("ERROR", "[pid=%d] put_jump(%s): %s" % (os.getpid(), data[1], str(e)))
-        return (-1, data[0], data[1])
+    mfclient.log("DEBUG", "[pid=%d] put_jump(%s,%s)" % (os.getpid(), data[0], data[1]))
 
-    return (int(asset_id), data[0], data[1])
+# NB: the _post() call here will attempt to re-establish a valid connection here, if possible
+    if mfclient.authenticated() is True:
+        try:
+            asset_id = mfclient.put(data[0], data[1])
+            return (int(asset_id), data[0], data[1])
+        except Exception as e:
+            mfclient.log("ERROR", "[pid=%d] put_jump(%s): %s" % (os.getpid(), data[1], str(e)))
+    else:
+        mfclient.log("ERROR", "[pid=%d] put_jump(): failed to acquire valid session" % os.getpid())
+    # report failure
+    return (-1, data[0], data[1])
 
 #------------------------------------------------------------
 def get_jump(mfclient, data):
@@ -64,14 +69,19 @@ def get_jump(mfclient, data):
         A triplet of STRINGS (status, 2 input arguments) which will be concatenated on the mf_manager's summary list
     """
 
-    try:
-        mfclient.log("DEBUG", "[pid=%d] get_jump(%s,%s)" % (os.getpid(), data[0], data[1]))
-        mfclient.get(data[0], data[1])
-    except Exception as e:
-        mfclient.log("ERROR", "[pid=%d] get_jump(): %s" % (os.getpid(), str(e)))
-        return (-1, data[0], data[1])
+    mfclient.log("DEBUG", "[pid=%d] get_jump(%s,%s)" % (os.getpid(), data[0], data[1]))
 
-    return (0, data[0], data[1])
+# NB: the _post() call here will attempt to re-establish a valid connection here, if possible
+    if mfclient.authenticated() is True:
+        try:
+            mfclient.get(data[0], data[1])
+            return (0, data[0], data[1])
+        except Exception as e:
+            mfclient.log("ERROR", "[pid=%d] get_jump(): %s" % (os.getpid(), str(e)))
+    else:
+        mfclient.log("ERROR", "[pid=%d] get_jump(): failed to acquire valid session" % os.getpid())
+    # report failure
+    return (-1, data[0], data[1])
 
 #------------------------------------------------------------
 def init_jump(recv, sent):
@@ -83,7 +93,6 @@ def init_jump(recv, sent):
 # initialize the globals in this process with the main process globals O.O
     bytes_sent = sent
     bytes_recv = recv
-
 
 #########################################################
 class mf_client:
@@ -225,19 +234,10 @@ class mf_client:
         if self.dummy:
             raise Exception(xml_string)
 
-#        print "\nINPUT===================\n"
-#        print xml_string
-#        print "\n===================\n"
-
 # NB: timeout exception if server is unreachable
         request = urllib2.Request(self.post_url, data=xml_string, headers={'Content-Type': 'text/xml'})
         response = urllib2.urlopen(request, timeout=self.timeout)
         xml = response.read()
-
-#        print "\nOUTPUT===================\n"
-#        print xml
-#        print "\n===================\n"
-
         tree = ET.fromstring(xml)
 
 # outputs-via = session
@@ -703,7 +703,6 @@ class mf_client:
         elem = reply.find(".//session")
         self.session = elem.text
 
-
 #------------------------------------------------------------
     def authenticated(self):
         """
@@ -844,6 +843,7 @@ class mf_client:
 # NB: avoid generating exception if asset doesn't exist 
         result = self.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
 
+# CURRENT - filesize compare only
 # attempt checksum compare
         try:
             elem = result.find(".//id")
@@ -917,7 +917,6 @@ class mf_client:
         put_alias = functools.partial(put_jump, self)
 
         return mf_manager(function=put_alias, arguments=list_namespace_filepath, processes=processes, total_bytes=total_bytes)
-
 
 #############################################################
 class mf_manager:

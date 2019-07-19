@@ -860,6 +860,8 @@ class parser(cmd.Cmd):
                             self.print_over("Progress=%d%%,%s, elapsed=%d mins ...  " % (current_pc, msg, elapsed_mins))
                             time.sleep(60)
                     else:
+# CURRENT - test bad session handling
+#                        self.mf_client.session = "abc"
                         manager = self.mf_client.get_managed(current.iteritems(), total_bytes=stats['total-bytes'], processes=self.transfer_processes)
 
 # network transfer polling
@@ -938,10 +940,11 @@ class parser(cmd.Cmd):
                         if name.lower().endswith('.meta'):
                             pass
                     upload_list.append((self.cwd, local_fullpath))
-# DEBUG
-#        for dest,src in upload_list:
-#            print "put: %s -> %s" % (src, dest)
+# built, now upload
+        self.managed_put(upload_list, meta)
 
+# -- wrapper for monitoring an upload
+    def managed_put(self, upload_list, meta=False):
         manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
         self.mf_client.log("DEBUG", "Starting transfer...")
         self.print_over("Total files=%d" % len(upload_list))
@@ -1020,16 +1023,30 @@ class parser(cmd.Cmd):
         print "\nCreate a remote folder\n"
         print "Usage: mkdir <folder>\n"
 
-    def do_mkdir(self, line):
+    def do_mkdir(self, line, silent=False):
         ns_target = self.absolute_remote_filepath(line)
         try:
             self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % ns_target.replace('"', '\\\"'))
         except Exception as e:
             if "already exists" in str(e):
-                print "Folder already exists: %s" % ns_target
+                if silent is False:
+                    print "Folder already exists: %s" % ns_target
                 pass
             else:
                 raise e
+
+
+# --- creates the namespace and any intermediate namespaces required
+# NEW
+# TODO - test failure cases
+    def mkdir_helper(self, namespace):
+        if self.mf_client.namespace_exists(namespace) is True:
+            return
+        else:
+            head, tail = posixpath.split(namespace)
+            self.mkdir_helper(head)
+            self.do_mkdir(namespace, silent=True)
+
 
 # --
     def help_rm(self):
@@ -1330,11 +1347,17 @@ class parser(cmd.Cmd):
         print "Examples: compare myfolder\n"
 
 # --- compare
-    def do_compare(self, line):
+    def do_compare(self, line, push=False, pull=False, limit=4):
         remote_fullpath = self.absolute_remote_filepath(line)
+
+# NEW - if push -> create if necessary
         if self.mf_client.namespace_exists(remote_fullpath) is False:
-            print "Could not find remote folder: %s" % remote_fullpath
-            return
+            if push is True:
+                print "Creating remote namespace: %s" % remote_fullpath
+                self.mkdir_helper(remote_fullpath)
+            else:
+                print "Could not find remote folder: %s" % remote_fullpath
+                return
 
 # if no (or current) folder specified - compare local and remote working directories 
         if remote_fullpath == self.cwd:
@@ -1343,19 +1366,21 @@ class parser(cmd.Cmd):
             remote_basename = posixpath.basename(remote_fullpath)
             local_fullpath = os.path.join(os.getcwd(), remote_basename)
 
+# TODO - if pull -> create via os.makedirs()
         if os.path.exists(local_fullpath) is False:
             print "Could not find local folder: %s" % local_fullpath
             return
 
         print "=== Compare start ==="
 
+# TODO - can probably optimise some of the set iterations for push/pull cases
         local_files = set()
         remote_files = set()
+        count = 0
 
 # build remote files
         print "Building remote file set under [%s] ..." % remote_fullpath
         remote_files = self.get_remote_set(remote_fullpath)
-        print "Total remote files = %d" % len(remote_files)
 
 # build local files
         print "Building local file set under [%s] ..." % local_fullpath
@@ -1365,22 +1390,102 @@ class parser(cmd.Cmd):
                     full_path = os.path.join(dirpath, filename)
                     relpath = os.path.relpath(full_path, local_fullpath)
                     local_files.add(relpath)
-
-            print "Total local files = %d" % len(local_files)
-
         except Exception as e:
             print "Error: %s" % str(e)
 
-        print "=== Missing local files ==="
-        for item in remote_files - local_files:
-            print "%s" % item
+# summary
+        print "Total remote files = %d" % len(remote_files)
+        print "Total local files = %d" % len(local_files)
 
-        print "=== Missing remote files ==="
-        for item in local_files - remote_files:
-            print "%s" % item
+# setup for pull
+        count_pull = 0
+        if pull is True:
+            print "TODO - download remote files absent from local filesystem"
+        else:
+            print "=== Remote only ==="
+            for item in remote_files - local_files:
+                count_pull += 1
+                self.mf_client.log("DEBUG", "pull=%s" % item)
+            print "File count = %d" % count_pull
 
-# TODO - checksum compares as well?
+# handle files that exist locally but not remotely
+        count_push = 0
+        if push is True:
+# upload mode
+            remote_mkdir = dict()
+            upload_list = []
+# generate unique remote namespaces and upload task payloads
+            for item in local_files - remote_files:
+                remote_filepath = posixpath.join(remote_fullpath, item)
+                remote_namespace = posixpath.dirname(remote_filepath)
+                local_filepath = os.path.join(local_fullpath, item)
+                remote_mkdir[remote_namespace] = True
+                upload_list.append((remote_namespace, local_filepath))
+                count_push += 1
+# ensure unique remote namespaces exist
+            for namespace in remote_mkdir.keys():
+                self.mkdir_helper(namespace)
+# submit upload payload to manager
+            print "Number of files to upload=%d" % count_push
+            self.managed_put(upload_list)
+        else:
+# report mode 
+            print "=== Local only ==="
+            for item in local_files - remote_files:
+                self.mf_client.log("DEBUG", "push=%s" % item)
+                count_push += 1
+            print "File count = %d" % count_push
+
+# for common files, report if there are differences
+# TODO - push/pull modes for absent files ONLY ... will require a fair amount of care if want to sync so just report for now ...
+        if push is False and pull is False:
+            print "=== Common files ==="
+            count_common = 0
+            count_mismatch = 0
+            for item in local_files & remote_files:
+                remote_filepath = posixpath.join(remote_fullpath, item)
+                remote_namespace = posixpath.dirname(remote_filepath)
+                local_filepath = os.path.join(local_fullpath, item)
+# checksum compare
+                local_crc32 = self.mf_client.get_local_checksum(local_filepath)
+                remote_crc32 = None
+                try:
+                    result = self.mf_client.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename crc32 content/csum' % remote_filepath)
+                    elem = result.find(".//crc32")
+                    remote_crc32 = int(elem.text, 16)
+                    self.mf_client.log("DEBUG", "do_compare(): file=%s, local crc32=%r, remote crc32=%r" % (item, local_crc32, remote_crc32))
+                except Exception as e:
+                    self.mf_client.log("ERROR", "do_compare(): %s" % str(e))
+
+                if local_crc32 == remote_crc32:
+                    count_common += 1
+                else:
+                    count_mismatch += 1
+
+            print "Matching = %d" % count_common
+            print "Different = %d" % count_mismatch
+# done
         print "=== Compare complete ==="
+
+
+# TODO - not implemented yet
+# -- compare that only downloads missing local files
+#    def help_pull(self):
+#        print "\nCompares a local and a remote folder and download any mising files"
+#        print "Usage: pull <folder>\n"
+#        print "Examples: pull myfolder\n"
+#
+#    def do_pull(self, line):
+#        self.do_compare(line, pull=True)
+
+# -- compare that only uploads missing files
+    def help_push(self):
+        print "\nCompares a local and a remote folder and upload any mising files"
+        print "Usage: pull <folder>\n"
+        print "Examples: pull myfolder\n"
+
+    def do_push(self, line):
+        self.do_compare(line, push=True)
 
 
 # generic operation that returns an unknown number of results from the server, so chunking must be used
@@ -1555,6 +1660,8 @@ def main():
 # FIXME - the argument count is getting a bit ridiculous
     try:
         mf_client = mfclient.mf_client(protocol=protocol, port=port, server=server, domain=domain, session=session, enforce_encrypted_login=encrypt, debug=debug, dummy=dummy)
+        # NEW - pass this in, just in case session is valid
+        mf_client.token = token
 
     except Exception as e:
         print "Failed to establish network connection to: %s" % server
