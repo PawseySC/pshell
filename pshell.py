@@ -255,7 +255,7 @@ class parser(cmd.Cmd):
 
 # --- helper
     def ask(self, text):
-# new - if script, assume you know what you're doing
+# if script, assumes you know what you're doing
         if self.interactive is False:
             return True
         response = raw_input(text)
@@ -289,9 +289,7 @@ class parser(cmd.Cmd):
             if match is not None:
                 flags = match.group(0)
                 line = line[match.end(0)+1:]
-
 #        print "flags=[%s] line=[%s]" % (flags, line)
-
         return flags, self.absolute_remote_filepath(line)
 
 # --- file info
@@ -478,7 +476,6 @@ class parser(cmd.Cmd):
                     print " %-10s | %s %s | %s" % (asset_id, asset_state, asset_size, asset_name)
                 else:
                     print " %-10s | %s | %s" % (asset_id, asset_size, asset_name)
-
 
 # --- ls with no dependency on www.list
     def do_ls(self, line):
@@ -774,7 +771,6 @@ class parser(cmd.Cmd):
 # possible download on namespace
         candidate = posixpath.join(namespace, basename)
 
-# FIXME - get <relative-namespace> => results in asset_qeury (basename) of relative-namespace ... which is wrong ...
         self.mf_client.log("DEBUG", "do_get(): namespace=[%s] , asset_query=[%s] , candidate_namespace=[%s]" % (namespace, basename, candidate))
 
 # this requires different escaping to an asset.query
@@ -852,7 +848,6 @@ class parser(cmd.Cmd):
                             msg += " offline=" + self.human_size(stats['offline-bytes'])
                         if stats.get('migrating-bytes') is not None:
                             msg += " migrating=" + self.human_size(stats['migrating-bytes'])
-
 # TODO - even small migrations take a while ... make this something like 1,5,10,15 mins? (ie back-off)
                         for i in range(0, 4):
                             elapsed = time.time() - start_time
@@ -1008,7 +1003,6 @@ class parser(cmd.Cmd):
             print "Remote: %s" % self.cwd
         else:
             raise Exception(" Could not find remote folder: %s" % candidate)
-
 # --
     def help_pwd(self):
         print "\nDisplay the current remote folder\n"
@@ -1034,19 +1028,6 @@ class parser(cmd.Cmd):
                 pass
             else:
                 raise e
-
-
-# --- creates the namespace and any intermediate namespaces required
-# NEW
-# TODO - test failure cases
-    def mkdir_helper(self, namespace):
-        if self.mf_client.namespace_exists(namespace) is True:
-            return
-        else:
-            head, tail = posixpath.split(namespace)
-            self.mkdir_helper(head)
-            self.do_mkdir(namespace, silent=True)
-
 
 # --
     def help_rm(self):
@@ -1333,6 +1314,16 @@ class parser(cmd.Cmd):
 
         return remote_files
 
+# --- helper: create the namespace and any intermediate namespaces, if required
+# TODO - test failure cases (eg no perms etc)
+    def mkdir_helper(self, namespace):
+        if self.mf_client.namespace_exists(namespace) is True:
+            return
+        else:
+            head, tail = posixpath.split(namespace)
+            self.mkdir_helper(head)
+            self.do_mkdir(namespace, silent=True)
+
 # --- compare
     def help_compare(self):
         print "\nCompares a local and a remote folder and reports any differences"
@@ -1365,7 +1356,7 @@ class parser(cmd.Cmd):
             print "Could not find local folder: %s" % local_fullpath
             return
 
-        print "=== Compare start ==="
+        print "=== Compare Start ==="
 
 # TODO - can probably optimise some of the set iterations for push/pull cases
         local_files = set()
@@ -1459,8 +1450,7 @@ class parser(cmd.Cmd):
             print "Matching = %d" % count_common
             print "Different = %d" % count_mismatch
 # done
-        print "=== Compare complete ==="
-
+        print "=== Compare Stop ==="
 
 # TODO - not implemented yet
 # -- compare that only downloads missing local files
@@ -1480,7 +1470,6 @@ class parser(cmd.Cmd):
 
     def do_push(self, line):
         self.do_compare(line, push=True)
-
 
 # generic operation that returns an unknown number of results from the server, so chunking must be used
     def mf_iter(self, iter_command, iter_callback, iter_size):
@@ -1511,14 +1500,14 @@ class parser(cmd.Cmd):
         print "\nReturn a public, downloadable URL for a file or files\nRequires public sharing to be enabled by the project administrator\n"
         print "Usage: publish <file(s)>\n"
 
+# TODO - publish/unpublish only work on assets ... rework to handle namespaces?
 # --
     def do_publish(self, line):
         fullpath = self.absolute_remote_filepath(line)
         pattern = posixpath.basename(fullpath)
         namespace = posixpath.dirname(fullpath)
 # publish everything that matches
-# TODO - this could take some time ... run in the background via & ???
-        self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :action pipe :service -name asset.label.add < :label PUBLISHED >' % (namespace, pattern))
+        self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :action pipe :service -name asset.label.add < :label PUBLISHED >' % (namespace, pattern), background=True)
 # iterate to display downloadable URLs
         iter_cmd = 'asset.query :where "namespace=\'%s\' and name=\'%s\'" :as iterator :action get-path' % (namespace, pattern)
         self.mf_iter(iter_cmd, self.print_published_urls, 10)
@@ -1534,8 +1523,7 @@ class parser(cmd.Cmd):
         pattern = posixpath.basename(fullpath)
         namespace = posixpath.dirname(fullpath)
 # un-publish everything that matches
-# TODO - this could take some time ... run in the background via & ???
-        self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :action pipe :service -name asset.label.remove < :label PUBLISHED >' % (namespace, pattern))
+        self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :action pipe :service -name asset.label.remove < :label PUBLISHED >' % (namespace, pattern), background=True)
 
 # --
     def help_quit(self):
