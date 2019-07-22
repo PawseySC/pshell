@@ -1314,27 +1314,21 @@ class parser(cmd.Cmd):
     def get_remote_set(self, remote_namespace):
         remote_files = set()
         prefix = len(remote_namespace)
-
         result = self.mf_client.aterm_run("asset.query :where \"namespace>='%s'\" :as iterator :action get-path" % remote_namespace)
         elem = result.find(".//iterator")
         iterator = elem.text
         iterate_size = 100
         iterate = True
-
         while iterate:
-            self.mf_client.log("DEBUG", "Remote iterator chunk")
 # get file list for this sub-set
             result = self.mf_client.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
-
             for elem in result.iter("path"):
                 relpath = elem.text[prefix+1:]
                 remote_files.add(relpath)
-
 # check for completion - to avoid triggering a mediaflux exception on invalid iterator
             for elem in result.iter("iterated"):
                 state = elem.get('complete')
                 if "true" in state:
-                    self.mf_client.log("DEBUG", "Asset iteration completed")
                     iterate = False
 
         return remote_files
