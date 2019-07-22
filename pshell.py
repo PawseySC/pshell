@@ -1315,8 +1315,8 @@ class parser(cmd.Cmd):
         return remote_files
 
 # --- helper: create the namespace and any intermediate namespaces, if required
-# TODO - test failure cases (eg no perms etc)
     def mkdir_helper(self, namespace):
+        self.mf_client.log("DEBUG", "mkdir_helper(): %s" % namespace)
         if self.mf_client.namespace_exists(namespace) is True:
             return
         else:
