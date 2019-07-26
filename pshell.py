@@ -408,8 +408,6 @@ class parser(cmd.Cmd):
         print "\nList files stored on the remote server."
         print "Navigation in paginated output can be achieved by entering a page number, [enter] for next page or q to quit.\n"
         print "Usage: ls <file pattern or folder name>\n"
-        print "Examples: ls /projects/my project/some folder"
-        print "          ls *.txt\n"
 
 # --- paginated ls
     def remote_ls_print(self, namespace, namespace_list, namespace_count, asset_count, page, page_size, query, show_content_state=False):
@@ -744,8 +742,6 @@ class parser(cmd.Cmd):
         print "\nUpload files or folders with associated metadata"
         print "For every file <filename.ext> another file called <filename.ext.meta> should contain metadata in INI file format\n"
         print "Usage: import <file or folder>\n"
-        print "Examples: import myfile.jpg"
-        print "          import myfolder/\n"
 
 # ---
     def do_import(self, line):
@@ -756,8 +752,6 @@ class parser(cmd.Cmd):
     def help_get(self):
         print "\nDownload remote files to the current local folder\n"
         print "Usage: get <remote files or folders>\n"
-        print "Examples: get /projects/My Project/images"
-        print "          get *.txt\n"
 
     def do_get(self, line):
 # NB: use posixpath for mediaflux namespace manipulation
@@ -902,8 +896,6 @@ class parser(cmd.Cmd):
     def help_put(self):
         print "\nUpload local files or folders to the current folder on the remote server\n"
         print "Usage: put <file or folder>\n"
-        print "Examples: put /home/sean/*.jpg"
-        print "          put /home/sean/myfolder/\n"
 
     def do_put(self, line, meta=False):
 # build upload list pairs
@@ -1033,8 +1025,6 @@ class parser(cmd.Cmd):
     def help_rm(self):
         print "\nDelete remote file(s)\n"
         print "Usage: rm <file or pattern>\n"
-        print "Examples: rm *.jpg"
-        print "          rm /projects/myproject/somefile\n"
 
     def do_rm(self, line):
 # build query corresponding to input
@@ -1076,7 +1066,6 @@ class parser(cmd.Cmd):
     def help_debug(self):
         print "\nTurn debugging output on/off\n"
         print "Usage: debug <value>\n"
-        print "Examples:\n      debug on\n      debug off\n      debug 1\n"
 
     def do_debug(self, line):
         match = re.search(r"\d+", line)
@@ -1220,9 +1209,6 @@ class parser(cmd.Cmd):
         print "\nCreate a credential, stored in your local home folder, for automatic authentication to the remote server."
         print "An optional argument can be supplied to set the lifetime, or off to destroy all your delegated credentials.\n"
         print "Usage: delegate <days/off>\n"
-        print "Examples: delegate"
-        print "          delegate 7"
-        print "          delegate off\n"
 
     def do_delegate(self, line):
 # argument parse
@@ -1329,7 +1315,6 @@ class parser(cmd.Cmd):
         print "\nCompares a local and a remote folder and reports any differences"
         print "The local and remote folders must have the same name and appear in the current local and remote working directories"
         print "Usage: compare <folder>\n"
-        print "Examples: compare myfolder\n"
 
 # --- compare
     def do_compare(self, line, push=False, pull=False, limit=4):
@@ -1464,9 +1449,8 @@ class parser(cmd.Cmd):
 
 # -- compare that only uploads missing files
     def help_push(self):
-        print "\nCompares a local and a remote folder and upload any mising files"
-        print "Usage: pull <folder>\n"
-        print "Examples: pull myfolder\n"
+        print "\nUsing the current working directories, compares the local and remote filesystems and uploads missing files"
+        print "Usage: push <subfolder>\n"
 
     def do_push(self, line):
         self.do_compare(line, push=True)
@@ -1562,7 +1546,7 @@ class parser(cmd.Cmd):
 
 def main():
     if sys.hexversion < 0x02070000:
-        print("ERROR: requires Python 2.7.x, using: ", sys.version)
+        print("Error: requires Python 2.7.x, using: ", sys.version)
         exit(-1)
 
 # server config (section heading) to use
@@ -1614,7 +1598,7 @@ def main():
         domain = config.get(current, 'domain')
 # no .mf_config in ~ or zip bundle or cwd => die
     except Exception as e:
-        print "ERROR: failed to find a valid config file: %s" % str(e)
+        print "Failed to find a valid config file: %s" % str(e)
         exit(-1)
 
     if config.has_option(current, 'encrypt'):
@@ -1625,6 +1609,9 @@ def main():
         session = config.get(current, 'session')
     if config.has_option(current, 'token'):
         token = config.get(current, 'token')
+# empty token string counts as none
+    if len(token) == 0:
+        token = None
 
 # don't store debug level in config (command line flag or pshell command is enough)
     if args.debug:
@@ -1638,33 +1625,22 @@ def main():
 # FIXME - make this work with windows
         size = (80, 20)
 
-# mediaflux client
-# FIXME - the argument count is getting a bit ridiculous
+# mediaflux connection
     try:
-        mf_client = mfclient.mf_client(protocol=protocol, port=port, server=server, domain=domain, session=session, enforce_encrypted_login=encrypt, debug=debug, dummy=dummy)
-        # NEW - pass this in, just in case session is valid
+        mf_client = mfclient.mf_client(protocol=protocol, port=port, server=server, domain=domain, enforce_encrypted_login=encrypt, debug=debug, dummy=dummy)
+        mf_client.session = session
         mf_client.token = token
 
     except Exception as e:
-        print "Failed to establish network connection to: %s" % server
+        print "Failed to connect to: %s" % server
         print "Error: %s" % str(e)
         exit(-1)
 
-# auth reasoning
+# auth test - will automatically attempt to use a token (if it exists) to re-generate a valid session
     need_auth = True
     if mf_client.authenticated():
         need_auth = False
-    else:
-        if token is not None:
-            try:
-                mf_client.login(token=token)
-                config.set(current, 'session', mf_client.session)
-                config_changed = True
-                need_auth = False
-                mf_client.log("DEBUG", "Delegate is valid")
-            except Exception as e:
-                mf_client.log("WARNING", "Delegate authentication failed.")
-                mf_client.log("DEBUG", str(e))
+
 # NB: don't wipe the delegate - login may have failed for other reasons (eg too many connections or server down)
 # save config - should only ever happen on first time run 
     if config_changed:
