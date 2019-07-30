@@ -1317,7 +1317,7 @@ class parser(cmd.Cmd):
         print "Usage: compare <folder>\n"
 
 # --- compare
-    def do_compare(self, line, limit=4):
+    def do_compare(self, line, checksum=False):
         remote_fullpath = self.absolute_remote_filepath(line)
 
 # remote
@@ -1366,7 +1366,7 @@ class parser(cmd.Cmd):
         for item in remote_files - local_files:
             count_pull += 1
             self.mf_client.log("DEBUG", "pull=%s" % item)
-        print "File count = %d" % count_pull
+        print "count = %d" % count_pull
 
 # report 
         count_push = 0
@@ -1374,7 +1374,7 @@ class parser(cmd.Cmd):
         for item in local_files - remote_files:
             self.mf_client.log("DEBUG", "push=%s" % item)
             count_push += 1
-        print "File count = %d" % count_push
+        print "count = %d" % count_push
 
 # for common files, report if there are differences
         print "=== Common files ==="
@@ -1385,23 +1385,31 @@ class parser(cmd.Cmd):
             remote_namespace = posixpath.dirname(remote_filepath)
             local_filepath = os.path.join(local_fullpath, item)
 # checksum compare
-            local_crc32 = self.mf_client.get_local_checksum(local_filepath)
-            remote_crc32 = None
-            try:
-                result = self.mf_client.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename crc32 content/csum' % remote_filepath)
-                elem = result.find(".//crc32")
-                remote_crc32 = int(elem.text, 16)
-                self.mf_client.log("DEBUG", "do_compare(): file=%s, local crc32=%r, remote crc32=%r" % (item, local_crc32, remote_crc32))
-            except Exception as e:
-                self.mf_client.log("ERROR", "do_compare(): %s" % str(e))
 
-            if local_crc32 == remote_crc32:
-                count_common += 1
+
+            if checksum is True:
+                local_crc32 = self.mf_client.get_local_checksum(local_filepath)
+                remote_crc32 = None
+                try:
+                    result = self.mf_client.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename crc32 content/csum' % remote_filepath)
+                    elem = result.find(".//crc32")
+                    remote_crc32 = int(elem.text, 16)
+                    self.mf_client.log("DEBUG", "do_compare(): file=%s, local crc32=%r, remote crc32=%r" % (item, local_crc32, remote_crc32))
+                except Exception as e:
+                    self.mf_client.log("ERROR", "do_compare(): %s" % str(e))
+
+                if local_crc32 == remote_crc32:
+                    count_common += 1
+                else:
+                    count_mismatch += 1
             else:
-                count_mismatch += 1
+                count_common += 1
+
 
         print "Matching = %d" % count_common
-        print "Different = %d" % count_mismatch
+        if checksum is True:
+            print "Different = %d" % count_mismatch
+
 # done
         print "=== Compare Stop ==="
 
