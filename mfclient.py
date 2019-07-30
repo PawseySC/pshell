@@ -43,18 +43,14 @@ def put_jump(mfclient, data):
         triplet of STRINGS (asset_ID/status, 2 input arguments) which will be concatenated on the mf_manager's summary list
     """
 
-    mfclient.log("DEBUG", "[pid=%d] put_jump(%s,%s)" % (os.getpid(), data[0], data[1]))
+    mfclient.log("DEBUG", "put_jump(%s,%s)" % (data[0], data[1]))
+    try:
+        asset_id = mfclient.put(data[0], data[1])
+        return (int(asset_id), data[0], data[1])
+    except Exception as e:
+        mfclient.log("ERROR", "put_jump(%s): %s" % (data[1], str(e)))
 
-# NB: the _post() call here will attempt to re-establish a valid connection here, if possible
-    if mfclient.authenticated() is True:
-        try:
-            asset_id = mfclient.put(data[0], data[1])
-            return (int(asset_id), data[0], data[1])
-        except Exception as e:
-            mfclient.log("ERROR", "[pid=%d] put_jump(%s): %s" % (os.getpid(), data[1], str(e)))
-    else:
-        mfclient.log("ERROR", "[pid=%d] put_jump(): failed to acquire valid session" % os.getpid())
-    # report failure
+# report failure
     return (-1, data[0], data[1])
 
 #------------------------------------------------------------
@@ -69,18 +65,14 @@ def get_jump(mfclient, data):
         A triplet of STRINGS (status, 2 input arguments) which will be concatenated on the mf_manager's summary list
     """
 
-    mfclient.log("DEBUG", "[pid=%d] get_jump(%s,%s)" % (os.getpid(), data[0], data[1]))
+    mfclient.log("DEBUG", "get_jump(%s,%s)" % (data[0], data[1]))
+    try:
+        mfclient.get(data[0], data[1])
+        return (0, data[0], data[1])
+    except Exception as e:
+        mfclient.log("ERROR", "get_jump(): %s" % str(e))
 
-# NB: the _post() call here will attempt to re-establish a valid connection here, if possible
-    if mfclient.authenticated() is True:
-        try:
-            mfclient.get(data[0], data[1])
-            return (0, data[0], data[1])
-        except Exception as e:
-            mfclient.log("ERROR", "[pid=%d] get_jump(): %s" % (os.getpid(), str(e)))
-    else:
-        mfclient.log("ERROR", "[pid=%d] get_jump(): failed to acquire valid session" % os.getpid())
-    # report failure
+# report failure
     return (-1, data[0], data[1])
 
 #------------------------------------------------------------
@@ -224,7 +216,7 @@ class mf_client:
         return xml[:max_size]
 
 #------------------------------------------------------------
-    def _post(self, xml_string, output_local_filepath=None):
+    def _post(self, xml_string, out_filepath=None):
         """
         Primitive for sending an XML message to the Mediaflux server
         """
@@ -239,19 +231,6 @@ class mf_client:
         response = urllib2.urlopen(request, timeout=self.timeout)
         xml = response.read()
         tree = ET.fromstring(xml)
-
-# outputs-via = session
-# NB: outputs-via attachements has an attachment element with an id ATTRIBUTE - that can be used in the same way
-        elem_output = tree.find(".//outputs")
-        if elem_output is not None:
-            # TODO - findall ...
-            elem_id = elem_output.find(".//id")
-            output_id = elem_id.text
-            url = self.data_get + "?_skey=%s&id=%s" % (self.session, output_id)
-            url = url.replace("content", "output")
-            self.log("DEBUG", "_post() appending output url: [%s]" % url)
-            elem_url = ET.SubElement(elem_output, "url")
-            elem_url.text = url
 
 # if error - attempt to extract a useful message
         elem = tree.find(".//reply/error")
@@ -381,6 +360,7 @@ class mf_client:
         return text3
 
 #------------------------------------------------------------
+# NB: if an "invalid session" error occurs and we have a token then generate new session and retry
     def aterm_run(self, input_line, background=False, post=True):
         """
         Method for parsing aterm's compressed XML syntax and sending to the Mediaflux server
@@ -483,7 +463,7 @@ class mf_client:
                     token = lexer.get_token()
 
         except Exception as e:
-            self.log("DEBUG", "aterm_run() error: %s" % str(e))
+            self.log("DEBUG", "aterm_run(): %s" % str(e))
             raise SyntaxError
 
 # do any deletions to the tree after processing 
@@ -533,8 +513,6 @@ class mf_client:
                 output.text = "session"
 
 # convert XML to string for posting ...
-# FIXME - python 2.6 doesn't like the method = ...
-#        xml_text = ET.tostring(xml, method = 'xml')
         xml_text = ET.tostring(xml)
 
 # debug - password hiding for system.logon ...
@@ -549,12 +527,12 @@ class mf_client:
         message = "This shouldn't happen"
         while True:
             try:
-                reply = self._post(xml_text, output_local_filepath=data_out_name)
+                reply = self._post(xml_text)
                 if background is True:
                     elem = reply.find(".//id")
                     job = elem.text
                     while True:
-                        self.log("DEBUG", "Background job [%s] poll..." % job)
+                        self.log("DEBUG", "aterm_run(): background job [%s] poll..." % job)
                         xml_poll = self.aterm_run("service.background.describe :id %s" % job)
                         elem = xml_poll.find(".//task/state")
                         item = xml_poll.find(".//task/exec-time")
@@ -568,23 +546,59 @@ class mf_client:
                             print "\r%s    " % text
                             break
 # NB: it is an exception (error) to get results BEFORE completion
-                    self.log("DEBUG", "Background job [%s] complete, getting results" % job)
+                    self.log("DEBUG", "aterm_run(): background job [%s] complete, getting results" % job)
                     xml_poll = self.aterm_run("service.background.results.get :id %s" % job)
+# NB: mediaflux seems to not return any output if run in background (eg asset.get :id xxxx &)
+# this seems like a bug?
+#                    self.xml_print(xml_poll)
                     return xml_poll
                 else:
+# CURRENT - process reply for any output
+# NB - can only cope with 1 output
+                    if data_out_name is not None:
+                        self.log("DEBUG", "aterm_run(): output filename [%s]" % data_out_name)
+                        elem_output = reply.find(".//outputs")
+                        if elem_output is not None:
+                            elem_id = elem_output.find(".//id")
+                            output_id = elem_id.text
+                            url = self.data_get + "?_skey=%s&id=%s" % (self.session, output_id)
+                            url = url.replace("content", "output")
+                            response = urllib2.urlopen(url)
+                            with open(data_out_name, 'wb') as output:
+                                while True:
+# trap network IO issues
+                                    try:
+                                        data = response.read(self.get_buffer)
+                                    except Exception as e:
+                                        raise Exception("Network read error: %s" % str(e))
+# exit condition
+                                    if not data:
+                                        break
+# trap disk IO issues
+                                    try:
+                                        output.write(data)
+                                    except Exception as e:
+                                        raise Exception("File write error: %s" % str(e))
+# record progress
+                                    with bytes_recv.get_lock():
+                                        bytes_recv.value += len(data)
+                        else:
+                            self.log("ERROR", "aterm_run(): missing output data in XML server response")
+# successful
                     return reply
 
             except Exception as e:
                 message = str(e)
-                self.log("DEBUG", "POST exception: %s" % message)
+                self.log("DEBUG", "aterm_run(): %s" % message)
                 if "session is not valid" in message:
 # FIXME - if mf_config has a valid session it will stop and not read the token (even if the token is valid)
 # TODO - we could restart the session if we can implement a way to always grab the token if it's there
                     if self.token is not None:
-                        self.log("DEBUG", "We have a token, attempting to establish new session")
+                        self.log("DEBUG", "aterm_run(): we have a token, attempting to establish new session")
+                        # FIXME - need to put this in a separate exception handling ...
                         self.login(token=self.token)
                         xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
-                        self.log("DEBUG", "Session restored, retrying command")
+                        self.log("DEBUG", "aterm_run(): Session restored, retrying command")
                         continue
                 break
 
@@ -646,7 +660,7 @@ class mf_client:
 
         ts = time.time()
         st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-        message = st + " >>> " + message
+        message = st + " >>> [pid=%r] " % os.getpid() + message
         print "%8s: %s" % (prefix, message)
 
 #------------------------------------------------------------
@@ -710,11 +724,12 @@ class mf_client:
         if self.dummy:
             return True
         try:
-# NEW - this approach seems to work better for the expired token + valid session edge case
+
+# CURRENT - I suspect this is not multiprocessing safe ...  resulting in the false "session expired" problem during downloads
             self.aterm_run("system.session.self.describe")
             return True
+
         except Exception as e:
-            self.session = ""
 # NB: max licence error can occur here
             self.log("DEBUG", str(e))
 
@@ -760,37 +775,15 @@ class mf_client:
         """
         global bytes_recv
 
+# TODO - compare filesizes at least ...
         if os.path.isfile(filepath) and not overwrite:
             self.log("DEBUG", "Local file of that name (%s) already exists, skipping." % filepath)
             with bytes_recv.get_lock():
                 bytes_recv.value += os.path.getsize(filepath)
             return
 
-# NEW - filename is ignored ... 
-# TODO - wrap the processing of the output URL in aterm_run ... ?
-# a bit tricky as we want the control for chunked FUSE data requests
+# NEW - the output / download is now handled by aterm_run()
         reply = self.aterm_run("asset.get :id %s :out %s" % (asset_id, filepath))
-        elem = reply.find(".//outputs/url")
-        url = elem.text
-        response = urllib2.urlopen(url)
-        with open(filepath, 'wb') as output:
-            while True:
-# trap network IO issues
-                try:
-                    data = response.read(self.get_buffer)
-                except Exception as e:
-                    raise Exception("Network read error: %s" % str(e))
-# exit condition
-                if not data:
-                    break
-# trap disk IO issues
-                try:
-                    output.write(data)
-                except Exception as e:
-                    raise Exception("File write error: %s" % str(e))
-# record progress
-                with bytes_recv.get_lock():
-                    bytes_recv.value += len(data)
 
 #------------------------------------------------------------
     def get_managed(self, list_asset_filepath, total_bytes, processes=4):

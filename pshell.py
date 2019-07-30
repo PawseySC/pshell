@@ -1317,17 +1317,12 @@ class parser(cmd.Cmd):
         print "Usage: compare <folder>\n"
 
 # --- compare
-    def do_compare(self, line, push=False, pull=False, limit=4):
+    def do_compare(self, line, limit=4):
         remote_fullpath = self.absolute_remote_filepath(line)
 
-# NEW - if push -> create if necessary
+# remote
         if self.mf_client.namespace_exists(remote_fullpath) is False:
-            if push is True:
-                print "Creating remote namespace: %s" % remote_fullpath
-                self.mkdir_helper(remote_fullpath)
-            else:
-                print "Could not find remote folder: %s" % remote_fullpath
-                return
+            print "Could not find remote folder: %s" % remote_fullpath
 
 # if no (or current) folder specified - compare local and remote working directories 
         if remote_fullpath == self.cwd:
@@ -1335,11 +1330,9 @@ class parser(cmd.Cmd):
         else:
             remote_basename = posixpath.basename(remote_fullpath)
             local_fullpath = os.path.join(os.getcwd(), remote_basename)
-
-# TODO - if pull -> create via os.makedirs()
+# local
         if os.path.exists(local_fullpath) is False:
             print "Could not find local folder: %s" % local_fullpath
-            return
 
         print "=== Compare Start ==="
 
@@ -1361,99 +1354,56 @@ class parser(cmd.Cmd):
                     relpath = os.path.relpath(full_path, local_fullpath)
                     local_files.add(relpath)
         except Exception as e:
-            print "Error: %s" % str(e)
+            self.mf_client.log("ERROR", str(e))
 
 # summary
         print "Total remote files = %d" % len(remote_files)
         print "Total local files = %d" % len(local_files)
 
-# setup for pull
+# remote only count
         count_pull = 0
-        if pull is True:
-            print "TODO - download remote files absent from local filesystem"
-        else:
-            print "=== Remote only ==="
-            for item in remote_files - local_files:
-                count_pull += 1
-                self.mf_client.log("DEBUG", "pull=%s" % item)
-            print "File count = %d" % count_pull
+        print "=== Remote only ==="
+        for item in remote_files - local_files:
+            count_pull += 1
+            self.mf_client.log("DEBUG", "pull=%s" % item)
+        print "File count = %d" % count_pull
 
-# handle files that exist locally but not remotely
+# report 
         count_push = 0
-        if push is True:
-# upload mode
-            remote_mkdir = dict()
-            upload_list = []
-# generate unique remote namespaces and upload task payloads
-            for item in local_files - remote_files:
-                remote_filepath = posixpath.join(remote_fullpath, item)
-                remote_namespace = posixpath.dirname(remote_filepath)
-                local_filepath = os.path.join(local_fullpath, item)
-                remote_mkdir[remote_namespace] = True
-                upload_list.append((remote_namespace, local_filepath))
-                count_push += 1
-# ensure unique remote namespaces exist
-            for namespace in remote_mkdir.keys():
-                self.mkdir_helper(namespace)
-# submit upload payload to manager
-            print "Number of files to upload=%d" % count_push
-            self.managed_put(upload_list)
-        else:
-# report mode 
-            print "=== Local only ==="
-            for item in local_files - remote_files:
-                self.mf_client.log("DEBUG", "push=%s" % item)
-                count_push += 1
-            print "File count = %d" % count_push
+        print "=== Local only ==="
+        for item in local_files - remote_files:
+            self.mf_client.log("DEBUG", "push=%s" % item)
+            count_push += 1
+        print "File count = %d" % count_push
 
 # for common files, report if there are differences
-# TODO - push/pull modes for absent files ONLY ... will require a fair amount of care if want to sync so just report for now ...
-        if push is False and pull is False:
-            print "=== Common files ==="
-            count_common = 0
-            count_mismatch = 0
-            for item in local_files & remote_files:
-                remote_filepath = posixpath.join(remote_fullpath, item)
-                remote_namespace = posixpath.dirname(remote_filepath)
-                local_filepath = os.path.join(local_fullpath, item)
+        print "=== Common files ==="
+        count_common = 0
+        count_mismatch = 0
+        for item in local_files & remote_files:
+            remote_filepath = posixpath.join(remote_fullpath, item)
+            remote_namespace = posixpath.dirname(remote_filepath)
+            local_filepath = os.path.join(local_fullpath, item)
 # checksum compare
-                local_crc32 = self.mf_client.get_local_checksum(local_filepath)
-                remote_crc32 = None
-                try:
-                    result = self.mf_client.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename crc32 content/csum' % remote_filepath)
-                    elem = result.find(".//crc32")
-                    remote_crc32 = int(elem.text, 16)
-                    self.mf_client.log("DEBUG", "do_compare(): file=%s, local crc32=%r, remote crc32=%r" % (item, local_crc32, remote_crc32))
-                except Exception as e:
-                    self.mf_client.log("ERROR", "do_compare(): %s" % str(e))
+            local_crc32 = self.mf_client.get_local_checksum(local_filepath)
+            remote_crc32 = None
+            try:
+                result = self.mf_client.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename crc32 content/csum' % remote_filepath)
+                elem = result.find(".//crc32")
+                remote_crc32 = int(elem.text, 16)
+                self.mf_client.log("DEBUG", "do_compare(): file=%s, local crc32=%r, remote crc32=%r" % (item, local_crc32, remote_crc32))
+            except Exception as e:
+                self.mf_client.log("ERROR", "do_compare(): %s" % str(e))
 
-                if local_crc32 == remote_crc32:
-                    count_common += 1
-                else:
-                    count_mismatch += 1
+            if local_crc32 == remote_crc32:
+                count_common += 1
+            else:
+                count_mismatch += 1
 
-            print "Matching = %d" % count_common
-            print "Different = %d" % count_mismatch
+        print "Matching = %d" % count_common
+        print "Different = %d" % count_mismatch
 # done
         print "=== Compare Stop ==="
-
-# TODO - not implemented yet
-# -- compare that only downloads missing local files
-#    def help_pull(self):
-#        print "\nCompares a local and a remote folder and download any mising files"
-#        print "Usage: pull <folder>\n"
-#        print "Examples: pull myfolder\n"
-#
-#    def do_pull(self, line):
-#        self.do_compare(line, pull=True)
-
-# -- compare that only uploads missing files
-    def help_push(self):
-        print "\nUsing the current working directories, compares the local and remote filesystems and uploads missing files"
-        print "Usage: push <subfolder>\n"
-
-    def do_push(self, line):
-        self.do_compare(line, push=True)
 
 # generic operation that returns an unknown number of results from the server, so chunking must be used
     def mf_iter(self, iter_command, iter_callback, iter_size):
@@ -1609,9 +1559,6 @@ def main():
         session = config.get(current, 'session')
     if config.has_option(current, 'token'):
         token = config.get(current, 'token')
-# empty token string counts as none
-    if len(token) == 0:
-        token = None
 
 # don't store debug level in config (command line flag or pshell command is enough)
     if args.debug:
