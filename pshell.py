@@ -1321,32 +1321,29 @@ class parser(cmd.Cmd):
     def do_compare(self, line, checksum=False, filesize=True):
         remote_fullpath = self.absolute_remote_filepath(line)
 
-# remote
+# check remote
         if self.mf_client.namespace_exists(remote_fullpath) is False:
             print "Could not find remote folder: %s" % remote_fullpath
+            return
 
-# if no (or current) folder specified - compare local and remote working directories 
+# no folder specified - compare local and remote working directories 
         if remote_fullpath == self.cwd:
             local_fullpath = os.getcwd()
         else:
             remote_basename = posixpath.basename(remote_fullpath)
             local_fullpath = os.path.join(os.getcwd(), remote_basename)
-# local
+# check local
         if os.path.exists(local_fullpath) is False:
             print "Could not find local folder: %s" % local_fullpath
+            return
 
-        print "=== Compare Start ==="
-
-# TODO - can probably optimise some of the set iterations for push/pull cases
-        local_files = set()
+# build remote set
         remote_files = set()
-        count = 0
-
-# build remote files
         print "Building remote file set under [%s] ..." % remote_fullpath
         remote_files = self.get_remote_set(remote_fullpath)
 
-# build local files
+# build local set
+        local_files = set()
         print "Building local file set under [%s] ..." % local_fullpath
         try:
             for (dirpath, dirnames, filenames) in os.walk(local_fullpath):
@@ -1357,28 +1354,25 @@ class parser(cmd.Cmd):
         except Exception as e:
             self.mf_client.log("ERROR", str(e))
 
-# summary
+# starting summary
         print "Total remote files = %d" % len(remote_files)
         print "Total local files = %d" % len(local_files)
 
 # remote only count
         count_pull = 0
-        print "=== Remote only ==="
+        print "=== Remote server only ==="
         for item in remote_files - local_files:
             count_pull += 1
-            self.mf_client.log("WARNING", "do_compare(): missing local=%s" % item)
-        print "count = %d" % count_pull
-
+            print("%s" % item)
 # report 
         count_push = 0
-        print "=== Local only ==="
+        print "=== Local filesystem only ==="
         for item in local_files - remote_files:
-            self.mf_client.log("WARNING", "do_compare(): missing remote=%s" % item)
+            print("%s" % item)
             count_push += 1
-        print "count = %d" % count_push
 
 # for common files, report if there are differences
-        print "=== Common files ==="
+        print "=== Differing files ==="
         count_common = 0
         count_mismatch = 0
         for item in local_files & remote_files:
@@ -1399,7 +1393,7 @@ class parser(cmd.Cmd):
                 if local_crc32 == remote_crc32:
                     count_common += 1
                 else:
-                    self.mf_client.log("WARNING", "do_compare(): file=%s, local crc32=%r, remote crc32=%r" % (item, local_crc32, remote_crc32))
+                    print("s: local crc32=%r, remote crc32=%r" % (item, local_crc32, remote_crc32))
                     count_mismatch += 1
 # filesize compare 
             elif filesize is True:
@@ -1415,20 +1409,21 @@ class parser(cmd.Cmd):
                 if local_size == remote_size:
                     count_common += 1
                 else:
-                    self.mf_client.log("WARNING", "do_compare(): file=%s, local size=%d, remote size=%d" % (item, local_size, remote_size))
+                    print("%s: local size=%d, remote size=%d" % (item, local_size, remote_size))
                     count_mismatch += 1
 # existence compare
             else:
                 count_common += 1
 
-# summarise for common files
-        print "Matching = %d" % count_common
+# concluding summary
+        print "=== Complete ==="
+        print "Files found only on local filesystem = %d" % count_push
+        print "Files found only on remote server = %d" % count_pull
+        print "Identical files = %d" % count_common
         if checksum is True or filesize is True:
-            print "Different = %d" % count_mismatch
-# done
-        print "=== Compare Stop ==="
+            print "Differing files = %d" % count_mismatch
 
-# generic operation that returns an unknown number of results from the server, so chunking must be used
+# -- generic operation that returns an unknown number of results from the server, so chunking must be used
     def mf_iter(self, iter_command, iter_callback, iter_size):
 # NB: we expect cmd to have ":as iterator" in it
         result = self.mf_client.aterm_run(iter_command)
