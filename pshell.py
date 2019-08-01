@@ -1532,10 +1532,9 @@ def main():
     args = p.parse_args()
     current = args.current
     script = args.script
-#    encrypt = True
     verbose = 0
     dummy = False
-#    session = ""
+    session = ""
 
 
     token = None
@@ -1576,8 +1575,6 @@ def main():
         print "Failed to find a valid config file: %s" % str(e)
         exit(-1)
 
-#    if config.has_option(current, 'encrypt'):
-#        encrypt = config.getboolean(current, 'encrypt')
     if config.has_option(current, 'dummy'):
         dummy = config.getboolean(current, 'dummy')
     if config.has_option(current, 'session'):
@@ -1613,7 +1610,7 @@ def main():
         mf_client.token = token
 
     except Exception as e:
-        print "Failed to connect to: %s://%s:%d" % (protocol, server, port)
+        print "Failed to connect to: %r://%r:%r" % (protocol, server, port)
         print "Error: %s" % str(e)
         exit(-1)
 
