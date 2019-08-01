@@ -71,7 +71,7 @@ class mfwrite():
                 # case 2 - random buffer insert??? ... I give up
                 raise FuseOSError(errno.EILSEQ)
 
-# fail if we've exceed the destination store quota
+# fail if we exceed the destination store quota
         if self.quota is not None:
             if self.total > self.quota:
                 raise FuseOSError(errno.EDQUOT)
@@ -312,7 +312,7 @@ class pmount(Operations):
         elem = reply.find(".//asset/state")
         if elem is not None:
 # recall if offline and raise a "Try Again" ref: https://github.com/sahlberg/libnfs/issues/164
-            if "online" not in elem.text:
+            if "offline" in elem.text:
                 self.log.info("mf_ronly_open(): asset [%s] in namespace [%s] is OFFLINE -> migrating [%d] ONLINE" % (filename, namespace, asset_id))
                 self.mf_client.aterm_run("asset.content.migrate :id %d :destination 'online'" % asset_id)
                 raise FuseOSError(errno.EAGAIN)
