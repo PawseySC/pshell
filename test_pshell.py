@@ -5,84 +5,163 @@ import sys
 import unittest
 import subprocess
 import xml.etree.ElementTree as ET
+from subprocess import Popen, PIPE, STDOUT
 
-#########################
-# serverless pshell tests
-#########################
+#######################
+# pshell commands tests
+#######################
 class pshell_syntax(unittest.TestCase):
+    def setUp(self):
+        global session, server, script, verbosity
+        self.session = session
+        self.server = server
+        self.script = script
+        self.verbosity = verbosity
 
-#    pshell_exe = "pshell.py"
-    pshell_exe = "pshell"
-
+# --
     def test_cd(self):
-        proc = subprocess.Popen(["python", self.pshell_exe, "-c", "dummy", "cd /projects\"'"], stdout=subprocess.PIPE)
-        for line in proc.stdout:
-            if "request" in line:
-                self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.namespace.exists"><namespace>/projects"\'</namespace></service></args></service></request>')
-
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "cd /www"], stdout=PIPE, stderr=STDOUT)
+        flag = False
+        for line in p.stdout:
+            if "Remote: /www" in line:
+                flag = True
+        self.assertTrue(flag)
+# --
+    def test_ls(self):
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls /www"], stdout=PIPE, stderr=STDOUT)
+        flag = False
+        for line in p.stdout:
+            if "index.html" in line:
+                flag = True
+        self.assertTrue(flag)
+# -- 
+    def test_mkdir_rmdir(self):
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "mkdir /test && cd /test && pwd"], stdout=PIPE, stderr=STDOUT)
+        flag = False
+        for line in p.stdout:
+            self.assertNotIn("Folder already exists", line)
+            if "Remote: /test" in line:
+                flag = True
+        self.assertTrue(flag)
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "rmdir /test"], stdout=PIPE, stderr=STDOUT)
+        for line in p.stdout:
+            self.assertNotIn("Could not find remote folder", line)
+        flag=False
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "cd /test"], stdout=PIPE, stderr=STDOUT)
+        for line in p.stdout:
+            if "Could not find remote folder" in line:
+                flag=True
+        self.assertTrue(flag)
+# -- 
+    def test_put(self):
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "put test_pshell.py"], stdout=PIPE, stderr=STDOUT)
+        flag = False
+        for line in p.stdout:
+            if "Completed" in line:
+                flag = True
+        self.assertTrue(flag)
+        flag = False
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls"], stdout=PIPE, stderr=STDOUT)
+        for line in p.stdout:
+            if "test_pshell.py" in line:
+                flag = True
+        self.assertTrue(flag)
+        Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "rm test_pshell.py"], stdout=PIPE, stderr=STDOUT)
+# -- 
+    def test_get(self):
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "lls"], stdout=PIPE, stderr=STDOUT)
+        for line in p.stdout:
+            self.assertNotIn("index.html", line)
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "get /www/index.html"], stdout=PIPE, stderr=STDOUT)
+        flag = False
+        for line in p.stdout:
+            if "Completed at" in line:
+                flag = True
+        self.assertTrue(flag)
+        os.remove("index.html")
+# -- 
     def test_rm(self):
-        proc = subprocess.Popen(["python", self.pshell_exe, "-c", "dummy", "rm *\'*"], stdout=subprocess.PIPE)
-        for line in proc.stdout:
-            if "request" in line:
-                self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.query"><where>namespace=\'/projects\' and name=\'*\\\'*\'</where><action>count</action></service></args></service></request>')
-
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "asset.create :namespace / :name test.txt"], stdout=PIPE, stderr=STDOUT)
+        flag=False
+        for line in p.stdout:
+            if "id=" in line:
+                flag=True
+        self.assertTrue(flag)
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "rm /test.txt"], stdout=PIPE, stderr=STDOUT)
+# -- 
     def test_file(self):
-        proc = subprocess.Popen(["python", self.pshell_exe, "-c", "dummy", r'file "/dir1/../dir2/test_!@#\""'], stdout=subprocess.PIPE)
-        for line in proc.stdout:
-            if "request" in line:
-                self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.get"><id>path=/dir2/test_!@#"</id></service></args></service></request>')
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "file /www/index.html"], stdout=PIPE, stderr=STDOUT)
+        flag = False
+        for line in p.stdout:
+            if "size" in line:
+                flag = True
+        self.assertTrue(flag)
+# --
+    def test_lls(self):
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "lls"], stdout=PIPE, stderr=STDOUT)
+        flag = False
+        for line in p.stdout:
+            if "test_pshell.py" in line:
+                flag = True
+        self.assertTrue(flag)
 
-    def test_mkdir(self):
-        proc = subprocess.Popen(["python", self.pshell_exe, "-c", "dummy", "mkdir /dir1/../dir2/namespace\"'"], stdout=subprocess.PIPE)
-        for line in proc.stdout:
-            if "request" in line:
-                self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.namespace.create"><namespace>/dir2/namespace"\'</namespace></service></args></service></request>')
-
-    def test_rmdir(self):
-        proc = subprocess.Popen(["python", self.pshell_exe, "-c", "dummy", "rmdir sean's dir"], stdout=subprocess.PIPE)
-        for line in proc.stdout:
-            if "request" in line:
-                self.assertEqual(line.strip(), '<request><service name="service.execute" session=""><args><service name="asset.namespace.exists"><namespace>/projects/sean\'s dir</namespace></service></args></service></request>')
-
-# expected response from server is "invalid session" ... anything else is a server connection problem
-    def test_server_responding(self):
-        proc = subprocess.Popen(["python", "pshell", "whoami"], stdout=subprocess.PIPE)
-        for line in proc.stdout:
-            if "Failed to establish network connection" in line:
-                raise Exception("Server failed to respond.")
 
 ########################################
 # convenience wrapper for squishing bugs
 ########################################
 class pshell_bugs(unittest.TestCase):
     def setUp(self):
-        print "setup"
+        global session, server, script, verbosity
 
-# this works ... but is slow ... takes 7+ seconds ...
-#    def test_public_www(self):
-#        proc = subprocess.Popen(["pshell", "get /www/index.html"], stdout=subprocess.PIPE)
-#        for line in proc.stdout:
-#            print line.strip()
+        self.session = session
+        self.server = server
+        self.script = script
+        self.verbosity = verbosity
 
-# can't do - as we forbid login in a pshell scripted sense ...
-#    def test_connection(self):
-#        proc = subprocess.Popen(["pshell", "login"], stdout=subprocess.PIPE)
-#        for line in proc.stdout:
-#            print line.strip()
+    def test_template(self):
+        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls /www"], stdout=PIPE, stderr=STDOUT)
+        flag = False
+        for line in p.stdout:
+            if "index.html" in line:
+                flag = True
+        self.assertTrue(flag)
 
+
+
+
+######
 ######
 # main
 ######
 if __name__ == '__main__':
 
+    global session, server, script, verbosity
+
     print "\n----------------------------------------------------------------------"
     print "Running tests for: pshell"
     print "----------------------------------------------------------------------\n"
 
-# classes to test
+# establish a session for live tests (intended for fresh install running in a local container)
+    session = None
+    server = "http://0.0.0.0:80"
+    script = "pshell.py"
+#    script = "pshell"
+    verbosity = "0"
+
+# class suite to test
     test_class_list = [pshell_syntax]
 #    test_class_list = [pshell_bugs]
 
+
+# setup the session
+    p = Popen(["python", script, "-v", verbosity, "-u", server, "system.logon :domain system :user manager :password change_me"], stdout=PIPE)
+    for line in p.stdout:
+        if "session=" in line:
+            result = line.split()
+            session = result[0][9:-1]
+    if session is None:
+        print "Failed to establish mediaflux session with: %s" % server
+        exit(-1)
 
 # build suite
     suite_list = []

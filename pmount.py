@@ -198,9 +198,6 @@ class pmount(Operations):
             if config.has_option(args.config, 'port'):
                 args.port = config.get(args.config, 'port')
 
-            if config.has_option(args.config, 'encrypt'):
-                args.encrypt = config.get(args.config, 'encrypt')
-
             if config.has_option(args.config, 'domain'):
                 args.domain = config.get(args.config, 'domain')
 
@@ -245,9 +242,9 @@ class pmount(Operations):
         self.buffer_max = 100000000
 
 # attempt to connect and authenticate
-        self.log.info("init(): protocol=%s, server=%s, port=%s, encrypt=%r, domain=%s, namespace=%s" % (args.protocol, args.server, args.port, args.encrypt, args.domain, args.namespace))
+        self.log.info("init(): protocol=%s, server=%s, port=%s, domain=%s, namespace=%s" % (args.protocol, args.server, args.port, args.domain, args.namespace))
         try:
-            self.mf_client = mfclient.mf_client(protocol=args.protocol, server=args.server, port=args.port, domain=args.domain, enforce_encrypted_login=eval(args.encrypt), debug=0)
+            self.mf_client = mfclient.mf_client(protocol=args.protocol, server=args.server, port=args.port, domain=args.domain, debug=0)
         except Exception as e:
             self.log.error("init(): failed to connect: %s" % str(e))
             exit(-1)
@@ -273,7 +270,6 @@ class pmount(Operations):
                 config.set(args.config, 'server',  args.server)
                 config.set(args.config, 'protocol', args.protocol)
                 config.set(args.config, 'port', args.port)
-                config.set(args.config, 'encrypt', args.encrypt)
                 config.set(args.config, 'domain', args.domain)
                 config.set(args.config, 'namespace', args.namespace)
                 config.set(args.config, 'session', self.mf_client.session)
@@ -927,10 +923,8 @@ if __name__ == '__main__':
 # default protocol for mediaflux
     if int(args.port) == 80:
         args.protocol = "http"
-        args.encrypt = "False"
     else:
         args.protocol = "https"
-        args.encrypt = "True"
 
 # main call
     try:

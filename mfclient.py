@@ -94,7 +94,8 @@ class mf_client:
     All unexpected failures are handled by raising exceptions
     """
 
-    def __init__(self, protocol, port, server, domain="system", session="", timeout=120, enforce_encrypted_login=True, debug=0, dummy=False):
+    def __init__(self, protocol, port, server, domain="system", session="", timeout=120, debug=0, dummy=False):
+#    def __init__(self, protocol, port, server, domain="system", session="", timeout=120, enforce_encrypted_login=True, debug=0, dummy=False):
         """
         Create a Mediaflux server connection instance. Raises an exception on failure.
 
@@ -125,8 +126,15 @@ class mf_client:
         self.token = None
         self.dummy = dummy
         self.debug = int(debug)
-        self.encrypted_post = bool(enforce_encrypted_login)
-        self.encrypted_data = self.encrypted_post
+#        self.encrypted_post = bool(enforce_encrypted_login)
+#        self.encrypted_data = self.encrypted_post
+
+# can override to test fast http data transfers (with https logins)
+        if protocol == 'https':
+            self.encrypted_data = True
+        else:
+            self.encrypted_data = False
+
 # service call URL
         self.post_url = "%s://%s/__mflux_svc__" % (protocol, server)
 # download/upload buffers
@@ -687,10 +695,11 @@ class mf_client:
         """
 # security check
         if self.protocol != "https":
-            if self.encrypted_post:
-                raise Exception("Forbidding unencrypted password post")
-            else:
-                self.log("DEBUG", "Permitting unencrypted login; I hope you know what you're doing.")
+#            if self.encrypted_post:
+#                raise Exception("Forbidding unencrypted password post")
+#            else:
+# nice idea, but too annoying in practise for testing
+            self.log("DEBUG", "Permitting unencrypted login; I hope you know what you're doing.")
 
 # NEW - priority order and auto lookup of token or session in appropriate config file section
 # NB: failed login calls raise an exception in aterm_run post XML handling

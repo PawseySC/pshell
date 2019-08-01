@@ -11,6 +11,7 @@ import getpass
 import urllib2
 import zipfile
 import argparse
+import urlparse
 import datetime
 import itertools
 import posixpath
@@ -1519,19 +1520,26 @@ def main():
 
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
-    p.add_argument("-c", dest='current', default="pawsey", help="the server in $HOME/.mf_config to connect to")
+    p.add_argument("-c", dest='current', default="pawsey", help="the config name in $HOME/.mf_config to connect to")
     p.add_argument("-i", dest='script', help="input text file containing commands")
-    p.add_argument("-d", dest='debug', default=0, help="activates debugging level")
+    p.add_argument("-v", dest='verbose', default=None, help="set verbosity level (0,1,2)")
+
+    p.add_argument("-u", dest='url', default=None, help="server URL (eg https://mediaflux.org:443")
+    p.add_argument("-d", dest='domain', default=None, help="login authentication domain")
+    p.add_argument("-s", dest='session', default=None, help="session")
+
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
     current = args.current
     script = args.script
-    encrypt = True
-    debug = 0
+#    encrypt = True
+    verbose = 0
     dummy = False
-    session = ""
+#    session = ""
+
+
     token = None
-    config_changed = False
+#    config_changed = False
 
 # ascertain local path for storing the config, fallback to CWD if system gives a dud path for ~
     config_filepath = os.path.expanduser("~/.mf_config")
@@ -1557,30 +1565,25 @@ def main():
 
 # read non ~ config as defaults
             config.readfp(f)
-            config_changed = True
+
 # get main config vars
         server = config.get(current, 'server')
         protocol = config.get(current, 'protocol')
         port = config.get(current, 'port')
-# require an authentication domain be specified
         domain = config.get(current, 'domain')
 # no .mf_config in ~ or zip bundle or cwd => die
     except Exception as e:
         print "Failed to find a valid config file: %s" % str(e)
         exit(-1)
 
-    if config.has_option(current, 'encrypt'):
-        encrypt = config.getboolean(current, 'encrypt')
+#    if config.has_option(current, 'encrypt'):
+#        encrypt = config.getboolean(current, 'encrypt')
     if config.has_option(current, 'dummy'):
         dummy = config.getboolean(current, 'dummy')
     if config.has_option(current, 'session'):
         session = config.get(current, 'session')
     if config.has_option(current, 'token'):
         token = config.get(current, 'token')
-
-# don't store debug level in config (command line flag or pshell command is enough)
-    if args.debug:
-        debug = args.debug
 
 # extract terminal size for auto pagination
     try:
@@ -1590,14 +1593,27 @@ def main():
 # FIXME - make this work with windows
         size = (80, 20)
 
-# mediaflux connection
+# command line arguments override; but only if specified ie not none
+    if args.url is not None:
+        cmd = urlparse.urlparse(args.url)
+        server = cmd.hostname
+        port = cmd.port
+        protocol = cmd.scheme
+    if args.domain is not None:
+        domain = args.domain
+    if args.verbose is not None:
+        verbose = args.verbose
+    if args.session is not None:
+        session = args.session
+
+# establish mediaflux connection
     try:
-        mf_client = mfclient.mf_client(protocol=protocol, port=port, server=server, domain=domain, enforce_encrypted_login=encrypt, debug=debug, dummy=dummy)
+        mf_client = mfclient.mf_client(protocol=protocol, server=server, port=port, domain=domain, debug=verbose, dummy=dummy)
         mf_client.session = session
         mf_client.token = token
 
     except Exception as e:
-        print "Failed to connect to: %s" % server
+        print "Failed to connect to: %s://%s:%d" % (protocol, server, port)
         print "Error: %s" % str(e)
         exit(-1)
 
@@ -1605,14 +1621,6 @@ def main():
     need_auth = True
     if mf_client.authenticated():
         need_auth = False
-
-# NB: don't wipe the delegate - login may have failed for other reasons (eg too many connections or server down)
-# save config - should only ever happen on first time run 
-    if config_changed:
-        mf_client.log("DEBUG", "Writing config...")
-        f = open(config_filepath, "w")
-        config.write(f)
-        f.close()
 
 # hand control of mediaflux client over to parsing loop
     my_parser = parser()
