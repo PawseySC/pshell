@@ -136,14 +136,14 @@ class mfclient_bugs(unittest.TestCase):
         global mf_client
         self.mf_client = mf_client
 
-# regression test for special characters in password
-    def test_sanitise_login_password(self):
-        password = 'a?|:;(){}[  ]#@$%&* b.,c~123!> </\\\\'
-        line = "system.logon :domain ivec :user sean :password %s" % password
+# FIXME: this is not a proper test as OUT filename is not returned in the reply by aterm_run()
+    def test_windows_path_handling(self):
+        self.mf_client.debug=2
+# test escaping of windows path separator to avoid the posix lexer in aterm_run() screwing it up
+        line = r"asset.get :id 123 :out c:\Users\sean\test.zip"
+        line = line.replace("\\", "\\\\")
         reply = self.mf_client.aterm_run(line, post=False)
-#        print reply
-        self.assertEqual(reply, '<request><service name="system.logon"><args><domain>ivec</domain><user>sean</user><password>%s</password></args></service></request>' % self.mf_client._xml_sanitise(password))
-
+        print reply
 
 
 ######
@@ -163,8 +163,8 @@ if __name__ == '__main__':
 
 
 # classes to test
-    test_class_list = [mfclient_syntax]
-#    test_class_list = [mfclient_bugs]
+#    test_class_list = [mfclient_syntax]
+    test_class_list = [mfclient_bugs]
 
 
 # build suite

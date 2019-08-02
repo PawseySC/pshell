@@ -19,6 +19,7 @@ import signal
 import urllib2
 import httplib
 import datetime
+import platform
 import functools
 import mimetypes
 import posixpath
@@ -175,6 +176,7 @@ class mf_client:
 
 # if required, attempt to display more connection info
         if self.debug > 0:
+            print "PLATFORM: %s" % platform.system()
             print "POST-URL: %s" % self.post_url
             print "DATA-GET: %s" % self.data_get
             print "DATA-PUT: %s" % self.data_put
@@ -782,7 +784,10 @@ class mf_client:
                 bytes_recv.value += os.path.getsize(filepath)
             return
 
-# NEW - the output / download is now handled by aterm_run()
+# FIX - Windows path names and the posix lexer in aterm_run() are not good friends
+        if "Windows" in platform.system():
+            filepath = filepath.replace("\\", "\\\\")
+
         reply = self.aterm_run("asset.get :id %s :out %s" % (asset_id, filepath))
 
 #------------------------------------------------------------
