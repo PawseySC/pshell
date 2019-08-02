@@ -31,6 +31,7 @@ import ConfigParser
 manage_lock = multiprocessing.Lock()
 bytes_sent = multiprocessing.Value('d', 0, lock=True)
 bytes_recv = multiprocessing.Value('d', 0, lock=True)
+build= "20190802150745"
 
 #------------------------------------------------------------
 def put_jump(mfclient, data):
@@ -125,6 +126,7 @@ class mf_client:
         self.token = None
         self.dummy = dummy
         self.debug = int(debug)
+        global build
 
 # can override to test fast http data transfers (with https logins)
         if protocol == 'https':
@@ -177,6 +179,7 @@ class mf_client:
 # if required, attempt to display more connection info
         if self.debug > 0:
             print "PLATFORM: %s" % platform.system()
+            print "MFCLIENT: %s" % build
             print "POST-URL: %s" % self.post_url
             print "DATA-GET: %s" % self.data_get
             print "DATA-PUT: %s" % self.data_put

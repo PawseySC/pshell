@@ -26,7 +26,7 @@ except:
 
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
-
+build = "Latest"
 delegate_default = 7
 delegate_min = 1
 delegate_max = 365
@@ -292,6 +292,15 @@ class parser(cmd.Cmd):
                 line = line[match.end(0)+1:]
 #        print "flags=[%s] line=[%s]" % (flags, line)
         return flags, self.absolute_remote_filepath(line)
+
+# --- version tracking 
+    def help_version(self):
+        print "\nReturn the current version build identifier\n"
+        print "Usage: build\n"
+
+    def do_version(self, line):
+        global build
+        print "   BUILD: %s" % build
 
 # --- file info
     def help_file(self):
@@ -1514,6 +1523,8 @@ class parser(cmd.Cmd):
                     self.need_auth = True
 
 def main():
+    global build
+
     if sys.hexversion < 0x02070000:
         print("Error: requires Python 2.7.x, using: ", sys.version)
         exit(-1)
@@ -1662,6 +1673,7 @@ def main():
 # interactive or input iterator (scripted)
     if my_parser.interactive:
         print " === pshell: type 'help' for a list of commands ==="
+
         my_parser.loop_interactively()
     else:
         for item in input_list:

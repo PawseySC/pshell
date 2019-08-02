@@ -163,8 +163,8 @@ if __name__ == '__main__':
 
 
 # classes to test
-#    test_class_list = [mfclient_syntax]
-    test_class_list = [mfclient_bugs]
+    test_class_list = [mfclient_syntax]
+#    test_class_list = [mfclient_bugs]
 
 
 # build suite
