@@ -26,7 +26,7 @@ except:
 
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
-build = "Latest"
+build= "20190802152704"
 delegate_default = 7
 delegate_min = 1
 delegate_max = 365
@@ -216,7 +216,7 @@ class parser(cmd.Cmd):
 
 # --- helper
     def requires_auth(self, line):
-        local_commands = ["login", "help", "lls", "lcd", "lpwd", "debug", "exit", "quit"]
+        local_commands = ["login", "help", "lls", "lcd", "lpwd", "debug", "version", "exit", "quit"]
 
 # only want first keyword (avoid getting "not logged in" on input like "help get")
         try:
@@ -1671,9 +1671,9 @@ def main():
         my_parser.interactive = False
 
 # interactive or input iterator (scripted)
+    mf_client.log("DEBUG", "PSHELL: %s" % build)
     if my_parser.interactive:
         print " === pshell: type 'help' for a list of commands ==="
-
         my_parser.loop_interactively()
     else:
         for item in input_list:
