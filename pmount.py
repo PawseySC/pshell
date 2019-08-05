@@ -41,12 +41,13 @@ class mfwrite():
     """
     Handle buffered uploads to Mediaflux
     """
-    def __init__(self, store=None, quota=None, tmpfile=None):
+    def __init__(self, store=None, quota=None, tmpfile=None, fullpath=None):
         self.buffer = bytearray()
         self.length = 0
         self.offset = 0
         self.total = 0
         self.tmpfile = tmpfile
+        self.fullpath = fullpath
         self.store = store
         self.quota = quota
         self.start = time.time()
@@ -54,22 +55,33 @@ class mfwrite():
     def inject(self, buff, offset):
         size = len(buff)
         if offset == self.total:
-            # sequential buffer extend
+# sequential buffer extend
             self.buffer.extend(buff)
             self.length += size
             self.total += size
         else:
-            # inject at unexpected (non-sequential) offset ... shouldn't happen???
-            print "inject() A: buffer => offset=%d,length=%d,total=%d : input => offset=%d,size=%d" % (self.offset,self.length,self.total,offset,size)
+# inject at non-sequential offset (NB: Linux uses this to skip 0's)
+            print "inject() non-seq: buffer => offset=%d,length=%d,total=%d : input => offset=%d,size=%d" % (self.offset,self.length,self.total,offset,size)
             if offset == self.offset:
-                # case 1 - restart at same offset as the current buffer -> truncate buffer to the current input 
+# case 1 - restart at same offset as the current buffer -> truncate buffer to the current input 
                 self.buffer[0:] = buff
                 self.length = size
                 self.total = self.offset + size
-                print "inject() B: buffer => offset=%d,length=%d,total=%d" % (self.offset,self.length,self.total)
+                print "inject() case1: buffer => offset=%d,length=%d,total=%d" % (self.offset,self.length,self.total)
             else:
-                # case 2 - random buffer insert??? ... I give up
-                raise FuseOSError(errno.EILSEQ)
+# case 2 a) offset is ahead (assume we can just fill in with 0's)
+                if offset > self.total:
+# pad with 0's to get to offset 
+                    pad_size = offset - self.total
+                    for i in range(0, pad_size):
+                        self.buffer.append(0)
+# add the injected data
+                    self.buffer.extend(buff)
+                    self.length = len(self.buffer)
+                    self.total += pad_size + size
+                    print "inject() case2a: buffer length=%d, total=%d" % (self.length, self.total)
+                else:
+                    raise FuseOSError(errno.EILSEQ)
 
 # fail if we exceed the destination store quota
         if self.quota is not None:
@@ -297,7 +309,11 @@ class pmount(Operations):
         return 0
 
 # --- fake filehandle for download (read only)
-    def mf_ronly_open(self, namespace, filename):
+#    def mf_ronly_open(self, namespace, filename):
+    def mf_ronly_open(self, fullpath):
+
+        namespace = posixpath.dirname(fullpath)
+        filename = posixpath.basename(fullpath)
 
  # get the asset ID (NB: asset.query with :get-content-status True doesn't work)
         reply = self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'"' % (namespace, filename))
@@ -331,7 +347,12 @@ class pmount(Operations):
         raise FuseOSError(errno.EMFILE)
 
 # --- fake filehandle for upload (write only)
-    def mf_wonly_open(self, folder, filename):
+#    def mf_wonly_open(self, folder, filename):
+    def mf_wonly_open(self, fullpath):
+# NEW
+        folder = posixpath.dirname(fullpath)
+        filename = posixpath.basename(fullpath)
+
 # get info on destination
         try:
             reply = self.mf_client.aterm_run("asset.namespace.describe :namespace %s" % folder)
@@ -352,7 +373,8 @@ class pmount(Operations):
             reply = self.mf_client.aterm_run("server.io.job.describe :ticket %d" % ticket)
             elem = reply.find(".//path")
             tmpfile = elem.text
-            self.mf_wonly[ticket] = mfwrite(store=store, quota=quota, tmpfile=tmpfile)
+#            self.mf_wonly[ticket] = mfwrite(store=store, quota=quota, tmpfile=tmpfile)
+            self.mf_wonly[ticket] = mfwrite(store=store, quota=quota, tmpfile=tmpfile, fullpath=fullpath)
         except Exception as e:
             self.log.error("mf_wonly_open() : %s" % str(e))
             raise FuseOSError(errno.EPERM)
@@ -716,10 +738,12 @@ class pmount(Operations):
 # ie can we just update the cache (if exists?)
             self.inode_cache[path] = self.inode_new(mode=stat.S_IFREG | 0400, links=1, size=0)
             # fake filehandle for writing
-            return self.mf_wonly_open(namespace, filename)
+#            return self.mf_wonly_open(namespace, filename)
+            return self.mf_wonly_open(fullpath)
 
 # fake filehandle for reading
-        return self.mf_ronly_open(namespace, filename)
+#        return self.mf_ronly_open(namespace, filename)
+        return self.mf_ronly_open(fullpath)
 
 # ---
     @iostats.record
@@ -771,7 +795,8 @@ class pmount(Operations):
             raise FuseOSError(errno.EPERM)
 
 # get ref to use as filehandle for write()
-        fakehandle = self.mf_wonly_open(namespace, filename)
+#        fakehandle = self.mf_wonly_open(namespace, filename)
+        fakehandle = self.mf_wonly_open(fullpath)
 
 # create temporary inode - required as the kernel calls getattr() to enforce there is an inode after create()
         self.inode_cache[path] = self.inode_new(mode=mode, links=1, size=0)
@@ -826,6 +851,9 @@ class pmount(Operations):
 
 # --- buffer the data and send when limit has been exceeded
     def write(self, path, buf, offset, fh):
+
+        self.log.debug("write() : path=%s, offset=%d, size=%d" % (path, offset, len(buf)))
+
         mfbuffer = self.mf_wonly[fh]
         size = mfbuffer.inject(buf, offset)
         if mfbuffer.length > self.buffer_max:
@@ -854,15 +882,56 @@ class pmount(Operations):
         return self.flush(path, fh)
 
 # --- 
+# NB: never get the fh on Linux - see kernel truncate() signature
     def truncate(self, path, length, fh=None):
+
+        self.log.debug("truncate() : path=%s, length=%d" % (path, length))
+
         fullpath = self._remote_fullpath(path)
-        try:
-            if length == 0:
-                self.mf_client.aterm_run('asset.content.remove :id "path=%s" :action truncate' % fullpath)
-            else:
-                raise Exception("Non-zero length truncation is not implemented")
-        except Exception as e:
-            self.log.warning("truncate() : %s" % str(e))
+
+# CURRENT - this (sort of works) ... but checksums don't match ... could be due to new out of order buffer writes tho ...
+# hot truncate
+# look for a current io job that matches 
+        for ticket in self.mf_wonly:
+            if self.mf_wonly[ticket].fullpath == fullpath:
+                self.log.debug("truncate() : applying against active ticket=%r" % ticket)
+                mfbuffer = self.mf_wonly[ticket]
+                if mfbuffer.total < length:
+                    size = length - mfbuffer.total
+# is there a better way?
+                    buff = bytearray()
+                    for i in range(0,size):
+                        buff.append(0)
+# CURRENT - almost there ... except checksums now don't match
+                    self.write(path, buff, mfbuffer.total, ticket)
+                    return 0
+                else:
+                    print "why are you truncating bytes you've already sent?"
+
+# TODO - cold truncate
+
+# TODO - do this for cases that aren't part of a current write
+#        try:
+#            self.mf_client.aterm_run('asset.content.write.begin :id "path=%s"' % fullpath)
+#
+#            self.mf_client.aterm_run('asset.content.write.truncate :id "path=%s" :length %d' % (fullpath, length))
+#
+#            self.mf_client.aterm_run('asset.content.write.end :id "path=%s"' % fullpath)
+#
+#        except Exception as e:
+#            self.log.warning("truncate() : %s" % str(e))
+
+
+#        try:
+#            if length == 0:
+#                self.mf_client.aterm_run('asset.content.remove :id "path=%s" :action truncate' % fullpath)
+#            else:
+#                raise Exception("Non-zero length truncation is not implemented")
+#        except Exception as e:
+#            self.log.warning("truncate() : %s" % str(e))
+
+
+
         return 0
 
 # NB - release() return code/exceptions are ignored by FUSE - so there's no way to fail the operation from this method
