@@ -144,8 +144,8 @@ if __name__ == '__main__':
 # establish a session for live tests (intended for fresh install running in a local container)
     session = None
     server = "http://0.0.0.0:80"
-#    script = "pshell.py"
-    script = "pshell"
+# NB: don't use pshell as we can't run bundle_pshell in the container
+    script = "pshell.py"
     verbosity = "0"
 
 # class suite to test

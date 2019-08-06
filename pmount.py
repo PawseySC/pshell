@@ -100,6 +100,7 @@ class pmount(Operations):
     """
     FUSE implementation for mounting a Mediaflux namespace as a local folder
     """
+# errno ref: https://docs.python.org/2/library/errno.html
 
 # --- performance decorators 
     class iostats():
@@ -309,7 +310,6 @@ class pmount(Operations):
         return 0
 
 # --- fake filehandle for download (read only)
-#    def mf_ronly_open(self, namespace, filename):
     def mf_ronly_open(self, fullpath):
 
         namespace = posixpath.dirname(fullpath)
@@ -347,7 +347,6 @@ class pmount(Operations):
         raise FuseOSError(errno.EMFILE)
 
 # --- fake filehandle for upload (write only)
-#    def mf_wonly_open(self, folder, filename):
     def mf_wonly_open(self, fullpath):
 # NEW
         folder = posixpath.dirname(fullpath)
@@ -373,7 +372,6 @@ class pmount(Operations):
             reply = self.mf_client.aterm_run("server.io.job.describe :ticket %d" % ticket)
             elem = reply.find(".//path")
             tmpfile = elem.text
-#            self.mf_wonly[ticket] = mfwrite(store=store, quota=quota, tmpfile=tmpfile)
             self.mf_wonly[ticket] = mfwrite(store=store, quota=quota, tmpfile=tmpfile, fullpath=fullpath)
         except Exception as e:
             self.log.error("mf_wonly_open() : %s" % str(e))
@@ -787,7 +785,6 @@ class pmount(Operations):
             raise FuseOSError(errno.EACCES)
 
         fullpath = self._remote_fullpath(path)
-        namespace = posixpath.dirname(fullpath)
         filename = posixpath.basename(fullpath)
 
 # don't allow the OS to silently pollute
@@ -795,7 +792,6 @@ class pmount(Operations):
             raise FuseOSError(errno.EPERM)
 
 # get ref to use as filehandle for write()
-#        fakehandle = self.mf_wonly_open(namespace, filename)
         fakehandle = self.mf_wonly_open(fullpath)
 
 # create temporary inode - required as the kernel calls getattr() to enforce there is an inode after create()
@@ -884,53 +880,34 @@ class pmount(Operations):
 # --- 
 # NB: never get the fh on Linux - see kernel truncate() signature
     def truncate(self, path, length, fh=None):
-
         self.log.debug("truncate() : path=%s, length=%d" % (path, length))
-
         fullpath = self._remote_fullpath(path)
 
-# CURRENT - this (sort of works) ... but checksums don't match ... could be due to new out of order buffer writes tho ...
-# hot truncate
-# look for a current io job that matches 
+# hot truncate - look for a current io job that matches 
         for ticket in self.mf_wonly:
             if self.mf_wonly[ticket].fullpath == fullpath:
                 self.log.debug("truncate() : applying against active ticket=%r" % ticket)
                 mfbuffer = self.mf_wonly[ticket]
                 if mfbuffer.total < length:
                     size = length - mfbuffer.total
-# is there a better way?
-                    buff = bytearray()
-                    for i in range(0,size):
-                        buff.append(0)
-# CURRENT - almost there ... except checksums now don't match
+                    buff = bytearray(size)
                     self.write(path, buff, mfbuffer.total, ticket)
                     return 0
                 else:
-                    print "why are you truncating bytes you've already sent?"
+                    # TODO - may be some legitimate use case for this (eg retry?)
+                    self.log.error("truncate() : truncating bytes that may have already been sent")
+                    raise FuseOSError(errno.EILSEQ)
 
-# TODO - cold truncate
-
-# TODO - do this for cases that aren't part of a current write
-#        try:
-#            self.mf_client.aterm_run('asset.content.write.begin :id "path=%s"' % fullpath)
-#
-#            self.mf_client.aterm_run('asset.content.write.truncate :id "path=%s" :length %d' % (fullpath, length))
-#
-#            self.mf_client.aterm_run('asset.content.write.end :id "path=%s"' % fullpath)
-#
-#        except Exception as e:
-#            self.log.warning("truncate() : %s" % str(e))
-
-
-#        try:
-#            if length == 0:
-#                self.mf_client.aterm_run('asset.content.remove :id "path=%s" :action truncate' % fullpath)
-#            else:
-#                raise Exception("Non-zero length truncation is not implemented")
-#        except Exception as e:
-#            self.log.warning("truncate() : %s" % str(e))
-
-
+# cold truncate - apply directly to asset content
+        self.log.debug("truncate() : applying against existing asset path=%s" % fullpath)
+        try:
+            self.mf_client.aterm_run('asset.content.write.begin :id "path=%s"' % fullpath)
+            self.mf_client.aterm_run('asset.content.write.truncate :id "path=%s" :length %d' % (fullpath, length))
+            self.mf_client.aterm_run('asset.content.write.end :id "path=%s"' % fullpath)
+        except Exception as e:
+            self.log.error("truncate() : %s" % str(e))
+            # doesn't exist/no perm the only possibility?
+            raise FuseOSError(errno.EPERM)
 
         return 0
 
@@ -944,7 +921,6 @@ class pmount(Operations):
         if mfobj is not None:
 # path1 - WRONLY
             try:
-#                self.mf_write(mfobj, fh)
                 self.mf_write(mfobj.tmpfile, mfobj.buffer, mfobj.length, mfobj.offset, fh)
             except Exception as e:
                 self.log.error("release(1) : %s" % str(e))
