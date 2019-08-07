@@ -13,6 +13,7 @@ import getpass
 import logging
 import httplib
 import urllib2
+import urlparse
 import argparse
 import tempfile
 import posixpath
@@ -61,13 +62,13 @@ class mfwrite():
             self.total += size
         else:
 # inject at non-sequential offset (NB: Linux uses this to skip 0's)
-            print "inject() non-seq: buffer => offset=%d,length=%d,total=%d : input => offset=%d,size=%d" % (self.offset,self.length,self.total,offset,size)
+            print "inject() non-seq: buffer total=%d : input offset=%d, size=%d" % (self.total,offset,size)
             if offset == self.offset:
 # case 1 - restart at same offset as the current buffer -> truncate buffer to the current input 
                 self.buffer[0:] = buff
                 self.length = size
                 self.total = self.offset + size
-                print "inject() case1: buffer => offset=%d,length=%d,total=%d" % (self.offset,self.length,self.total)
+                print "inject() case1: buffer => length=%d,total=%d" % (self.length,self.total)
             else:
 # case 2 a) offset is ahead (assume we can just fill in with 0's)
                 if offset > self.total:
@@ -79,7 +80,7 @@ class mfwrite():
                     self.buffer.extend(buff)
                     self.length = len(self.buffer)
                     self.total += pad_size + size
-                    print "inject() case2a: buffer length=%d, total=%d" % (self.length, self.total)
+                    print "inject() case2: buffer => length=%d,total=%d" % (self.length,self.total)
                 else:
                     raise FuseOSError(errno.EILSEQ)
 
@@ -195,7 +196,7 @@ class pmount(Operations):
         token = "xyz123"
         try:
             config_filepath = os.path.expanduser("~/.mf_config")
-            self.log.debug("init() : config=%s" % config_filepath)
+            self.log.debug("init() : config=%s, section=%s" % (config_filepath, args.config))
             config = ConfigParser.ConfigParser()
             config.read(config_filepath)
 
@@ -222,6 +223,13 @@ class pmount(Operations):
 
         except Exception as e:
             self.log.error("init(): %s" % str(e))
+
+# set the port if required
+        if args.port is None:
+            if args.protocol == "http":
+                args.port = 80
+            else:
+                args.port = 443
 
 # remote filesystem 
         self.remote_root = args.namespace
@@ -285,7 +293,6 @@ class pmount(Operations):
                 config.set(args.config, 'port', args.port)
                 config.set(args.config, 'domain', args.domain)
                 config.set(args.config, 'namespace', args.namespace)
-                config.set(args.config, 'session', self.mf_client.session)
                 config.set(args.config, 'token', token)
                 f = open(config_filepath, "w")
                 config.write(f)
@@ -954,22 +961,39 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("path", help="Local path to present the virtual filesystem")
-    parser.add_argument("-c", dest="config", default="pawsey", help="Use the section named [CONFIG] in $HOME/.mf_config")
-    parser.add_argument("-s", dest="server", default="data.pawsey.org.au", help="The mediaflux server")
-    parser.add_argument("-p", dest="port", default=443, help="The mediaflux port")
-    parser.add_argument("-d", dest="domain", default="ivec", help="The mediaflux authentication domain")
-    parser.add_argument("-n", dest="namespace", default="/projects", help="Top level mediaflux namespace")
+    parser.add_argument("-c", dest="config", default=None, help="Use the section named [CONFIG] in $HOME/.mf_config")
+    parser.add_argument("-s", dest="server", default="https://data.pawsey.org.au", help="Full URL to the mediaflux server")
+    parser.add_argument("-d", dest="domain", default=None, help="The mediaflux authentication domain")
+    parser.add_argument("-n", dest="namespace", default="/", help="Top level mediaflux namespace")
     parser.add_argument("-b", "--background", help="Run in the background", action="store_true")
     parser.add_argument("-r", "--readonly", help="Mount as readonly", action="store_true")
     parser.add_argument("-l", "--logfile", help="Create timestamped logfile", action="store_true")
     parser.add_argument("-v", "--verbose", help="Activate verbose logging", action="store_true")
     args = parser.parse_args()
 
-# default protocol for mediaflux
-    if int(args.port) == 80:
-        args.protocol = "http"
-    else:
-        args.protocol = "https"
+# CURRET - this completely fails to parse "data.pawsey.org.au" as an input server arg ...
+    url = urlparse.urlparse(args.server)
+    args.protocol = url.scheme
+    args.server = url.hostname
+    args.port = url.port
+
+# sort of a hack to balance default of pawsey with ability to command line override
+    try:
+        if args.config is None:
+            if "pawsey" in args.server:
+                args.config = "pawsey"
+                args.domain = "ivec"
+                args.namespace = "/projects"
+                args.port = 443
+            else:
+                args.config = args.server
+
+    except Exception as e:
+        print "Error: incomplete server URL."
+        exit(-1)
+
+
+
 
 # main call
     try:

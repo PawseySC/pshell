@@ -1604,9 +1604,9 @@ def main():
 # command line arguments override; but only if specified ie not none
     if args.url is not None:
         cmd = urlparse.urlparse(args.url)
+        protocol = cmd.scheme
         server = cmd.hostname
         port = cmd.port
-        protocol = cmd.scheme
     if args.domain is not None:
         domain = args.domain
     if args.verbose is not None:
