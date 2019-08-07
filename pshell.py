@@ -26,7 +26,7 @@ except:
 
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
-build= "20190802152704"
+build= "Latest"
 delegate_default = 7
 delegate_min = 1
 delegate_max = 365
