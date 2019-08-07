@@ -892,6 +892,9 @@ class pmount(Operations):
 
 # hot truncate - look for a current io job that matches 
         for ticket in self.mf_wonly:
+# skip unused buffers
+            if self.mf_wonly[ticket] is None:
+                continue
             if self.mf_wonly[ticket].fullpath == fullpath:
                 self.log.debug("truncate() : applying against active ticket=%r" % ticket)
                 mfbuffer = self.mf_wonly[ticket]

@@ -141,7 +141,7 @@ class mf_client:
 # XML pretty print hack
         self.indent = 0
 
-# dummy mode - don't check server connection
+# check server connection - unless in offline testing mode
         if dummy is False:
             s = socket.socket()
             s.settimeout(7)
@@ -149,7 +149,7 @@ class mf_client:
             s.close()
 # check for unecrypted connection (faster data transfers)
             try:
-                response = urllib2.urlopen("http://%s" % server, timeout=3)
+                response = urllib2.urlopen("http://%s" % server, timeout=2)
                 if response.code == 200:
                     self.encrypted_data = False
             except Exception as e:
