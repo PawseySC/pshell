@@ -31,7 +31,7 @@ import ConfigParser
 manage_lock = multiprocessing.Lock()
 bytes_sent = multiprocessing.Value('d', 0, lock=True)
 bytes_recv = multiprocessing.Value('d', 0, lock=True)
-build= "20190807115136"
+build= "20190807122036"
 
 #------------------------------------------------------------
 def put_jump(mfclient, data):
@@ -149,11 +149,11 @@ class mf_client:
             s.close()
 # check for unecrypted connection (faster data transfers)
             try:
-                response = urllib2.urlopen("http://%s" % server)
+                response = urllib2.urlopen("http://%s" % server, timeout=3)
                 if response.code == 200:
                     self.encrypted_data = False
             except Exception as e:
-                print "Error: %s" % str(e)
+                pass
 
 # build data URLs
         if self.encrypted_data:
