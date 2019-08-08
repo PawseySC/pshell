@@ -20,11 +20,13 @@ import posixpath
 import ConfigParser
 from datetime import datetime
 import mfclient
-
 try:
     from fuse import FUSE, FuseOSError, Operations
 except:
     print "Error: this system does not seem to have FUSE installed."
+
+# ===
+build="Latest"
 
 # ===
 class mfread():
@@ -175,9 +177,9 @@ class pmount(Operations):
                 return res
             return wrapper
 
-
 # --- MAIN setup
     def __init__(self, args):
+        global build
 
 # debugging
         self.log = logging.getLogger('pmount')
@@ -191,6 +193,7 @@ class pmount(Operations):
             logging.basicConfig(filename=logfile, format='%(asctime)s - %(levelname)s - %(message)s')
         else:
             logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
+        self.log.debug("init() : PMOUNT=%s" % build)
 
 # NB: always use config file as we want a secure location to store the authentication token
         token = "xyz123"

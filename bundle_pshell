@@ -1,16 +1,15 @@
+echo "deprec - use build_release instead"
 
-d=$(date +%Y%m%d%H%M%S)
-sed -i tmp -e 's/^build.*$/build= "'$d'"/' mfclient.py
-git tag $d
-
-cp pshell.py __main__.py
-sed -i tmp -e 's/^build.*$/build= "'$d'"/' __main__.py
-
-cp data/.mf_config .
-zip pshell.zip __main__.py mfclient.py .mf_config
-echo "#!/usr/bin/env python" > pshell
-cat pshell.zip >> pshell
-chmod u+x pshell
-rm pshell.zip
-rm __main__.py
-rm .mf_config
+#d=$(date +%Y%m%d%H%M%S)
+#sed -i tmp -e 's/^build.*$/build= "'$d'"/' mfclient.py
+#git tag $d
+#cp pshell.py __main__.py
+#sed -i tmp -e 's/^build.*$/build= "'$d'"/' __main__.py
+#cp data/.mf_config .
+#zip pshell.zip __main__.py mfclient.py .mf_config
+#echo "#!/usr/bin/env python" > pshell
+#cat pshell.zip >> pshell
+#chmod u+x pshell
+#rm pshell.zip
+#rm __main__.py
+#rm .mf_config

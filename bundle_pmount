@@ -1,7 +1,8 @@
-cp pmount.py __main__.py
-zip pmount.zip __main__.py fuse.py mfclient.py 
-echo "#!/usr/bin/env python" > pmount
-cat pmount.zip >> pmount
-chmod u+x pmount
-#rm pmount.zip
-rm __main__.py
+echo "deprec - use build_release instead"
+#cp pmount.py __main__.py
+#sed -i tmp -e 's/^build.*$/build= "'$d'"/' __main__.py
+#zip pmount.zip __main__.py fuse.py mfclient.py 
+#echo "#!/usr/bin/env python" > pmount
+#cat pmount.zip >> pmount
+#chmod u+x pmount
+#rm __main__.py

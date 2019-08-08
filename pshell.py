@@ -300,7 +300,7 @@ class parser(cmd.Cmd):
 
     def do_version(self, line):
         global build
-        print "   BUILD: %s" % build
+        print " VERSION: %s" % build
 
 # --- file info
     def help_file(self):
@@ -1671,7 +1671,7 @@ def main():
         my_parser.interactive = False
 
 # interactive or input iterator (scripted)
-    mf_client.log("DEBUG", "PSHELL: %s" % build)
+    mf_client.log("DEBUG", "PSHELL=%s" % build)
     if my_parser.interactive:
         print " === pshell: type 'help' for a list of commands ==="
         my_parser.loop_interactively()
