@@ -533,7 +533,7 @@ class pmount(Operations):
                 yield item
         else:
             self.log.debug("readdir() : asset listing server call needed [%s]" % namespace)
-# NB: we do the asset query inline (with yield) for performance reasons on very large directories
+# do the asset query inline (with yield) for performance reasons on very large directories
             iterator = self.get_asset_iter(namespace)
             done = False
             this_folder = dict()
@@ -546,7 +546,10 @@ class pmount(Operations):
                         if xml_size is not None:
                             size = int(xml_size.text)
                         else:
-                            size = 0
+# ignore assets with missing content to avoid generating filesystem access/copy errors
+                            self.log.debug("readdir() : ignoring asset with no content [%s]" % xml_path.text)
+                            continue
+
                         fullpath = xml_path.text
                         filename = posixpath.basename(fullpath)
                         mtime = self.st_time
