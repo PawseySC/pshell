@@ -65,11 +65,8 @@ if __name__ == '__main__':
 # setup
     mfobj = mfwrite(store="iron", quota="1000000", tmpfile="/rdsi/tmp123", fullpath="/projects/name/file123")
 
-# classes to test
+# buffer injection tests
     test_class_list = [pmount_buffer]
-#    test_class_list = [pmount_fuse]
-
-# build suite
     suite_list = []
     for test_class in test_class_list:
         suite_list.append(unittest.TestLoader().loadTestsFromTestCase(test_class))

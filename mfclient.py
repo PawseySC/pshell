@@ -31,7 +31,7 @@ import ConfigParser
 manage_lock = multiprocessing.Lock()
 bytes_sent = multiprocessing.Value('d', 0, lock=True)
 bytes_recv = multiprocessing.Value('d', 0, lock=True)
-build= "20190808102458"
+build= "Latest"
 
 #------------------------------------------------------------
 def put_jump(mfclient, data):
