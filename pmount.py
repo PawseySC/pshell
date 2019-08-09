@@ -64,13 +64,11 @@ class mfwrite():
             self.total += size
         else:
 # inject at non-sequential offset (NB: Linux uses this to skip 0's)
-            print "inject() non-seq: buffer total=%d : input offset=%d, size=%d" % (self.total,offset,size)
             if offset == self.offset:
 # case 1 - restart at same offset as the current buffer -> truncate buffer to the current input 
                 self.buffer[0:] = buff
                 self.length = size
                 self.total = self.offset + size
-                print "inject() case1: buffer => length=%d,total=%d" % (self.length,self.total)
             else:
 # case 2 a) offset is ahead (assume we can just fill in with 0's)
                 if offset > self.total:
@@ -82,7 +80,6 @@ class mfwrite():
                     self.buffer.extend(buff)
                     self.length = len(self.buffer)
                     self.total += pad_size + size
-                    print "inject() case2: buffer => length=%d,total=%d" % (self.length,self.total)
                 else:
                     raise FuseOSError(errno.EILSEQ)
 
