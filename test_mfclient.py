@@ -151,9 +151,9 @@ class mfclient_bugs(unittest.TestCase):
 ######
 if __name__ == '__main__':
 
-# acquire a dummy (non-connected/authenticated) client instance
+# acquire a dummy client instance
     try:
-        mf_client = mfclient.mf_client("http", "80", "localhost", dummy=True)
+        mf_client = mfclient.mf_client("http", "80", None, debug="1")
         print "\n----------------------------------------------------------------------"
         print "Running offline tests for: mfclient module"
         print "----------------------------------------------------------------------\n"

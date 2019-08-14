@@ -96,7 +96,7 @@ class mf_client:
     All unexpected failures are handled by raising exceptions
     """
 
-    def __init__(self, protocol, port, server, domain="system", session="", timeout=120, debug=0, dummy=False):
+    def __init__(self, protocol, port, server, domain="system", session="", timeout=120, debug=0):
         """
         Create a Mediaflux server connection instance. Raises an exception on failure.
 
@@ -108,7 +108,6 @@ class mf_client:
                             session: a STRING supplying the session ID which, if it exists, enables re-use of an existing authenticated session
                             timeout: an INTEGER specifying the connection timeout
                               debug: an INTEGER which controls output of troubleshooting information
-                              dummy: a BOOLEAN used for testing only (no actual server connection)
 
         Returns:
             A reachable mediaflux server object that has not been tested for its authentication status
@@ -118,13 +117,12 @@ class mf_client:
         """
 # configure interfaces
         self.protocol = protocol
-        self.port = int(port)
         self.server = server
+        self.port = int(port)
         self.domain = domain
         self.timeout = timeout
         self.session = session
         self.token = None
-        self.dummy = dummy
         self.debug = int(debug)
         global build
 
@@ -142,7 +140,7 @@ class mf_client:
         self.indent = 0
 
 # check server connection - unless in offline testing mode
-        if dummy is False:
+        if server is not None:
             s = socket.socket()
             s.settimeout(7)
             s.connect((self.server, self.port))
@@ -217,8 +215,8 @@ class mf_client:
         """
         global bytes_recv
 
-# dummy mode passback for pshell offline tests
-        if self.dummy:
+# no server - pass result back for offline testing
+        if self.server is None:
             raise Exception(xml_string)
 
 # NB: timeout exception if server is unreachable
@@ -713,7 +711,7 @@ class mf_client:
         Returns:
              A BOOLEAN value depending on the current authentication status of the Mediaflux connection
         """
-        if self.dummy:
+        if self.server is None:
             return True
         try:
 

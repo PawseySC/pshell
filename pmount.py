@@ -998,9 +998,6 @@ if __name__ == '__main__':
         print "Error: incomplete server URL."
         exit(-1)
 
-
-
-
 # main call
     try:
         FUSE(pmount(args), args.path, nothreads=True, foreground=not args.background)

@@ -1544,7 +1544,6 @@ def main():
     current = args.current
     script = args.script
     verbose = 0
-    dummy = False
     session = ""
 
 
@@ -1586,8 +1585,6 @@ def main():
         print "Failed to find a valid config file: %s" % str(e)
         exit(-1)
 
-    if config.has_option(current, 'dummy'):
-        dummy = config.getboolean(current, 'dummy')
     if config.has_option(current, 'session'):
         session = config.get(current, 'session')
     if config.has_option(current, 'token'):
@@ -1616,7 +1613,7 @@ def main():
 
 # establish mediaflux connection
     try:
-        mf_client = mfclient.mf_client(protocol=protocol, server=server, port=port, domain=domain, debug=verbose, dummy=dummy)
+        mf_client = mfclient.mf_client(protocol=protocol, server=server, port=port, domain=domain, debug=verbose)
         mf_client.session = session
         mf_client.token = token
 
