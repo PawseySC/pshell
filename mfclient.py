@@ -820,45 +820,34 @@ class mf_client:
         filename = self._xml_sanitise(filename)
         namespace = self._xml_sanitise(namespace)
         remotepath = posixpath.join(namespace, filename)
-        asset_id = -1
 
-# NB: avoid generating exception if asset doesn't exist 
+# find asset ID if exists, else create
         result = self.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
-
-# CURRENT - filesize compare only
-# attempt checksum compare
-        try:
-            elem = result.find(".//id")
-            asset_id = int(elem.text)
-            elem = result.find(".//crc32")
-            remote_crc32 = int(elem.text, 16)
-            elem = result.find(".//size")
-            remote_size = int(elem.text)
-# NB: checksum calc on large files (several GB+) on an external HDD can be SLOW - slower than uploading the file again
-#            local_crc32 = self.get_local_checksum(filepath)
+        xml_id = result.find(".//id")
+        if xml_id is None:
+            self.log("DEBUG", "No remote file found: [%s]" % remotepath)
+            reply = self.aterm_run('asset.create :namespace %s :name %s' % (namespace, filename))
+            xml_id = reply.find(".//id")
+        else:
+# NB: assets with no content can have either the root element or the text set to None
+            remote_size = 0
+            xml_size = result.find(".//size")
+            if xml_size is not None:
+                if xml_size.text is not None:
+                    remote_size = int(xml_size.text)
+# if sizes match (checksum compare is excrutiatingly slow) don't overwrite
             local_size = int(os.path.getsize(filepath))
-#            if local_crc32 == remote_crc32:
-            if local_size == remote_size:
+            if remote_size == local_size:
                 self.log("DEBUG", "Match; skipping [%s] -> [%s]" % (filepath, remotepath))
+                overwrite = False
                 with bytes_sent.get_lock():
                     bytes_sent.value += remote_size
-                return asset_id
             else:
                 self.log("DEBUG", "Mismatch; local=%r -> remote=%r" % (local_size, remote_size))
 
-        except Exception as e:
-            if "NoneType" in str(e):
-# the file doesn't exist or has no content -> trigger upload
-                self.log("DEBUG", "No remote file found: [%s]" % remotepath)
-                overwrite = True
-            else:
-# I'm horribly confused -> report error and don't do anything
-                self.log("ERROR", str(e))
-                overwrite = False
-
-# local and remote crc32 don't match -> decision time ...
+        asset_id = int(xml_id.text)
         if overwrite is True:
-            self.log("DEBUG", "Uploading: [%s] -> [%s]" % (filepath, remotepath))
+            self.log("DEBUG", "Uploading asset=%d: [%s] -> [%s]" % (asset_id, filepath, remotepath))
             xml_string = '<request><service name="service.execute" session="%s"><args><service name="asset.set">' % self.session
             xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
             asset_id = self._post_multipart_buffered(xml_string, filepath)
