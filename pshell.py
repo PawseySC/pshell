@@ -828,7 +828,7 @@ class parser(cmd.Cmd):
             self.mf_client.aterm_run(xml_command)
         else:
             user_msg += ", transferring ...  "
-            print user_msg
+            self.print_over(user_msg)
 
 # overall transfer loop
 # TODO - time expired breakout?

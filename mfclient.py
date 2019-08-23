@@ -826,7 +826,8 @@ class mf_client:
         xml_id = result.find(".//id")
         if xml_id is None:
             self.log("DEBUG", "No remote file found: [%s]" % remotepath)
-            reply = self.aterm_run('asset.create :namespace %s :name %s' % (namespace, filename))
+# NB: must create intermediate directories if they don't exist (mediaflux won't do it by default)
+            reply = self.aterm_run('asset.create :namespace -create "true" %s :name %s' % (namespace, filename))
             xml_id = reply.find(".//id")
         else:
 # NB: assets with no content can have either the root element or the text set to None
@@ -846,6 +847,7 @@ class mf_client:
                 self.log("DEBUG", "Mismatch; local=%r -> remote=%r" % (local_size, remote_size))
 
         asset_id = int(xml_id.text)
+        # NB: create=true to generate intermediate directories (if needed)
         if overwrite is True:
             self.log("DEBUG", "Uploading asset=%d: [%s] -> [%s]" % (asset_id, filepath, remotepath))
             xml_string = '<request><service name="service.execute" session="%s"><args><service name="asset.set">' % self.session
