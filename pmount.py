@@ -317,8 +317,8 @@ class pmount(Operations):
         return 0
 
 # --- fake filehandle for download (read only)
+    @iostats.record
     def mf_ronly_open(self, fullpath):
-
         namespace = posixpath.dirname(fullpath)
         filename = posixpath.basename(fullpath)
 
@@ -354,8 +354,8 @@ class pmount(Operations):
         raise FuseOSError(errno.EMFILE)
 
 # --- fake filehandle for upload (write only)
+    @iostats.record
     def mf_wonly_open(self, fullpath):
-# NEW
         folder = posixpath.dirname(fullpath)
         filename = posixpath.basename(fullpath)
 
@@ -789,6 +789,7 @@ class pmount(Operations):
         raise FuseOSError(errno.EREMOTEIO)
 
 # ---
+    @iostats.record
     def create(self, path, mode, fi=None):
         self.log.debug("create() : path=%s, mode=%d" % (path, mode))
         if self.readonly:
@@ -856,6 +857,7 @@ class pmount(Operations):
         conn.close()
 
 # --- buffer the data and send when limit has been exceeded
+    @iostats.record
     def write(self, path, buf, offset, fh):
 
         self.log.debug("write() : path=%s, offset=%d, size=%d" % (path, offset, len(buf)))
@@ -889,6 +891,7 @@ class pmount(Operations):
 
 # --- 
 # NB: never get the fh on Linux - see kernel truncate() signature
+    @iostats.record
     def truncate(self, path, length, fh=None):
         self.log.debug("truncate() : path=%s, length=%d" % (path, length))
         fullpath = self._remote_fullpath(path)
@@ -925,6 +928,7 @@ class pmount(Operations):
         return 0
 
 # NB - release() return code/exceptions are ignored by FUSE - so there's no way to fail the operation from this method
+    @iostats.record
     def release(self, path, fh):
         fullpath = self._remote_fullpath(path)
         namespace = posixpath.dirname(fullpath)
@@ -934,11 +938,13 @@ class pmount(Operations):
         if mfobj is not None:
 # path1 - WRONLY
             try:
+                # CURRENT - this incurs the longest delay in response
                 self.mf_write(mfobj.tmpfile, mfobj.buffer, mfobj.length, mfobj.offset, fh)
             except Exception as e:
                 self.log.error("release(1) : %s" % str(e))
             try:
                 self.mf_client.aterm_run("server.io.write.finish :ticket %d" % fh)
+
             except Exception as e:
                 self.log.error("release(2) : %s" % str(e))
             try:
