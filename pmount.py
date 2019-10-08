@@ -727,6 +727,7 @@ class pmount(Operations):
 # ---
 # FIXME - flags can be 0 sometimes which doesn't match any of the 3 modes it must be in [ O_RDWR, O_WRONLY, or O_RDONLY] 
 # CURRENT - just assume it's rdonly ... 
+    @iostats.record
     def open(self, path, flags):
         self.log.debug("open() : path=%s, flags=%r" % (path, flags))
 # init paths
@@ -967,7 +968,6 @@ class pmount(Operations):
             self.iostats.insert('overall_r', self.mf_ronly[fh].total, time.time() - self.mf_ronly[fh].start)
             del self.mf_ronly[fh]
 
-
 # --- main: process arguments and pass to FUSE
 if __name__ == '__main__':
 
@@ -983,7 +983,7 @@ if __name__ == '__main__':
     parser.add_argument("-v", "--verbose", help="Activate verbose logging", action="store_true")
     args = parser.parse_args()
 
-# CURRET - this completely fails to parse "data.pawsey.org.au" as an input server arg ...
+# CURRENT - this completely fails to parse "data.pawsey.org.au" as an input server arg ...
     url = urlparse.urlparse(args.server)
     args.protocol = url.scheme
     args.server = url.hostname
@@ -1003,6 +1003,12 @@ if __name__ == '__main__':
     except Exception as e:
         print "Error: incomplete server URL."
         exit(-1)
+
+# NEW 
+    if os.path.exists(args.path) is False:
+        response = raw_input("Mount location [%s] not found; do you want to create it? " % args.path)
+        if response.startswith('y') or response.startswith('Y'):
+            os.makedirs(args.path)
 
 # main call
     try:
