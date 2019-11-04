@@ -103,7 +103,7 @@ class mfclient_syntax(unittest.TestCase):
         reply = self.mf_client.aterm_run('www.list :namespace "/projects/Data Team/sean\'s dir" :page 1 :size 30', post=False)
         self.assertEqual(self._peel(reply), '<service name="www.list"><namespace>/projects/Data Team/sean\'s dir</namespace><page>1</page><size>30</size></service>')
 
-    def test_xmlns_parsing(self):
+    def test_parsing_xmlns(self):
         reply = self.mf_client.aterm_run(r'asset.set :id 123 :meta < :pawsey:custom < :pawsey-key "pawsey value" >', post=False)
         self.assertEqual(self._peel(reply), '<service name="asset.set"><id>123</id><meta><pawsey:custom xmlns:pawsey="pawsey"><pawsey-key>pawsey value</pawsey-key></pawsey:custom></meta></service>')
 
@@ -127,6 +127,12 @@ class mfclient_syntax(unittest.TestCase):
 #        print reply
         self.assertEqual(reply, '<request><service name="system.logon"><args><domain>ivec</domain><user>sean</user><password>%s</password></args></service></request>' % self.mf_client._xml_sanitise(password))
 
+# by default lexer silently drops any text starting with # (comment character)
+    def test_parsing_comments(self):
+        line = r"asset.set :id 123 :name #filename#"
+        reply = self.mf_client.aterm_run(line, post=False)
+        self.assertEqual(reply, '<request><service name="service.execute" session=""><args><service name="asset.set"><id>123</id><name>#filename#</name></service></args></service></request>')
+
 
 ########################################
 # convenience wrapper for squishing bugs
@@ -136,14 +142,12 @@ class mfclient_bugs(unittest.TestCase):
         global mf_client
         self.mf_client = mf_client
 
-# FIXME: this is not a proper test as OUT filename is not returned in the reply by aterm_run()
-    def test_windows_path_handling(self):
+# by default lexer silently drops any text starting with # (comment)
+    def test_lexer_comment_handling(self):
         self.mf_client.debug=2
-# test escaping of windows path separator to avoid the posix lexer in aterm_run() screwing it up
-        line = r"asset.get :id 123 :out c:\Users\sean\test.zip"
-        line = line.replace("\\", "\\\\")
+        line = r"asset.set :id 123 :name #filename#"
         reply = self.mf_client.aterm_run(line, post=False)
-        print reply
+        self.assertEqual(reply, '<request><service name="service.execute" session=""><args><service name="asset.set"><id>123</id><name>#filename#</name></service></args></service></request>')
 
 
 ######

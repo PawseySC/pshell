@@ -373,6 +373,8 @@ class mf_client:
 
 # use posix=True as it's the closest to how aterm processes input strings
         lexer = shlex.shlex(input_line.encode('utf-8'), posix=True)
+# DS-421 fixes lexer dropping XML text payload starting with #, thinking it's a comment
+        lexer.commenters=""
         lexer.whitespace_split = True
         xml_root = ET.Element(None)
         xml_node = xml_root
