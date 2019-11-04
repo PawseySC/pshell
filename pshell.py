@@ -673,13 +673,6 @@ class parser(cmd.Cmd):
 
 # --
     def print_over(self, text):
-# don't do this for scripted (non-interactive) use as it won't display properly
-        if not self.interactive:
-            return
-# these clear to end of line codes don't work on windows
-#        sys.stdout.write('\x1b[2K')
-#        sys.stdout.write("\033[K")
-# TODO - would be nice if there was an os independent way of clearing to the end of a line
         sys.stdout.write("\r"+text)
         sys.stdout.flush()
 
@@ -944,9 +937,8 @@ class parser(cmd.Cmd):
     def managed_put(self, upload_list, meta=False):
         manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
         self.mf_client.log("DEBUG", "Starting transfer...")
-        self.print_over("Total files=%d" % len(upload_list))
+        self.print_over("Total files=%d, transferring..." % len(upload_list))
         start_time = time.time()
-        print ", transferring...  "
         try:
             while True:
                 if manager.bytes_total > 0:
