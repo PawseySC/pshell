@@ -937,7 +937,7 @@ class parser(cmd.Cmd):
     def managed_put(self, upload_list, meta=False):
         manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
         self.mf_client.log("DEBUG", "Starting transfer...")
-        self.print_over("Total files=%d, transferring..." % len(upload_list))
+        self.print_over("Total files=%d" % len(upload_list))
         start_time = time.time()
         try:
             while True:
@@ -946,7 +946,7 @@ class parser(cmd.Cmd):
                 else:
                     progress = 0.0
 
-                self.print_over("Progress: %3.0f%% at %.1f MB/s  " % (progress, manager.byte_sent_rate()))
+                self.print_over("Progress: %3.0f%% at %.1f MB/s   " % (progress, manager.byte_sent_rate()))
 
                 if manager.is_done():
                     break
