@@ -976,6 +976,7 @@ class parser(cmd.Cmd):
                     metadata_filename = local_filepath + ".meta"
                     self.import_metadata(asset_id, metadata_filename)
 
+# TODO - retry failed transfers?
 # final report
         if fail != 0:
             raise Exception("\nFailed to upload %d file(s)." % fail)

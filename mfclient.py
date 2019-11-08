@@ -882,15 +882,9 @@ class mf_client:
                     total_bytes += os.path.getsize(filepath)
                 except:
                     self.log("DEBUG", "Can't read %s, skipping." % filepath)
-
-        self.log("DEBUG", "Total upload bytes: %d" % total_bytes)
-        if total_bytes == 0:
-            print
-            raise Exception("No data to upload")
-
 # shenanigans to enable mfclient method to be called from the global process pool (python can't serialize instance methods)
         put_alias = functools.partial(put_jump, self)
-
+        self.log("DEBUG", "Total upload bytes: %d" % total_bytes)
         return mf_manager(function=put_alias, arguments=list_namespace_filepath, processes=processes, total_bytes=total_bytes)
 
 #############################################################
