@@ -42,6 +42,7 @@ class parser(cmd.Cmd):
     need_auth = True
     transfer_processes = 1
     terminal_height = 20
+    script_output = None
 
 # --- initial setup of prompt
     def preloop(self):
@@ -971,12 +972,14 @@ class parser(cmd.Cmd):
         for asset_id, remote_ns, local_filepath in manager.summary:
             if asset_id < 0:
                 fail += 1
+# NEW - create restart file for failed uploads
+                if self.script_output is not None:
+                    with open(self.script_output, "a") as f:
+                        f.write("cd %s\nput %s\n" % (remote_ns, local_filepath))
             else:
                 if meta is True:
                     metadata_filename = local_filepath + ".meta"
                     self.import_metadata(asset_id, metadata_filename)
-
-# TODO - retry failed transfers?
 # final report
         if fail != 0:
             raise Exception("\nFailed to upload %d file(s)." % fail)
@@ -1525,21 +1528,18 @@ def main():
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
     p.add_argument("-c", dest='current', default="pawsey", help="the config name in $HOME/.mf_config to connect to")
-    p.add_argument("-i", dest='script', help="input text file containing commands")
+    p.add_argument("-i", dest='script', help="input script file containing pshell commands")
+    p.add_argument("-o", dest='output', default=None, help="output any failed commands to a script")
     p.add_argument("-v", dest='verbose', default=None, help="set verbosity level (0,1,2)")
-
-    p.add_argument("-u", dest='url', default=None, help="server URL (eg https://mediaflux.org:443")
+    p.add_argument("-u", dest='url', default=None, help="server URL eg https://mediaflux.org:443")
     p.add_argument("-d", dest='domain', default=None, help="login authentication domain")
     p.add_argument("-s", dest='session', default=None, help="session")
-
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
     current = args.current
     script = args.script
     verbose = 0
     session = ""
-
-
     token = None
 #    config_changed = False
 
@@ -1636,6 +1636,9 @@ def main():
        my_parser.transfer_processes = 2
     else:
        my_parser.transfer_processes = 4
+# NEW - restart script
+    if args.output is not None:
+        my_parser.script_output = args.output
 
 # TAB completion
 # strange hackery required to get tab completion working under OS-X and also still be able to use the b key

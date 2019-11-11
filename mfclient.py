@@ -213,7 +213,6 @@ class mf_client:
         """
         Primitive for sending an XML message to the Mediaflux server
         """
-        global bytes_recv
 
 # no server - pass result back for offline testing
         if self.server is None:
