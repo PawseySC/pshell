@@ -320,7 +320,6 @@ class parser(cmd.Cmd):
             if elem is not None:
                 output_list.append("%-10s : %s" % (elem.tag, elem.text))
 # get content status 
-# TODO - migrating direction etc
         result = self.mf_client.aterm_run('asset.content.status :id "path=%s"' % self.absolute_remote_filepath(line))
         elem = result.find(".//asset/state")
         if elem is not None:
@@ -457,9 +456,7 @@ class parser(cmd.Cmd):
                 except:
                     elem_state.text = "?"
 
-# TODO - extract direction from content.status
             asset_name = "?"
-
             for i, elem in enumerate(asset_list):
                 child = elem.find('.//id')
                 asset_id = child.text
@@ -1649,7 +1646,6 @@ def main():
         else:
             readline.parse_and_bind("tab: complete")
     except:
-# FIXME - no readline in Windows ...
         mf_client.log("WARNING", "No readline module; tab completion unavailable")
 
 # build non interactive input iterator

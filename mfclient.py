@@ -585,8 +585,7 @@ class mf_client:
                 message = str(e)
                 self.log("DEBUG", "aterm_run(): %s" % message)
                 if "session is not valid" in message:
-# FIXME - if mf_config has a valid session it will stop and not read the token (even if the token is valid)
-# TODO - we could restart the session if we can implement a way to always grab the token if it's there
+# restart the session if token exists
                     if self.token is not None:
                         self.log("DEBUG", "aterm_run(): we have a token, attempting to establish new session")
                         # FIXME - need to put this in a separate exception handling ...
@@ -766,14 +765,13 @@ class mf_client:
         """
         global bytes_recv
 
-# TODO - compare filesizes at least ...
         if os.path.isfile(filepath) and not overwrite:
             self.log("DEBUG", "Local file of that name (%s) already exists, skipping." % filepath)
             with bytes_recv.get_lock():
                 bytes_recv.value += os.path.getsize(filepath)
             return
 
-# FIX - Windows path names and the posix lexer in aterm_run() are not good friends
+# Windows path names and the posix lexer in aterm_run() are not good friends
         if "Windows" in platform.system():
             filepath = filepath.replace("\\", "\\\\")
 
