@@ -69,7 +69,7 @@ class parser(cmd.Cmd):
 
 # --- helper: attempt to complete a namespace
     def complete_namespace(self, partial_ns, start):
-
+        self.mf_client.log("\n   DEBUG", "cn seek: partial_ns=[%s] start=[%d]" % (partial_ns, start), level=2)
 # extract any partial namespace to use as pattern match
         match = re.match(r".*/", partial_ns)
         if match:
@@ -115,7 +115,7 @@ class parser(cmd.Cmd):
 
 # --- helper: attempt to complete an asset
     def complete_asset(self, partial_asset_path, start):
-
+        self.mf_client.log("\n   DEBUG", "ca seek: partial_asset=[%s] start=[%d]" % (partial_asset_path, start), level=2)
 # construct an absolute namespace (required for any remote lookups)
         candidate_ns = self.absolute_remote_filepath(partial_asset_path)
 
@@ -149,7 +149,12 @@ class parser(cmd.Cmd):
         asset_list = []
         for elem in result.iter("name"):
             if elem.text is not None:
-                asset_list.append(posixpath.join(prefix, elem.text))
+#                asset_list.append(posixpath.join(prefix, elem.text))
+# NEW - check we're not suggesting a repeat of the non-editable part of the completion string
+                if elem.text.startswith(partial_asset_path[:start]):
+                    asset_list.append(posixpath.join(prefix, elem.text)[start:])
+                else:
+                    asset_list.append(posixpath.join(prefix, elem.text))
 
         self.mf_client.log("DEBUG", "ca found: %r" % asset_list, level=2)
 
