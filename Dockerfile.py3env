@@ -1,0 +1,11 @@
+FROM alpine:3.8
+
+RUN apk add git
+RUN apk add bash
+RUN apk add python3
+
+RUN git clone https://bitbucket.org/datapawsey/mfclient.git
+
+#ENTRYPOINT ["/bin/bash"]
+
+ENTRYPOINT ["python", "test_mfclient.py"]
