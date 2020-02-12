@@ -146,7 +146,7 @@ if __name__ == '__main__':
         print("Running offline tests for: mfclient module")
         print("----------------------------------------------------------------------\n")
     except Exception as e:
-        print(str(e))
+        print((str(e)))
         exit(-1)
 
 

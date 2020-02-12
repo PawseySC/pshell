@@ -57,13 +57,13 @@ class mfwrite():
             self.total += size
         else:
             # inject at unexpected (non-sequential) offset ... shouldn't happen???
-            print("inject() A: buffer => offset=%d,length=%d,total=%d : input => offset=%d,size=%d" % (self.offset,self.length,self.total,offset,size))
+            print(("inject() A: buffer => offset=%d,length=%d,total=%d : input => offset=%d,size=%d" % (self.offset,self.length,self.total,offset,size)))
             if offset == self.offset:
                 # case 1 - restart at same offset as the current buffer -> truncate buffer to the current input 
                 self.buffer[0:] = buff
                 self.length = size
                 self.total = self.offset + size
-                print("inject() B: buffer => offset=%d,length=%d,total=%d" % (self.offset,self.length,self.total))
+                print(("inject() B: buffer => offset=%d,length=%d,total=%d" % (self.offset,self.length,self.total)))
             else:
                 # case 2 - random buffer insert??? ... I give up
                 raise FuseOSError(errno.EILSEQ)
@@ -166,7 +166,7 @@ class pmount(Operations):
             self.log.setLevel(logging.INFO)
         if args.logfile:
             logfile = datetime.now().strftime('pmount-%Y-%m-%d-%H:%M:%S.log')
-            print("Writing log to: %s" % logfile)
+            print(("Writing log to: %s" % logfile))
             logging.basicConfig(filename=logfile, format='%(asctime)s - %(levelname)s - %(message)s')
         else:
             logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
@@ -243,10 +243,10 @@ class pmount(Operations):
             self.mf_client.login(token=token)
         except Exception as e:
             self.log.debug("init(): %s" % str(e))
-            response = input("No valid token found. Do you want to create one? ")
+            response = eval(input("No valid token found. Do you want to create one? "))
             if response.startswith('y') or response.startswith('Y'):
-                print("Login to server [%s] and domain [%s] required." % (args.server, args.domain))
-                user = input("Username: ")
+                print(("Login to server [%s] and domain [%s] required." % (args.server, args.domain)))
+                user = eval(input("Username: "))
                 password = getpass.getpass("Password: ")
                 self.mf_client.login(user, password)
 # create token
@@ -413,7 +413,7 @@ class pmount(Operations):
             mtime = self.st_time
             xml_mtime = reply.find(".//mtime")
             if xml_mtime is not None:
-                for k,v in xml_mtime.attrib.items():
+                for k,v in list(xml_mtime.attrib.items()):
                     if k == 'millisec':
                         mtime = int(v) / 1000
             # it's an asset -> return info
@@ -427,7 +427,7 @@ class pmount(Operations):
 # --- testing mechanism
     def fail_session(self):
         print("Injecting session failure")
-        print("old session = %s" % self.mf_client.session)
+        print(("old session = %s" % self.mf_client.session))
         self.mf_client.session = None
 
 # --- grant visibility of virtual fs
@@ -518,7 +518,7 @@ class pmount(Operations):
                         mtime = self.st_time
                         xml_mtime = elem.find(".//mtime")
                         if xml_mtime is not None:
-                            for k,v in xml_mtime.attrib.items():
+                            for k,v in list(xml_mtime.attrib.items()):
                                 if k == 'millisec':
                                     mtime = int(v) / 1000
 # add the inode

@@ -170,15 +170,15 @@ class mf_client:
 
 # if required, attempt to display more connection info
         if self.debug > 0:
-            print("POST-URL: %s" % self.post_url)
-            print("DATA-GET: %s" % self.data_get)
-            print("DATA-PUT: %s" % self.data_put)
+            print(("POST-URL: %s" % self.post_url))
+            print(("DATA-GET: %s" % self.data_get))
+            print(("DATA-PUT: %s" % self.data_put))
             if self.protocol == "https":
 # first line of python version info is all we're interested in
                 version = sys.version
                 i = version.find("\n")
-                print("  PYTHON: %s" % version[:i])
-                print(" OPENSSL:", ssl.OPENSSL_VERSION)
+                print(("  PYTHON: %s" % version[:i]))
+                print((" OPENSSL:", ssl.OPENSSL_VERSION))
 # early versions of python 2.7.x are missing the SSL context method
                 try:
                     context = ssl.create_default_context()
@@ -186,9 +186,9 @@ class mf_client:
                     context.check_hostname = True
                     c = context.wrap_socket(socket.socket(socket.AF_INET), server_hostname=self.server)
                     c.connect((self.server, self.port))
-                    print("  CIPHER:", c.cipher())
+                    print(("  CIPHER:", c.cipher()))
                 except Exception as e:
-                    print(" WARNING: %s" % str(e))
+                    print((" WARNING: %s" % str(e)))
 
 #------------------------------------------------------------
     @staticmethod
@@ -548,7 +548,7 @@ class mf_client:
                             time.sleep(5)
                             continue
                         else:
-                            print("\r%s    " % text)
+                            print(("\r%s    " % text))
                             break
 # NB: it is an exception (error) to get results BEFORE completion
                     self.log("DEBUG", "Background job [%s] complete, getting results" % job)
@@ -584,7 +584,7 @@ class mf_client:
             text += ' '*self.indent + '%s="%s"    ' % (elem.tag, elem.text)
         else:
             text += ' '*self.indent + '%s    ' % elem.tag
-        for key, value in elem.attrib.items():
+        for key, value in list(elem.attrib.items()):
             text += ' -%s="%s"' % (key, value)
         text += '\n'
 
@@ -612,7 +612,7 @@ class mf_client:
             elem = xml_tree
         if elem is not None:
             for child in list(elem):
-                print(self._xml_recurse(child).strip('\n'))
+                print((self._xml_recurse(child).strip('\n')))
         else:
             print("Empty XML document")
         return
@@ -630,7 +630,7 @@ class mf_client:
         ts = time.time()
         st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
         message = st + " >>> " + message
-        print("%8s: %s" % (prefix, message))
+        print(("%8s: %s" % (prefix, message)))
 
 #------------------------------------------------------------
     def logout(self):

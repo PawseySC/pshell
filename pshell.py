@@ -8,16 +8,16 @@ import glob
 import math
 import time
 import getpass
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import zipfile
 import argparse
-import urlparse
+import urllib.parse
 import datetime
 import itertools
 import posixpath
-import ConfigParser
+import configparser
 import xml.etree.ElementTree as ET
-import mfclient
+from . import mfclient
 # no readline on windows
 try:
     import readline
@@ -55,7 +55,7 @@ class parser(cmd.Cmd):
     def precmd(self, line):
         if self.need_auth:
             if self.requires_auth(line):
-                print "Not logged in."
+                print("Not logged in.")
                 return cmd.Cmd.precmd(self, "")
         return cmd.Cmd.precmd(self, line)
 
@@ -265,7 +265,7 @@ class parser(cmd.Cmd):
 # if script, assumes you know what you're doing
         if self.interactive is False:
             return True
-        response = raw_input(text)
+        response = input(text)
         if response == 'y' or response == 'Y':
             return True
         return False
@@ -301,17 +301,17 @@ class parser(cmd.Cmd):
 
 # --- version tracking 
     def help_version(self):
-        print "\nReturn the current version build identifier\n"
-        print "Usage: build\n"
+        print("\nReturn the current version build identifier\n")
+        print("Usage: build\n")
 
     def do_version(self, line):
         global build
-        print " VERSION: %s" % build
+        print(" VERSION: %s" % build)
 
 # --- file info
     def help_file(self):
-        print "\nReturn metadata information on a remote file\n"
-        print "Usage: file <filename>\n"
+        print("\nReturn metadata information on a remote file\n")
+        print("Usage: file <filename>\n")
 
     def do_file(self, line):
 # get asset metadata
@@ -338,7 +338,7 @@ class parser(cmd.Cmd):
 
 # output info
         for line in output_list:
-            print line
+            print(line)
 
 # --- helper
 # immediately return any key pressed as a character
@@ -391,7 +391,7 @@ class parser(cmd.Cmd):
 # end pagination immediately on q press
                     if key == 'q':
                         result += key
-                        print
+                        print()
                         return result
 # handle backspaces on windows
                     elif key == '\x08':
@@ -408,21 +408,21 @@ class parser(cmd.Cmd):
                         return result
 # windows <enter> press (NB: need to force a newline - hence the print)
                     elif key == '\r':
-                        print
+                        print()
                         return result
 # concat everything else onto the final result
                     else:
                         result += key
             else:
-                print prompt
+                print(prompt)
 
         return result
 
 # ---
     def help_ls(self):
-        print "\nList files stored on the remote server."
-        print "Navigation in paginated output can be achieved by entering a page number, [enter] for next page or q to quit.\n"
-        print "Usage: ls <file pattern or folder name>\n"
+        print("\nList files stored on the remote server.")
+        print("Navigation in paginated output can be achieved by entering a page number, [enter] for next page or q to quit.\n")
+        print("Usage: ls <file pattern or folder name>\n")
 
 # --- paginated ls
     def remote_ls_print(self, namespace, namespace_list, namespace_count, asset_count, page, page_size, query, show_content_state=False):
@@ -438,7 +438,7 @@ class parser(cmd.Cmd):
             namespace_start = (page-1) * page_size
             for i in range(namespace_start,namespace_start+namespace_todo):
                 elem = namespace_list[i]
-                print "[Folder] %s" % elem.text
+                print("[Folder] %s" % elem.text)
 
         if asset_todo > 0:
             asset_start = abs(min(0, namespace_count - (page-1)*page_size - namespace_todo))+1
@@ -484,9 +484,9 @@ class parser(cmd.Cmd):
                         asset_state = "online    |"
                     else:
                         asset_state = "%-9s |" % child.text
-                    print " %-10s | %s %s | %s" % (asset_id, asset_state, asset_size, asset_name)
+                    print(" %-10s | %s %s | %s" % (asset_id, asset_state, asset_size, asset_name))
                 else:
-                    print " %-10s | %s | %s" % (asset_id, asset_size, asset_name)
+                    print(" %-10s | %s | %s" % (asset_id, asset_size, asset_name))
 
 # --- ls with no dependency on www.list
     def do_ls(self, line):
@@ -534,7 +534,7 @@ class parser(cmd.Cmd):
         while pagination_complete is False:
             pagination_footer = None
             if show_header:
-                print "%d items, %d items per page, remote folder: %s" % (namespace_count+asset_count, page_size, cwd)
+                print("%d items, %d items per page, remote folder: %s" % (namespace_count+asset_count, page_size, cwd))
                 show_header = False
             page = max(1, min(page, canonical_last))
 
@@ -698,7 +698,7 @@ class parser(cmd.Cmd):
     def import_metadata(self, asset_id, filepath):
         self.mf_client.log("DEBUG","import_metadata() [%s] : [%s]" % (asset_id, filepath))
         try:
-            config = ConfigParser.ConfigParser()
+            config = configparser.ConfigParser()
             config.read(filepath)
 # section -> xmlns
             xml_root = ET.Element(None)
@@ -745,9 +745,9 @@ class parser(cmd.Cmd):
 
 # ---
     def help_import(self):
-        print "\nUpload files or folders with associated metadata"
-        print "For every file <filename.ext> another file called <filename.ext.meta> should contain metadata in INI file format\n"
-        print "Usage: import <file or folder>\n"
+        print("\nUpload files or folders with associated metadata")
+        print("For every file <filename.ext> another file called <filename.ext.meta> should contain metadata in INI file format\n")
+        print("Usage: import <file or folder>\n")
 
 # ---
     def do_import(self, line):
@@ -756,8 +756,8 @@ class parser(cmd.Cmd):
 
 # --
     def help_get(self):
-        print "\nDownload remote files to the current local folder\n"
-        print "Usage: get <remote files or folders>\n"
+        print("\nDownload remote files to the current local folder\n")
+        print("Usage: get <remote files or folders>\n")
 
     def do_get(self, line):
 # NB: use posixpath for mediaflux namespace manipulation
@@ -789,7 +789,7 @@ class parser(cmd.Cmd):
         stats = self.poll_total(base_query)
         self.mf_client.log("DEBUG", str(stats))
         if stats['total-bytes'] == 0:
-            print "No data to download"
+            print("No data to download")
             return
 
         current = dict()
@@ -801,7 +801,7 @@ class parser(cmd.Cmd):
 # we only expect to be able to download files where the content is in a known state
         bad_files = 0
         known_states = ["online-files", "online-bytes", "offline-files", "offline-bytes", "migrating-files", "migrating-bytes", "total-files", "total-bytes"]
-        for key in stats.keys():
+        for key in list(stats.keys()):
             if key not in known_states:
                 self.mf_client.log("WARNING", "Content %s=%s" % (key, stats[key]))
                 if "-files" in key:
@@ -818,7 +818,7 @@ class parser(cmd.Cmd):
         if unavailable_files > 0:
             user_msg += ", migrating files=%d, please be patient ...  " % unavailable_files
 # migration can take a while (backgrounded) so print feedback first
-            print user_msg
+            print(user_msg)
 # recall all offline files
             xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" > &' % base_query
             self.mf_client.aterm_run(xml_command)
@@ -837,7 +837,7 @@ class parser(cmd.Cmd):
 # FIXME - python 2.6 causes compile error on this -> which means the runtime print "you need version > 2.7" isn't displayed
 #                     current = {k:v for k,v in online.iteritems() if k not in done}
 # CURRENT - this seems to resolve the issue
-                    current = dict([(k, v) for (k, v) in online.iteritems() if k not in done])
+                    current = dict([(k, v) for (k, v) in online.items() if k not in done])
 
 # is there something to transfer?
                     if len(current) == 0:
@@ -857,7 +857,7 @@ class parser(cmd.Cmd):
                     else:
 # CURRENT - test bad session handling
 #                        self.mf_client.session = "abc"
-                        manager = self.mf_client.get_managed(current.iteritems(), total_bytes=stats['total-bytes'], processes=self.transfer_processes)
+                        manager = self.mf_client.get_managed(iter(current.items()), total_bytes=stats['total-bytes'], processes=self.transfer_processes)
 
 # network transfer polling
                 while manager is not None:
@@ -895,13 +895,13 @@ class parser(cmd.Cmd):
             elapsed = time.time() - start_time
             average = stats['total-bytes'] / elapsed
             average = average / 1000000.0
-            print "\nCompleted at %.1f MB/s" % average
+            print("\nCompleted at %.1f MB/s" % average)
 
 # NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
 # --
     def help_put(self):
-        print "\nUpload local files or folders to the current folder on the remote server\n"
-        print "Usage: put <file or folder>\n"
+        print("\nUpload local files or folders to the current folder on the remote server\n")
+        print("Usage: put <file or folder>\n")
 
     def do_put(self, line, meta=False):
 # build upload list pairs
@@ -989,33 +989,33 @@ class parser(cmd.Cmd):
             elapsed = time.time() - start_time
             rate = manager.bytes_sent() / elapsed
             rate = rate / 1000000.0
-            print "\nCompleted at %.1f MB/s" % rate
+            print("\nCompleted at %.1f MB/s" % rate)
 
 # --
     def help_cd(self):
-        print "\nChange the current remote folder\n"
-        print "Usage: cd <folder>\n"
+        print("\nChange the current remote folder\n")
+        print("Usage: cd <folder>\n")
 
     def do_cd(self, line):
         candidate = self.absolute_remote_filepath(line)
         if self.mf_client.namespace_exists(candidate):
             self.cwd = candidate
-            print "Remote: %s" % self.cwd
+            print("Remote: %s" % self.cwd)
         else:
             raise Exception(" Could not find remote folder: %s" % candidate)
 # --
     def help_pwd(self):
-        print "\nDisplay the current remote folder\n"
-        print "Usage: pwd\n"
+        print("\nDisplay the current remote folder\n")
+        print("Usage: pwd\n")
 
 # use repr to help figure out issues such as invisible characters in folder names
     def do_pwd(self, line):
-        print "Remote: %s" % repr(self.cwd)
+        print("Remote: %s" % repr(self.cwd))
 
 # --
     def help_mkdir(self):
-        print "\nCreate a remote folder\n"
-        print "Usage: mkdir <folder>\n"
+        print("\nCreate a remote folder\n")
+        print("Usage: mkdir <folder>\n")
 
     def do_mkdir(self, line, silent=False):
         ns_target = self.absolute_remote_filepath(line)
@@ -1024,15 +1024,15 @@ class parser(cmd.Cmd):
         except Exception as e:
             if "already exists" in str(e):
                 if silent is False:
-                    print "Folder already exists: %s" % ns_target
+                    print("Folder already exists: %s" % ns_target)
                 pass
             else:
                 raise e
 
 # --
     def help_rm(self):
-        print "\nDelete remote file(s)\n"
-        print "Usage: rm <file or pattern>\n"
+        print("\nDelete remote file(s)\n")
+        print("Usage: rm <file or pattern>\n")
 
     def do_rm(self, line):
 # build query corresponding to input
@@ -1047,17 +1047,17 @@ class parser(cmd.Cmd):
         elem = result.find(".//value")
         count = int(elem.text)
         if count == 0:
-            print "No match"
+            print("No match")
         else:
             if self.ask("Remove %d files: (y/n) " % count):
                 self.mf_client.aterm_run('asset.query :where "%s" :action pipe :service -name asset.destroy' % base_query)
             else:
-                print "Aborted"
+                print("Aborted")
 
 # -- rmdir
     def help_rmdir(self):
-        print "\nRemove a remote folder\n"
-        print "Usage: rmdir <folder>\n"
+        print("\nRemove a remote folder\n")
+        print("Usage: rmdir <folder>\n")
 
 # -- rmdir
     def do_rmdir(self, line):
@@ -1066,14 +1066,14 @@ class parser(cmd.Cmd):
             if self.ask("Remove folder: %s (y/n) " % ns_target):
                 self.mf_client.aterm_run('asset.namespace.destroy :namespace "%s"' % ns_target.replace('"', '\\\"'))
             else:
-                print "Aborted"
+                print("Aborted")
         else:
             raise Exception(" Could not find remote folder: %s" % ns_target)
 
 # -- local commands
     def help_debug(self):
-        print "\nTurn debugging output on/off\n"
-        print "Usage: debug <value>\n"
+        print("\nTurn debugging output on/off\n")
+        print("Usage: debug <value>\n")
 
     def do_debug(self, line):
         match = re.search(r"\d+", line)
@@ -1083,29 +1083,29 @@ class parser(cmd.Cmd):
             self.mf_client.debug = 1
         elif "false" in line or "off" in line:
             self.mf_client.debug = 0
-        print "Debug=%r" % self.mf_client.debug
+        print("Debug=%r" % self.mf_client.debug)
 
 # --
     def help_lpwd(self):
-        print "\nDisplay local folder\n"
-        print "Usage: lpwd\n"
+        print("\nDisplay local folder\n")
+        print("Usage: lpwd\n")
 
     def do_lpwd(self, line):
-        print "Local: %s" % os.getcwd()
+        print("Local: %s" % os.getcwd())
 
 # --
     def help_lcd(self):
-        print "\nChange local folder\n"
-        print "Usage: lcd <folder>\n"
+        print("\nChange local folder\n")
+        print("Usage: lcd <folder>\n")
 
     def do_lcd(self, line):
         os.chdir(line)
-        print "Local: %s" % os.getcwd()
+        print("Local: %s" % os.getcwd())
 
 # --
     def help_lls(self):
-        print "\nList contents of local folder\n"
-        print "Usage: lls <folder>\n"
+        print("\nList contents of local folder\n")
+        print("Usage: lls <folder>\n")
 
     def do_lls(self, line):
 # convert to absolute path for consistency
@@ -1121,18 +1121,18 @@ class parser(cmd.Cmd):
         else:
             display_path = os.path.dirname(path)
 
-        print "Local folder: %s" % display_path
+        print("Local folder: %s" % display_path)
 
 # glob these to allow wildcards
         for filename in glob.glob(path):
             if os.path.isdir(filename):
                 head, tail = os.path.split(filename)
-                print "[Folder] " + tail
+                print("[Folder] " + tail)
 
         for filename in glob.glob(path):
             if os.path.isfile(filename):
                 head, tail = os.path.split(filename)
-                print "%s | %-s" % (self.human_size(os.path.getsize(filename)), tail)
+                print("%s | %-s" % (self.human_size(os.path.getsize(filename)), tail))
 
 # --- working example of PKI via mediaflux
 #     def do_mls(self, line):
@@ -1152,8 +1152,8 @@ class parser(cmd.Cmd):
 
 # ---
     def help_whoami(self):
-        print "\nReport the current authenticated user or delegate and associated roles\n"
-        print "Usage: whoami\n"
+        print("\nReport the current authenticated user or delegate and associated roles\n")
+        print("Usage: whoami\n")
 
     def do_whoami(self, line):
         result = self.mf_client.aterm_run("actor.self.describe")
@@ -1163,18 +1163,18 @@ class parser(cmd.Cmd):
             user_type = elem.attrib['type']
             if 'identity' in user_type:
                 expiry = self.delegate_actor_expiry(user_name)
-                print "user = delegate (expires %s)" % expiry
+                print("user = delegate (expires %s)" % expiry)
             else:
-                print "%s = %s" % (user_type, user_name)
+                print("%s = %s" % (user_type, user_name))
 # associated roles
         for elem in result.iter('role'):
-            print "  role = %s" % elem.text
+            print("  role = %s" % elem.text)
 
 # ---
     def help_processes(self):
-        print "\nSet the number of concurrent processes to use when transferring files."
-        print "If no number is supplied, reports the current value."
-        print "Usage: processes <number>\n"
+        print("\nSet the number of concurrent processes to use when transferring files.")
+        print("If no number is supplied, reports the current value.")
+        print("Usage: processes <number>\n")
 
     def do_processes(self, line):
         try:
@@ -1182,12 +1182,12 @@ class parser(cmd.Cmd):
             self.transfer_processes = p
         except:
             pass
-        print "Current number of processes: %r" % self.transfer_processes
+        print("Current number of processes: %r" % self.transfer_processes)
 
 # -- connection commands
     def help_logout(self):
-        print "\nTerminate the current session to the server\n"
-        print "Usage: logout\n"
+        print("\nTerminate the current session to the server\n")
+        print("Usage: logout\n")
 
     def do_logout(self, line):
         self.mf_client.logout()
@@ -1195,14 +1195,14 @@ class parser(cmd.Cmd):
 
 # ---
     def help_login(self):
-        print "\nInitiate login to the current remote server\n"
-        print "Usage: login\n"
+        print("\nInitiate login to the current remote server\n")
+        print("Usage: login\n")
 
     def do_login(self, line):
         if self.interactive is False:
             raise Exception(" Manual login not permitted in scripts")
         self.mf_client.log("DEBUG", "Authentication domain [%s]" % self.mf_client.domain)
-        user = raw_input("Username: ")
+        user = input("Username: ")
         password = getpass.getpass("Password: ")
         self.mf_client.login(user, password)
         self.need_auth = False
@@ -1214,9 +1214,9 @@ class parser(cmd.Cmd):
 
 # --
     def help_delegate(self):
-        print "\nCreate a credential, stored in your local home folder, for automatic authentication to the remote server."
-        print "An optional argument can be supplied to set the lifetime, or off to destroy all your delegated credentials.\n"
-        print "Usage: delegate <days/off>\n"
+        print("\nCreate a credential, stored in your local home folder, for automatic authentication to the remote server.")
+        print("An optional argument can be supplied to set the lifetime, or off to destroy all your delegated credentials.\n")
+        print("Usage: delegate <days/off>\n")
 
     def do_delegate(self, line):
 # argument parse
@@ -1245,13 +1245,13 @@ class parser(cmd.Cmd):
                 f = open(self.config_filepath, "w")
                 self.config.write(f)
                 f.close()
-                print "Delegate credentials removed."
+                print("Delegate credentials removed.")
                 return
             else:
                 try:
                     dt = max(min(float(line), delegate_max), delegate_min)
                 except:
-                    print "Bad delegate lifetime."
+                    print("Bad delegate lifetime.")
 # lifetime setup
         d = datetime.datetime.now() + datetime.timedelta(days=dt)
         expiry = d.strftime("%d-%b-%Y %H:%M:%S")
@@ -1274,7 +1274,7 @@ class parser(cmd.Cmd):
 # create secure token (delegate) and assign current authenticated identity to the token
         self.mf_client.log("DEBUG", "Attempting to delegate for: domain=%s, user=%s, until=%r" % (domain, user, expiry))
         result = self.mf_client.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16' % (expiry, actor, domain))
-        print "Delegate valid until: " + expiry
+        print("Delegate valid until: " + expiry)
 
         for elem in result.iter():
             if elem.tag == 'token':
@@ -1320,9 +1320,9 @@ class parser(cmd.Cmd):
 
 # --- compare
     def help_compare(self):
-        print "\nCompares a local and a remote folder and reports any differences"
-        print "The local and remote folders must have the same name and appear in the current local and remote working directories"
-        print "Usage: compare <folder>\n"
+        print("\nCompares a local and a remote folder and reports any differences")
+        print("The local and remote folders must have the same name and appear in the current local and remote working directories")
+        print("Usage: compare <folder>\n")
 
 # --- compare
 # NB: checksum compare is prohibitively expensive in general, so default to file size based comparison
@@ -1331,7 +1331,7 @@ class parser(cmd.Cmd):
 
 # check remote
         if self.mf_client.namespace_exists(remote_fullpath) is False:
-            print "Could not find remote folder: %s" % remote_fullpath
+            print("Could not find remote folder: %s" % remote_fullpath)
             return
 
 # no folder specified - compare local and remote working directories 
@@ -1342,17 +1342,17 @@ class parser(cmd.Cmd):
             local_fullpath = os.path.join(os.getcwd(), remote_basename)
 # check local
         if os.path.exists(local_fullpath) is False:
-            print "Could not find local folder: %s" % local_fullpath
+            print("Could not find local folder: %s" % local_fullpath)
             return
 
 # build remote set
         remote_files = set()
-        print "Building remote file set under [%s] ..." % remote_fullpath
+        print("Building remote file set under [%s] ..." % remote_fullpath)
         remote_files = self.get_remote_set(remote_fullpath)
 
 # build local set
         local_files = set()
-        print "Building local file set under [%s] ..." % local_fullpath
+        print("Building local file set under [%s] ..." % local_fullpath)
         try:
             for (dirpath, dirnames, filenames) in os.walk(local_fullpath):
                 for filename in filenames:
@@ -1363,24 +1363,24 @@ class parser(cmd.Cmd):
             self.mf_client.log("ERROR", str(e))
 
 # starting summary
-        print "Total remote files = %d" % len(remote_files)
-        print "Total local files = %d" % len(local_files)
+        print("Total remote files = %d" % len(remote_files))
+        print("Total local files = %d" % len(local_files))
 
 # remote only count
         count_pull = 0
-        print "=== Remote server only ==="
+        print("=== Remote server only ===")
         for item in remote_files - local_files:
             count_pull += 1
-            print("%s" % item)
+            print(("%s" % item))
 # report 
         count_push = 0
-        print "=== Local filesystem only ==="
+        print("=== Local filesystem only ===")
         for item in local_files - remote_files:
-            print("%s" % item)
+            print(("%s" % item))
             count_push += 1
 
 # for common files, report if there are differences
-        print "=== Differing files ==="
+        print("=== Differing files ===")
         count_common = 0
         count_mismatch = 0
         for item in local_files & remote_files:
@@ -1401,7 +1401,7 @@ class parser(cmd.Cmd):
                 if local_crc32 == remote_crc32:
                     count_common += 1
                 else:
-                    print("s: local crc32=%r, remote crc32=%r" % (item, local_crc32, remote_crc32))
+                    print(("s: local crc32=%r, remote crc32=%r" % (item, local_crc32, remote_crc32)))
                     count_mismatch += 1
 # filesize compare 
             elif filesize is True:
@@ -1417,19 +1417,19 @@ class parser(cmd.Cmd):
                 if local_size == remote_size:
                     count_common += 1
                 else:
-                    print("%s: local size=%d, remote size=%d" % (item, local_size, remote_size))
+                    print(("%s: local size=%d, remote size=%d" % (item, local_size, remote_size)))
                     count_mismatch += 1
 # existence compare
             else:
                 count_common += 1
 
 # concluding summary
-        print "=== Complete ==="
-        print "Files found only on local filesystem = %d" % count_push
-        print "Files found only on remote server = %d" % count_pull
-        print "Identical files = %d" % count_common
+        print("=== Complete ===")
+        print("Files found only on local filesystem = %d" % count_push)
+        print("Files found only on remote server = %d" % count_pull)
+        print("Identical files = %d" % count_common)
         if checksum is True or filesize is True:
-            print "Differing files = %d" % count_mismatch
+            print("Differing files = %d" % count_mismatch)
 
 # -- generic operation that returns an unknown number of results from the server, so chunking must be used
     def mf_iter(self, iter_command, iter_callback, iter_size):
@@ -1452,13 +1452,13 @@ class parser(cmd.Cmd):
 # -- callback for do_publish url printing 
     def print_published_urls(self, result):
         for elem in result.iter("path"):
-            public_url = '%s://%s/download/%s' % (self.mf_client.protocol, self.mf_client.server, urllib2.quote(elem.text[10:]))
-            print public_url
+            public_url = '%s://%s/download/%s' % (self.mf_client.protocol, self.mf_client.server, urllib.parse.quote(elem.text[10:]))
+            print(public_url)
 
 # --
     def help_publish(self):
-        print "\nReturn a public, downloadable URL for a file or files\nRequires public sharing to be enabled by the project administrator\n"
-        print "Usage: publish <file(s)>\n"
+        print("\nReturn a public, downloadable URL for a file or files\nRequires public sharing to be enabled by the project administrator\n")
+        print("Usage: publish <file(s)>\n")
 
 # TODO - publish/unpublish only work on assets ... rework to handle namespaces?
 # --
@@ -1474,8 +1474,8 @@ class parser(cmd.Cmd):
 
 # --
     def help_unpublish(self):
-        print "\nRemove public access for a file or files\n"
-        print "Usage: unpublish <file(s)>\n"
+        print("\nRemove public access for a file or files\n")
+        print("Usage: unpublish <file(s)>\n")
 
 # --
     def do_unpublish(self, line):
@@ -1487,13 +1487,13 @@ class parser(cmd.Cmd):
 
 # --
     def help_quit(self):
-        print "\nExit without terminating the session\n"
+        print("\nExit without terminating the session\n")
     def do_quit(self, line):
         exit(0)
 
 # --
     def help_exit(self):
-        print "\nExit without terminating the session\n"
+        print("\nExit without terminating the session\n")
     def do_exit(self, line):
         exit(0)
 
@@ -1503,19 +1503,19 @@ class parser(cmd.Cmd):
             try:
                 self.cmdloop()
             except KeyboardInterrupt:
-                print " Interrupted by user"
+                print(" Interrupted by user")
 
 # NB: here's where all command failures are caught
             except SyntaxError:
-                print " Syntax error: for more information on commands type 'help'"
+                print(" Syntax error: for more information on commands type 'help'")
 
             except Exception as e:
 # exit on the EOF case ie where stdin/file is force fed via command line redirect
 # FIXME - this can sometimes occur in some mediaflux error messages
                 if "EOF" in str(e):
-                    print "Exit: encountered EOF"
+                    print("Exit: encountered EOF")
                     return
-                print str(e)
+                print(str(e))
 # TODO - handle via custom exception ?
                 if "session is not valid" in str(e):
                     self.need_auth = True
@@ -1524,7 +1524,7 @@ def main():
     global build
 
     if sys.hexversion < 0x02070000:
-        print("Error: requires Python 2.7.x, using: ", sys.version)
+        print(("Error: requires Python 2.7.x, using: ", sys.version))
         exit(-1)
 
 # server config (section heading) to use
@@ -1552,7 +1552,7 @@ def main():
     except:
         config_filepath = os.path.join(os.getcwd(), ".mf_config")
 # build config
-    config = ConfigParser.ConfigParser()
+    config = configparser.ConfigParser()
     config.read(config_filepath)
 # use config in ~ if it exists
     try:
@@ -1577,7 +1577,7 @@ def main():
         domain = config.get(current, 'domain')
 # no .mf_config in ~ or zip bundle or cwd => die
     except Exception as e:
-        print "Failed to find a valid config file: %s" % str(e)
+        print("Failed to find a valid config file: %s" % str(e))
         exit(-1)
 
     if config.has_option(current, 'session'):
@@ -1595,7 +1595,7 @@ def main():
 
 # command line arguments override; but only if specified ie not none
     if args.url is not None:
-        cmd = urlparse.urlparse(args.url)
+        cmd = urllib.parse.urlparse(args.url)
         protocol = cmd.scheme
         server = cmd.hostname
         port = cmd.port
@@ -1613,8 +1613,8 @@ def main():
         mf_client.token = token
 
     except Exception as e:
-        print "Failed to connect to: %r://%r:%r" % (protocol, server, port)
-        print "Error: %s" % str(e)
+        print("Failed to connect to: %r://%r:%r" % (protocol, server, port))
+        print("Error: %s" % str(e))
         exit(-1)
 
 # auth test - will automatically attempt to use a token (if it exists) to re-generate a valid session
@@ -1667,22 +1667,22 @@ def main():
 # interactive or input iterator (scripted)
     mf_client.log("DEBUG", "PSHELL=%s" % build)
     if my_parser.interactive:
-        print " === pshell: type 'help' for a list of commands ==="
+        print(" === pshell: type 'help' for a list of commands ===")
         my_parser.loop_interactively()
     else:
         for item in input_list:
             line = item.strip()
             try:
-                print "%s:%s> %s" % (current, my_parser.cwd, line)
+                print("%s:%s> %s" % (current, my_parser.cwd, line))
                 my_parser.onecmd(line)
             except KeyboardInterrupt:
-                print " Interrupted by user"
+                print(" Interrupted by user")
                 exit(-1)
             except SyntaxError:
-                print " Syntax error: for more information on commands type 'help'"
+                print(" Syntax error: for more information on commands type 'help'")
                 exit(-1)
             except Exception as e:
-                print str(e)
+                print(str(e))
                 exit(-1)
 
 

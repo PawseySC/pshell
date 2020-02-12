@@ -11,19 +11,19 @@ import shutil
 import string
 import getpass
 import logging
-import httplib
-import urllib2
-import urlparse
+import http.client
+import urllib.request, urllib.error, urllib.parse
+import urllib.parse
 import argparse
 import tempfile
 import posixpath
-import ConfigParser
+import configparser
 from datetime import datetime
-import mfclient
+from . import mfclient
 try:
-    from fuse import FUSE, FuseOSError, Operations
+    from .fuse import FUSE, FuseOSError, Operations
 except:
-    print "Error: this system does not seem to have FUSE installed."
+    print("Error: this system does not seem to have FUSE installed.")
 
 # ===
 build="Latest"
@@ -124,14 +124,14 @@ class pmount(Operations):
         @classmethod
         def display(mystats, logger):
             logger.info(" === iostats times ===")
-            for fname in mystats.t_count.keys():
+            for fname in list(mystats.t_count.keys()):
                 size = mystats.t_bytes[fname]
                 time = mystats.t_time[fname]
                 if size == 0:
                     logger.info("%-20s : %d calls : total time = %f s" % (fname, mystats.t_count[fname], time))
 
             logger.info(" === iostats rates ===")
-            for fname in mystats.t_count.keys():
+            for fname in list(mystats.t_count.keys()):
                 time = max(0.1, mystats.t_time[fname])
                 size = mystats.t_bytes[fname]
                 if size != 0:
@@ -141,7 +141,7 @@ class pmount(Operations):
 
         @classmethod
         def insert(mystats, fname, size, elapsed):
-            if fname in mystats.t_count.keys():
+            if fname in list(mystats.t_count.keys()):
                 mystats.t_count[fname] += 1
                 mystats.t_bytes[fname] += size
                 mystats.t_time[fname] += elapsed
@@ -186,7 +186,7 @@ class pmount(Operations):
             self.log.setLevel(logging.INFO)
         if args.logfile:
             logfile = datetime.now().strftime('pmount-%Y-%m-%d-%H:%M:%S.log')
-            print "Writing log to: %s" % logfile
+            print("Writing log to: %s" % logfile)
             logging.basicConfig(filename=logfile, format='%(asctime)s - %(levelname)s - %(message)s')
         else:
             logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s')
@@ -197,7 +197,7 @@ class pmount(Operations):
         try:
             config_filepath = os.path.expanduser("~/.mf_config")
             self.log.debug("init() : config=%s, section=%s" % (config_filepath, args.config))
-            config = ConfigParser.ConfigParser()
+            config = configparser.ConfigParser()
             config.read(config_filepath)
 
             if config.has_section(args.config) is False:
@@ -273,10 +273,10 @@ class pmount(Operations):
             self.mf_client.login(token=token)
         except Exception as e:
             self.log.debug("init(): %s" % str(e))
-            response = raw_input("No valid token found. Do you want to create one? ")
+            response = input("No valid token found. Do you want to create one? ")
             if response.startswith('y') or response.startswith('Y'):
-                print "Login to server [%s] and domain [%s] required." % (args.server, args.domain)
-                user = raw_input("Username: ")
+                print("Login to server [%s] and domain [%s] required." % (args.server, args.domain))
+                user = input("Username: ")
                 password = getpass.getpass("Password: ")
                 self.mf_client.login(user, password)
 # create token
@@ -298,7 +298,7 @@ class pmount(Operations):
                 config.write(f)
                 f.close()
             else:
-                print "Authentication failed"
+                print("Authentication failed")
                 exit(-1)
 # success
         self.verbose = args.verbose
@@ -307,9 +307,9 @@ class pmount(Operations):
 # ---
     def _debug_namespace_cache(self):
         for namespace in self.namespace_cache:
-            print("[%s]" % namespace)
+            print(("[%s]" % namespace))
             for child in self.namespace_cache[namespace]:
-                print("  - %s : %r" % (child, self.namespace_cache[namespace][child]))
+                print(("  - %s : %r" % (child, self.namespace_cache[namespace][child])))
 
 # --- triggered on ctrl-C or unmount
     def destroy(self, path):
@@ -344,7 +344,7 @@ class pmount(Operations):
 
 # construct URL to the file and open 
         url = self.mf_client.data_get + "?_skey=%s&id=%d" % (self.mf_client.session, asset_id)
-        response = urllib2.urlopen(url, timeout=self.timeout)
+        response = urllib.request.urlopen(url, timeout=self.timeout)
 # FIXME - end of range = max open files ...
         for fh in range(1,100):
             if self.mf_ronly.get(fh) is None:
@@ -409,7 +409,7 @@ class pmount(Operations):
 # --- create a new attribute dictionary
     def inode_new(self, mode, links, size=0, mtime=-1):
         if self.readonly is False:
-            mode = mode | 0200
+            mode = mode | 0o200
         if mtime == -1:
             mtime = self.st_time
         attr = { 'st_uid':self.uid, 'st_gid':self.gid, 'st_size':size, 'st_mode':mode, 'st_nlink':links, 'st_mtime':mtime }
@@ -424,7 +424,7 @@ class pmount(Operations):
         this_folder = dict()
         for elem in reply.findall(".//namespace/namespace"):
             folder = posixpath.join(fullpath, elem.text)
-            this_folder[elem.text] = self.inode_new(stat.S_IFDIR | 0500, 2)
+            this_folder[elem.text] = self.inode_new(stat.S_IFDIR | 0o500, 2)
 # cache the directory listing (namespaces only)
         self.namespace_cache[fullpath] = this_folder
 
@@ -453,11 +453,11 @@ class pmount(Operations):
             mtime = self.st_time
             xml_mtime = reply.find(".//mtime")
             if xml_mtime is not None:
-                for k,v in xml_mtime.attrib.iteritems():
+                for k,v in xml_mtime.attrib.items():
                     if k == 'millisec':
                         mtime = int(v) / 1000
             # it's an asset -> return info
-            return { 'st_uid':self.uid, 'st_gid':self.gid, 'st_size':size, 'st_mode':stat.S_IFREG | 0400, 'st_nlink':1, 'st_mtime':mtime }
+            return { 'st_uid':self.uid, 'st_gid':self.gid, 'st_size':size, 'st_mode':stat.S_IFREG | 0o400, 'st_nlink':1, 'st_mtime':mtime }
 
         except Exception as e:
             self.log.error("get_asset() : %s" % str(e))
@@ -466,8 +466,8 @@ class pmount(Operations):
 
 # --- testing mechanism
     def fail_session(self):
-        print "Injecting session failure"
-        print "old session = %s" % self.mf_client.session
+        print("Injecting session failure")
+        print("old session = %s" % self.mf_client.session)
         self.mf_client.session = None
 
 # --- grant visibility of virtual fs
@@ -522,11 +522,11 @@ class pmount(Operations):
         if namespace not in self.namespace_cache:
             self.log.debug("readdir() : namespace listing server call needed [%s]" % namespace)
             self.get_namespaces(namespace)
-        for item in self.namespace_cache[namespace].keys():
+        for item in list(self.namespace_cache[namespace].keys()):
             yield item
 # asset entries
         if namespace in self.asset_cache:
-            for item in self.asset_cache[namespace].keys():
+            for item in list(self.asset_cache[namespace].keys()):
                 yield item
         else:
             self.log.debug("readdir() : asset listing server call needed [%s]" % namespace)
@@ -552,11 +552,11 @@ class pmount(Operations):
                         mtime = self.st_time
                         xml_mtime = elem.find(".//mtime")
                         if xml_mtime is not None:
-                            for k,v in xml_mtime.attrib.iteritems():
+                            for k,v in xml_mtime.attrib.items():
                                 if k == 'millisec':
                                     mtime = int(v) / 1000
 # add the inode
-                        this_folder[filename] = self.inode_new(stat.S_IFREG | 0400, 1, size=size, mtime=mtime)
+                        this_folder[filename] = self.inode_new(stat.S_IFREG | 0o400, 1, size=size, mtime=mtime)
                         yield filename
                     else:
                         self.log.debug("readdir() : bad asset metadata for element [%r]" % elem)
@@ -605,7 +605,7 @@ class pmount(Operations):
             self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % fullpath)
             namespace_cache = self.namespace_cache.get(parent)
             if namespace_cache is not None:
-                namespace_cache[child] = self.inode_new(stat.S_IFDIR | 0500, 2)
+                namespace_cache[child] = self.inode_new(stat.S_IFDIR | 0o500, 2)
         except Exception as e:
             self.log.debug("mkdir(): %s" % str(e))
             raise FuseOSError(errno.EACCES)
@@ -745,7 +745,7 @@ class pmount(Operations):
                 raise FuseOSError(errno.EPERM)
 # FIXME - size = 0? bit of a hack as the truncate() is technically what should be doing this ...
 # ie can we just update the cache (if exists?)
-            self.inode_cache[path] = self.inode_new(mode=stat.S_IFREG | 0400, links=1, size=0)
+            self.inode_cache[path] = self.inode_new(mode=stat.S_IFREG | 0o400, links=1, size=0)
             # fake filehandle for writing
 #            return self.mf_wonly_open(namespace, filename)
             return self.mf_wonly_open(fullpath)
@@ -779,7 +779,7 @@ class pmount(Operations):
             try:
                 elem = reply.find(".//outputs/url")
                 url = elem.text
-                response = urllib2.urlopen(url, timeout=self.timeout)
+                response = urllib.request.urlopen(url, timeout=self.timeout)
                 mfobj.total += size
                 return response.read(size)
 
@@ -833,9 +833,9 @@ class pmount(Operations):
         total_size = len(body) + length + len(boundary) + 8
 
         if self.mf_client.encrypted_data is True:
-            conn = httplib.HTTPSConnection(self.mf_client.data_put, timeout=self.timeout)
+            conn = http.client.HTTPSConnection(self.mf_client.data_put, timeout=self.timeout)
         else:
-            conn = httplib.HTTPConnection(self.mf_client.data_put, timeout=self.timeout)
+            conn = http.client.HTTPConnection(self.mf_client.data_put, timeout=self.timeout)
 
         conn.putrequest('POST', "/__mflux_svc__")
         conn.putheader('Connection', 'keep-alive')
@@ -953,7 +953,7 @@ class pmount(Operations):
                 reply = self.mf_client.aterm_run('service.execute :service -name "asset.set" < :id "path=%s/%s" :store "%s" :create True > :input-ticket %d' % (namespace, filename, mfobj.store, fh))
 # update directory cache if it exists (if it doesn't it'll be generated by a server call when needed anyway)
                 if namespace in self.asset_cache:
-                    self.asset_cache[namespace][filename] = self.inode_new(mode=stat.S_IFREG | 0400, links=1, size=mfobj.total) 
+                    self.asset_cache[namespace][filename] = self.inode_new(mode=stat.S_IFREG | 0o400, links=1, size=mfobj.total) 
 
             except Exception as e:
                 self.log.error("release(3) : %s" % str(e))
@@ -984,7 +984,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
 # CURRENT - this completely fails to parse "data.pawsey.org.au" as an input server arg ...
-    url = urlparse.urlparse(args.server)
+    url = urllib.parse.urlparse(args.server)
     args.protocol = url.scheme
     args.server = url.hostname
     args.port = url.port
@@ -1001,12 +1001,12 @@ if __name__ == '__main__':
                 args.config = args.server
 
     except Exception as e:
-        print "Error: incomplete server URL."
+        print("Error: incomplete server URL.")
         exit(-1)
 
 # NEW 
     if os.path.exists(args.path) is False:
-        response = raw_input("Mount location [%s] not found; do you want to create it? " % args.path)
+        response = input("Mount location [%s] not found; do you want to create it? " % args.path)
         if response.startswith('y') or response.startswith('Y'):
             os.makedirs(args.path)
 
@@ -1014,6 +1014,6 @@ if __name__ == '__main__':
     try:
         FUSE(pmount(args), args.path, nothreads=True, foreground=not args.background)
     except Exception as e:
-        print("Mount failed: %s" % str(e))
+        print(("Mount failed: %s" % str(e)))
         exit(-1)
 

@@ -136,9 +136,9 @@ if __name__ == '__main__':
 
     global session, server, script, verbosity
 
-    print "\n----------------------------------------------------------------------"
-    print "Running tests for: pshell"
-    print "----------------------------------------------------------------------\n"
+    print("\n----------------------------------------------------------------------")
+    print("Running tests for: pshell")
+    print("----------------------------------------------------------------------\n")
 
 # establish a session for live tests (intended for fresh install running in a local container)
     session = None
@@ -159,7 +159,7 @@ if __name__ == '__main__':
             result = line.split()
             session = result[0][9:-1]
     if session is None:
-        print "Failed to establish mediaflux session with: %s" % server
+        print("Failed to establish mediaflux session with: %s" % server)
         exit(-1)
 
 # build suite

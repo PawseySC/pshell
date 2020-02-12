@@ -1,10 +1,10 @@
 #!/usr/bin/python
 
 import os
-import fuse
+from . import fuse
 import errno
 import unittest
-from pmount import mfwrite
+from .pmount import mfwrite
 
 mfobj = None
 
@@ -48,7 +48,7 @@ class pmount_buffer(unittest.TestCase):
         try:
             self.mfobj.inject(ba3, 3)
         except:
-            print "unordered write() not implemented"
+            print("unordered write() not implemented")
 
 # TODO - quota and truncate tests ...
 #        for b in self.mfobj.buffer:

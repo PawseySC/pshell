@@ -64,7 +64,7 @@ class pshell_bugs(unittest.TestCase):
     def test_squish(self):
         proc = subprocess.Popen(["pshell.py", "-c", "dummy", "import script2"], stdout=subprocess.PIPE)
         for line in proc.stdout:
-            print(line.strip())
+            print((line.strip()))
 
 ######
 # main
