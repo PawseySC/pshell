@@ -526,11 +526,11 @@ class mf_client:
                     elem = reply.find(".//id")
                     job = elem.text
                     while True:
-                        self.log("DEBUG", "aterm_run(): background job [%s] poll..." % job)
                         xml_poll = self.aterm_run("service.background.describe :id %s" % job)
                         elem = xml_poll.find(".//task/state")
                         item = xml_poll.find(".//task/exec-time")
-                        text = elem.text + " [ " + item.text + " " + item.attrib['unit'] + "(s) ]"
+# NEW - always show job ID
+                        text = "%s [ id=%s ] [ %s %s (s) ]" % (elem.text, job, item.text, item.attrib['unit'])
                         if "executing" in elem.text:
                             sys.stdout.write("\r"+text)
                             sys.stdout.flush()
@@ -540,7 +540,6 @@ class mf_client:
                             print "\r%s    " % text
                             break
 # NB: it is an exception (error) to get results BEFORE completion
-                    self.log("DEBUG", "aterm_run(): background job [%s] complete, getting results" % job)
                     xml_poll = self.aterm_run("service.background.results.get :id %s" % job)
 # NB: mediaflux seems to not return any output if run in background (eg asset.get :id xxxx &)
 # this seems like a bug?
