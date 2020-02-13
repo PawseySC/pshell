@@ -219,9 +219,20 @@ class mf_client:
             raise Exception(xml_string)
 
 # NB: timeout exception if server is unreachable
+# OLD
         request = urllib.request.Request(self.post_url, data=xml_string, headers={'Content-Type': 'text/xml'})
         response = urllib.request.urlopen(request, timeout=self.timeout)
+
+# NEW
+#        conn = http.client.HTTPSConnection(self.post_url)
+#        conn.request("POST", xml_string, headers={'Content-Type': 'text/xml'})
+#        response = conn.getresponse()
+
+        print(response)
+
         xml = response.read()
+
+
         tree = ET.fromstring(xml)
 
 # if error - attempt to extract a useful message
@@ -346,6 +357,11 @@ class mf_client:
         """
         Helper method for hiding sensitive text in XML posts
         """
+
+# PYTHON3 - the text input is now a bytes object ... which causes the re string pattern error
+        print("_xml_cloak: %r" % type(text))
+
+
         text1 = re.sub(r'session=[^>]*', 'session="..."', text)
         text2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxx</password>', text1)
         text3 = re.sub(r'<token>.*?</token>', '<token>xxxxxxx</token>', text2)
@@ -371,7 +387,16 @@ class mf_client:
             input_line = input_line[:-1]
 
 # use posix=True as it's the closest to how aterm processes input strings
-        lexer = shlex.shlex(input_line.encode('utf-8'), posix=True)
+
+        print(type(input_line))
+
+# encoding the line (which is a str) creates an object with no read() method
+# this input now has no read() method I guess ...
+#        lexer = shlex.shlex(input_line.encode('utf-8'), posix=True)
+
+# dropping the encode gets rid of the previous error, but adds a new one - cant use string pattern on bytes-like object
+        lexer = shlex.shlex(input_line, posix=True)
+
 # DS-421 fixes lexer dropping XML text payload starting with #, thinking it's a comment
         lexer.commenters=""
         lexer.whitespace_split = True
@@ -390,7 +415,8 @@ class mf_client:
 # better handling of deletions to the XML
         xml_unwanted = None
         try:
-            while token:
+#            while token:
+            while token is not None:
                 if token[0] == ':':
                     child = ET.SubElement(xml_node, '%s' % token[1:])
                     self.log("DEBUG", "XML elem [%s]" % token[1:], level=2)
@@ -460,6 +486,8 @@ class mf_client:
             self.log("DEBUG", "aterm_run(): %s" % str(e))
             raise SyntaxError
 
+        print("setup for post")
+
 # do any deletions to the tree after processing 
         if xml_unwanted is not None:
             xml_node.remove(xml_unwanted)
@@ -507,15 +535,21 @@ class mf_client:
                 output.text = "session"
 
 # convert XML to string for posting ...
-        xml_text = ET.tostring(xml)
 
-# debug - password hiding for system.logon ...
-        xml_hidden = self._xml_cloak(xml_text) 
-        self.log("DEBUG", "XML out: %s" % xml_hidden, level=2)
+        xml_text = ET.tostring(xml)
+# NB - this removes the error about bytes vs strings for the _xml_cloak part ...
+#        xml_text = ET.tostring(xml, encoding="unicode")
+
+# FIXME PYTHON3 crap - bytes v strings
+# password hiding for system.logon ...
+#        xml_hidden = self._xml_cloak(xml_text) 
+#        self.log("DEBUG", "XML out: %s" % xml_hidden, level=2)
 
 # testing hook
         if post is not True:
             return xml_text
+
+        print("attempt to post")
 
 # send the service call and see what happens ...
         message = "This shouldn't happen"
@@ -550,6 +584,7 @@ class mf_client:
 # CURRENT - process reply for any output
 # NB - can only cope with 1 output
                     if data_out_name is not None:
+                        print("1")
                         self.log("DEBUG", "aterm_run(): output filename [%s]" % data_out_name)
                         elem_output = reply.find(".//outputs")
                         if elem_output is not None:
@@ -579,6 +614,7 @@ class mf_client:
                         else:
                             self.log("ERROR", "aterm_run(): missing output data in XML server response")
 # successful
+                    print("completed post")
                     return reply
 
             except Exception as e:
@@ -590,7 +626,11 @@ class mf_client:
                         self.log("DEBUG", "aterm_run(): we have a token, attempting to establish new session")
                         # FIXME - need to put this in a separate exception handling ...
                         self.login(token=self.token)
-                        xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
+
+# PYTHON3 FIXME - this is broken now ... due to the strings vs bytes change (ie xml_text is bytes rather than string ... so you cant use re)
+#                        xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
+                        raise Exception("PYTHON3")
+
                         self.log("DEBUG", "aterm_run(): Session restored, retrying command")
                         continue
                 break
