@@ -29,6 +29,8 @@ class mfclient_syntax(unittest.TestCase):
     def _peel(self, text):
         prefix = '<request><service name="service.execute" session=""><args>'
         postfix = '</args></service></request>'
+# PYTHON3 FIX - convert bytes to string
+        text = text.decode()
         if text.startswith(prefix):
             text = text[len(prefix):]
             text = text[:len(text)-len(postfix)]
@@ -63,7 +65,7 @@ class mfclient_syntax(unittest.TestCase):
     def test_service_add(self):
         line = 'system.service.add :name custom.service :replace-if-exists true :access ACCESS :definition < :element -name arg1 -type string :element -name arg2 -type string -min-occurs 0 -default " " :element -name arg3 -type boolean -min-occurs 0 -default false > :execute \"return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]\"'
         reply = self.mf_client.aterm_run(line, post=False)
-        self.assertEqual(self._peel(reply), '<service name="system.service.add"><name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string" /><element default=" " min-occurs="0" name="arg2" type="string" /><element default="false" min-occurs="0" name="arg3" type="boolean" /></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute></service>')
+        self.assertEqual(self._peel(reply), '<service name="system.service.add"><name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string" /><element name="arg2" type="string" min-occurs="0" default=" " /><element name="arg3" type="boolean" min-occurs="0" default="false" /></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute></service>')
 
     def test_semicolon_value(self):
         line = 'actor.grant :name public:public :type user :role -type role read-only'
@@ -116,21 +118,21 @@ class mfclient_syntax(unittest.TestCase):
         self.assertEqual(self._peel(reply), '<service name="asset.get" outputs="1"><id>123</id><format>extended</format></service><outputs-via>session</outputs-via>')
 
     def test_service_execute(self):
-        reply = self.mf_client.aterm_run('service.execute :service -name "asset.create" < :namespace "folder" :name "file" > :input-ticket 1', post=False)
+        reply = self.mf_client.aterm_run('service.execute :service -name "asset.create" < :namespace "folder" :name "file" > :input-ticket 1', post=False).decode()
         self.assertEqual(reply, '<request><service name="service.execute" session=""><args><service name="asset.create"><namespace>folder</namespace><name>file</name></service><input-ticket>1</input-ticket></args></service></request>')
 
 # regression test for special characters in password
     def test_sanitise_login_password(self):
         password = 'a?|:;(){}[  ]#@$%&* b.,c~123!> </\\\\'
         line = "system.logon :domain ivec :user sean :password %s" % password
-        reply = self.mf_client.aterm_run(line, post=False)
+        reply = self.mf_client.aterm_run(line, post=False).decode()
 #        print reply
         self.assertEqual(reply, '<request><service name="system.logon"><args><domain>ivec</domain><user>sean</user><password>%s</password></args></service></request>' % self.mf_client._xml_sanitise(password))
 
 # by default lexer silently drops any text starting with # (comment character)
     def test_parsing_comments(self):
         line = r"asset.set :id 123 :name #filename#"
-        reply = self.mf_client.aterm_run(line, post=False)
+        reply = self.mf_client.aterm_run(line, post=False).decode()
         self.assertEqual(reply, '<request><service name="service.execute" session=""><args><service name="asset.set"><id>123</id><name>#filename#</name></service></args></service></request>')
 
 

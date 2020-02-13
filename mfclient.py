@@ -347,10 +347,6 @@ class mf_client:
         Helper method for hiding sensitive text in XML posts
         """
 
-# PYTHON3 - the text input is now a bytes object ... which causes the re string pattern error
-        print("_xml_cloak: %r" % type(text))
-
-
         text1 = re.sub(r'session=[^>]*', 'session="..."', text)
         text2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxx</password>', text1)
         text3 = re.sub(r'<token>.*?</token>', '<token>xxxxxxx</token>', text2)
@@ -519,15 +515,13 @@ class mf_client:
                 output.text = "session"
 
 # convert XML to string for posting ...
-
         xml_text = ET.tostring(xml)
-# NB - this removes the error about bytes vs strings for the _xml_cloak part ...
-#        xml_text = ET.tostring(xml, encoding="unicode")
 
-# FIXME PYTHON3 crap - bytes v strings
 # password hiding for system.logon ...
 #        xml_hidden = self._xml_cloak(xml_text) 
-#        self.log("DEBUG", "XML out: %s" % xml_hidden, level=2)
+# PYTHON3 - bytes v strings
+        xml_hidden = self._xml_cloak(xml_text.decode()).encode() 
+        self.log("DEBUG", "XML out: %s" % xml_hidden, level=2)
 
 # testing hook
         if post is not True:

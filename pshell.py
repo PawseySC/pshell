@@ -783,7 +783,8 @@ class parser(cmd.Cmd):
 
 # base_namespace shouldn't have escaping as it's used in direct path compares (not sent to mediaflux)
 # base_query should have escaping as it is passed through mediaflux (asset.query etc)
-        base_namespace = base_namespace.decode('string_escape')
+# PYTHON3 - had to comment this out ...
+#        base_namespace = base_namespace.decode('string_escape')
 
 # get content statistics and init for transfer polling loop
         stats = self.poll_total(base_query)
