@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os
 import re
@@ -17,7 +17,7 @@ import itertools
 import posixpath
 import configparser
 import xml.etree.ElementTree as ET
-from . import mfclient
+import mfclient
 # no readline on windows
 try:
     import readline
