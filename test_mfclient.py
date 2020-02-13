@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 import os
 import sys
@@ -8,7 +8,7 @@ import getpass
 import urllib.request, urllib.error, urllib.parse
 import binascii
 import unittest
-from . import mfclient
+import mfclient
 import posixpath
 import configparser
 
