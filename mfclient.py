@@ -277,7 +277,7 @@ class mf_client:
 
 # kickoff
         self.log("DEBUG", "[pid=%d] File send starting: %s" % (pid, filepath))
-        conn.putrequest('POST', "/__mflux_svc__")
+        conn.putrequest('POST', '/__mflux_svc__')
 # headers
         conn.putheader('Connection', 'keep-alive')
         conn.putheader('Cache-Control', 'no-cache')
@@ -287,7 +287,7 @@ class mf_client:
         conn.endheaders()
 
 # start sending the file
-        conn.send(body)
+        conn.send(body.encode())
         with open(filepath, 'rb') as infile:
             while True:
 # trap disk IO issues
@@ -309,7 +309,7 @@ class mf_client:
 
 # terminating line (len(boundary) + 8)
         chunk = "\r\n--%s--\r\n" % boundary
-        conn.send(chunk)
+        conn.send(chunk.encode())
         self.log("DEBUG", "[pid=%d] File send completed, waiting for server..." % pid)
 
 # get ACK from server (asset ID) else error (raise exception)
@@ -560,7 +560,6 @@ class mf_client:
 # CURRENT - process reply for any output
 # NB - can only cope with 1 output
                     if data_out_name is not None:
-                        print("1")
                         self.log("DEBUG", "aterm_run(): output filename [%s]" % data_out_name)
                         elem_output = reply.find(".//outputs")
                         if elem_output is not None:
@@ -923,6 +922,7 @@ class mf_manager:
         """
         global bytes_sent
         global bytes_recv
+        global manage_lock
 
 # fail if there is already a managed transfer (there can only be one!)
         if not manage_lock.acquire(block=False):

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 import os
 import sys
@@ -17,91 +17,94 @@ class pshell_syntax(unittest.TestCase):
         self.server = server
         self.script = script
         self.verbosity = verbosity
+        self.python = "python3"
 
 # --
     def test_cd(self):
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "cd /www"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "cd /www"], stdout=PIPE, stderr=STDOUT)
         flag = False
         for line in p.stdout:
-            if "Remote: /www" in line:
+            if "Remote: /www" in line.decode():
                 flag = True
         self.assertTrue(flag)
 # --
     def test_ls(self):
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls /www"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls /www"], stdout=PIPE, stderr=STDOUT)
         flag = False
         for line in p.stdout:
-            if "index.html" in line:
+            if "index.html" in line.decode():
                 flag = True
         self.assertTrue(flag)
 # -- 
     def test_mkdir_rmdir(self):
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "mkdir /test && cd /test && pwd"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "mkdir /test && cd /test && pwd"], stdout=PIPE, stderr=STDOUT)
         flag = False
         for line in p.stdout:
-            self.assertNotIn("Folder already exists", line)
-            if "Remote: /test" in line:
+            self.assertNotIn("Folder already exists", line.decode())
+            if "Remote: /test" in line.decode():
                 flag = True
         self.assertTrue(flag)
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "rmdir /test"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "rmdir /test"], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
-            self.assertNotIn("Could not find remote folder", line)
+            self.assertNotIn("Could not find remote folder", line.decode())
         flag=False
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "cd /test"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "cd /test"], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
-            if "Could not find remote folder" in line:
+            if "Could not find remote folder" in line.decode():
                 flag=True
         self.assertTrue(flag)
 # -- 
     def test_put(self):
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "put test_pshell.py"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "put test_pshell.py"], stdout=PIPE, stderr=STDOUT)
         flag = False
         for line in p.stdout:
-            if "Completed" in line:
+            print(line)
+            if "Completed" in line.decode():
                 flag = True
         self.assertTrue(flag)
         flag = False
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls"], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
-            if "test_pshell.py" in line:
+            if "test_pshell.py" in line.decode():
                 flag = True
         self.assertTrue(flag)
-        Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "rm test_pshell.py"], stdout=PIPE, stderr=STDOUT)
+        Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "rm test_pshell.py"], stdout=PIPE, stderr=STDOUT)
 # -- 
     def test_get(self):
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "lls"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "lls"], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
-            self.assertNotIn("index.html", line)
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "get /www/index.html"], stdout=PIPE, stderr=STDOUT)
+            self.assertNotIn("index.html", line.decode())
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "get /www/index.html"], stdout=PIPE, stderr=STDOUT)
         flag = False
         for line in p.stdout:
-            if "Completed at" in line:
+            if "Completed at" in line.decode():
                 flag = True
         self.assertTrue(flag)
         os.remove("index.html")
 # -- 
     def test_rm(self):
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "asset.create :namespace / :name test.txt"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "asset.create :namespace / :name test.txt"], stdout=PIPE, stderr=STDOUT)
         flag=False
         for line in p.stdout:
-            if "id=" in line:
+            if "id=" in line.decode():
                 flag=True
+
         self.assertTrue(flag)
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "rm /test.txt"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "rm /test.txt"], stdout=PIPE, stderr=STDOUT)
 # -- 
     def test_file(self):
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "file /www/index.html"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "file /www/index.html"], stdout=PIPE, stderr=STDOUT)
         flag = False
         for line in p.stdout:
-            if "size" in line:
+            if "size" in line.decode():
                 flag = True
         self.assertTrue(flag)
 # --
     def test_lls(self):
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "lls"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "lls"], stdout=PIPE, stderr=STDOUT)
         flag = False
         for line in p.stdout:
-            if "test_pshell.py" in line:
+            if "test_pshell.py" in line.decode():
                 flag = True
         self.assertTrue(flag)
 
@@ -119,7 +122,7 @@ class pshell_bugs(unittest.TestCase):
         self.verbosity = verbosity
 
     def test_template(self):
-        p = Popen(["python", self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls /www"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls /www"], stdout=PIPE, stderr=STDOUT)
         flag = False
         for line in p.stdout:
             if "index.html" in line:
@@ -153,9 +156,9 @@ if __name__ == '__main__':
 
 
 # setup the session
-    p = Popen(["python", script, "-v", verbosity, "-u", server, "system.logon :domain system :user manager :password change_me"], stdout=PIPE)
+    p = Popen(["python3", script, "-v", verbosity, "-u", server, "system.logon :domain system :user manager :password change_me"], stdout=PIPE)
     for line in p.stdout:
-        if "session=" in line:
+        if "session=" in line.decode():
             result = line.split()
             session = result[0][9:-1]
     if session is None:

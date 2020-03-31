@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os
 import sys
@@ -19,9 +19,10 @@ import tempfile
 import posixpath
 import configparser
 from datetime import datetime
-from . import mfclient
+import mfclient
 try:
-    from .fuse import FUSE, FuseOSError, Operations
+#    from .fuse import FUSE, FuseOSError, Operations
+    from fuse import FUSE, FuseOSError, Operations
 except:
     print("Error: this system does not seem to have FUSE installed.")
 
@@ -777,9 +778,22 @@ class pmount(Operations):
             fullpath = self._remote_fullpath(path)
             reply = self.mf_client.aterm_run('asset.content.get :id "path=%s" :length %d :offset %d :out dummy' % (fullpath, size, offset))
             try:
-                elem = reply.find(".//outputs/url")
-                url = elem.text
-                response = urllib.request.urlopen(url, timeout=self.timeout)
+# CURRENT - this is failing
+#                elem = reply.find(".//outputs/url")
+#                url = elem.text
+#                response = urllib.request.urlopen(url, timeout=self.timeout)
+
+# NEW ... still not working ...
+                elem = reply.find(".//outputs/id")
+                output_id = elem.text
+#                url = self.data_get + "?_skey=%s&id=%s" % (self.session, output_id)
+                url = self.mf_client.data_get + "?_skey=%s&id=%s" % (self.mf_client.session, output_id)
+                url = url.replace("content", "output")
+
+                print(">>> %s" % url)
+
+                response = urllib.request.urlopen(url)
+
                 mfobj.total += size
                 return response.read(size)
 
