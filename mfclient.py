@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 """
-This module is a Python 2.7.x (standard lib only) implementation of a mediaflux client
+This module is a Python 3.x (standard lib only) implementation of a mediaflux client
 Author: Sean Fleming
 """
 

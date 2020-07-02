@@ -783,7 +783,7 @@ class pmount(Operations):
 #                url = elem.text
 #                response = urllib.request.urlopen(url, timeout=self.timeout)
 
-# NEW ... still not working ...
+# FIXME ... still not working ...
                 elem = reply.find(".//outputs/id")
                 output_id = elem.text
 #                url = self.data_get + "?_skey=%s&id=%s" % (self.session, output_id)
