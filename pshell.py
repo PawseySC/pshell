@@ -1524,10 +1524,6 @@ class parser(cmd.Cmd):
 def main():
     global build
 
-    if sys.hexversion < 0x02070000:
-        print(("Error: requires Python 2.7.x, using: ", sys.version))
-        exit(-1)
-
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
     p.add_argument("-c", dest='current', default="pawsey", help="the config name in $HOME/.mf_config to connect to")
