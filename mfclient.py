@@ -31,7 +31,7 @@ import configparser
 manage_lock = multiprocessing.Lock()
 bytes_sent = multiprocessing.Value('d', 0, lock=True)
 bytes_recv = multiprocessing.Value('d', 0, lock=True)
-build= "Latest"
+build= "20200819144218"
 
 #------------------------------------------------------------
 def put_jump(mfclient, data):
@@ -597,7 +597,7 @@ class mf_client:
                 if "session is not valid" in message:
 # restart the session if token exists
                     if self.token is not None:
-                        self.log("DEBUG", "aterm_run(): we have a token, attempting to establish new session")
+                        self.log("DEBUG", "aterm_run(): attempting login with token")
                         # FIXME - need to put this in a separate exception handling ...
                         self.login(token=self.token)
 
@@ -605,7 +605,7 @@ class mf_client:
 #                        xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
                         xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text.decode()).encode()
 
-                        self.log("DEBUG", "aterm_run(): Session restored, retrying command")
+                        self.log("DEBUG", "aterm_run(): session restored, retrying command")
                         continue
                 break
 

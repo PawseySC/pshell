@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 
+import sys
+# magnus python 3.4 seems broken, module python/3.6.3 works fine
+VERSION_MIN = (3, 6)
+if sys.version_info < VERSION_MIN:
+    sys.exit("ERROR: Python >= %d.%d is required, your version = %d.%d\n" % (VERSION_MIN[0], VERSION_MIN[1], sys.version_info[0], sys.version_info[1]))
 import os
 import re
 import cmd
-import sys
 import glob
 import math
 import time
