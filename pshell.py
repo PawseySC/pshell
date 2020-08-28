@@ -1560,16 +1560,21 @@ def main():
         if config.has_section(current):
             pass
         else:
-            try:
+#            try:
 # config in zip bundle
-                me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
-                f = me.open('.mf_config')
-            except:
+#                me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
+#                f = me.open('.mf_config')
+#            except:
 # config from pshell install directory (Windows fix)
-                f = open(os.path.join(os.path.dirname(__file__), 'data', '.mf_config'))
-
+#                f = open(os.path.join(os.path.dirname(__file__), 'data', '.mf_config'))
 # read non ~ config as defaults
-            config.readfp(f)
+
+# deprecated method
+#            config.readfp(f)
+
+# NEW - replacement
+            config.read_string("[pawsey]\nserver = data.pawsey.org.au\nprotocol = https\nport = 443\nencrypt = True\ndomain = ivec\nnamespace = /projects\n")
+
 
 # get main config vars
         server = config.get(current, 'server')
