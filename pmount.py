@@ -864,12 +864,15 @@ class pmount(Operations):
         conn.endheaders()
 
 # main send
-        conn.send(body)
+# PYTHON3 - NB: need to send bytes not strings
+        conn.send(body.encode())
         conn.send(data)
 
 # terminating line (len(boundary) + 8)
         tail = "\r\n--%s--\r\n" % boundary
-        conn.send(tail)
+# PYTHON3 - NB: need to send bytes not strings
+        conn.send(tail.encode())
+
 # get ACK from server (asset ID) else error (raise exception)
         resp = conn.getresponse()
         reply = resp.read()

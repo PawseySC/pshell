@@ -31,7 +31,7 @@ import configparser
 manage_lock = multiprocessing.Lock()
 bytes_sent = multiprocessing.Value('d', 0, lock=True)
 bytes_recv = multiprocessing.Value('d', 0, lock=True)
-build= "20200819144218"
+build= "20200828092817"
 
 #------------------------------------------------------------
 def put_jump(mfclient, data):
@@ -540,7 +540,8 @@ class mf_client:
                         xml_poll = self.aterm_run("service.background.describe :id %s" % job)
                         elem = xml_poll.find(".//task/state")
                         item = xml_poll.find(".//task/exec-time")
-                        text = elem.text + " [ " + item.text + " " + item.attrib['unit'] + "(s) ]"
+#                        text = elem.text + " [ " + item.text + " " + item.attrib['unit'] + "(s) ]"
+                        text = elem.text + " id=" + job + " [ " + item.text + " " + item.attrib['unit'] + "(s) ]"
                         if "executing" in elem.text:
                             sys.stdout.write("\r"+text)
                             sys.stdout.flush()
