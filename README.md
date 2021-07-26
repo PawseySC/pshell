@@ -18,10 +18,7 @@ Run test_mfclient.py
 
 To generate an API reference document, run:
 
-    pydoc -w mfclient
-
-Then view mfclient.html in any web browser.
-
+    python3 -m pydoc mfclient
 
 ### Command line client ###
 
