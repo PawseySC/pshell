@@ -11,11 +11,11 @@ import cmd
 import glob
 import math
 import time
+import json
+import urllib
 import getpass
-import urllib.request, urllib.error, urllib.parse
 import zipfile
 import argparse
-import urllib.parse
 import datetime
 import itertools
 import posixpath
@@ -27,6 +27,11 @@ try:
     import readline
 except:
     pass
+
+
+# NEW
+import keystone
+
 
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
@@ -41,12 +46,14 @@ class parser(cmd.Cmd):
     config_name = None
     config_filepath = None
     mf_client = None
+    keystone = None
     cwd = '/projects'
     interactive = True
     need_auth = True
     transfer_processes = 1
     terminal_height = 20
     script_output = None
+    args = {}
 
 # --- initial setup of prompt
     def preloop(self):
@@ -343,6 +350,33 @@ class parser(cmd.Cmd):
 # output info
         for line in output_list:
             print(line)
+
+
+# TODO - replace file with this -> which should do folders and files
+# TODO - also - query APIs (like keystone) for credential info
+    def do_api(self, line):
+        print("API - [%s]" % line)
+
+# do stuff like:
+# info https://nimbus.pawsey.org.au:5000 -> projects (eg magenta-storage)
+# info https://nimbus.pawsey.org.au:5000/magenta-storage/credentials
+# TODO map to ls https://nimbus etc
+
+        if self.keystone.is_authenticated() is False:
+            print("keystone - authenticating...")
+            xml_reply = self.mf_client.aterm_run('user.self.describe')
+            elem = xml_reply.find(".//user")
+            user = elem.attrib['user']
+            xml_reply = self.mf_client.aterm_run("secure.wallet.get :key ldap")
+            elem = xml_reply.find(".//value")
+            self.keystone.get_auth_token(user, elem.text)
+
+        if 'credentials' in line:
+            self.keystone.get_credentials()
+
+        if 'projects' in line:
+            self.keystone.get_projects()
+
 
 # --- helper
 # immediately return any key pressed as a character
@@ -1217,6 +1251,13 @@ class parser(cmd.Cmd):
         self.config.write(f)
         f.close()
 
+#NEW - add to secure wallet for identity management
+#TODO - only do this IF identity API requires LDAP
+#TODO - test if there is an existing wallet (secure.wallet.can.be.used) AND that it's usable/accessible/has an LDAP entry
+        self.mf_client.aterm_run("secure.wallet.recreate :password %s" % password)
+# TODO - encrypt so it's not plain text 
+        self.mf_client.aterm_run("secure.wallet.set :key ldap :value %s" % password)
+
 # --
     def help_delegate(self):
         print("\nCreate a credential, stored in your local home folder, for automatic authentication to the remote server.")
@@ -1278,7 +1319,7 @@ class parser(cmd.Cmd):
 
 # create secure token (delegate) and assign current authenticated identity to the token
         self.mf_client.log("DEBUG", "Attempting to delegate for: domain=%s, user=%s, until=%r" % (domain, user, expiry))
-        result = self.mf_client.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16' % (expiry, actor, domain))
+        result = self.mf_client.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16 :wallet true' % (expiry, actor, domain))
         print("Delegate valid until: " + expiry)
 
         for elem in result.iter():
@@ -1537,6 +1578,8 @@ def main():
     p.add_argument("-u", dest='url', default=None, help="server URL eg https://mediaflux.org:443")
     p.add_argument("-d", dest='domain', default=None, help="login authentication domain")
     p.add_argument("-s", dest='session', default=None, help="session")
+    p.add_argument("-a", dest='api', default=None, help="Configure a new API service")
+
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
     current = args.current
@@ -1631,6 +1674,13 @@ def main():
 # hand control of mediaflux client over to parsing loop
     my_parser = parser()
     my_parser.mf_client = mf_client
+# NEW - deprec
+    my_parser.args = args
+    my_parser.keystone = keystone.keystone(args.api)
+
+
+
+
     my_parser.config_name = current
     my_parser.config_filepath = config_filepath
     my_parser.config = config
