@@ -377,6 +377,13 @@ class parser(cmd.Cmd):
         if 'projects' in line:
             self.keystone.get_projects()
 
+        if 'create' in line:
+            self.keystone.credentials_create(line[7:])
+
+        if 'delete' in line:
+            self.keystone.credentials_delete(line[7:])
+
+
 
 # --- helper
 # immediately return any key pressed as a character
