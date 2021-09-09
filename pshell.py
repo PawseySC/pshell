@@ -428,6 +428,7 @@ class parser(cmd.Cmd):
         if prompt is not None:
             if self.interactive:
                 sys.stdout.write(prompt)
+                sys.stdout.flush()
                 result = ""
                 while True:
                     key = self.wait_key()
@@ -568,6 +569,7 @@ class parser(cmd.Cmd):
         asset_count = int(elem.text)
 # setup pagination
         page = 1
+# remove header+footer+input command from page size
         page_size = max(1, min(self.terminal_height - 3, 100))
         canonical_last =  1 + int((namespace_count + asset_count - 1) / page_size )
         if canonical_last == 0:
@@ -597,7 +599,7 @@ class parser(cmd.Cmd):
                 continue
 
 # pagination control
-            pagination_footer = "=== Page %r/%r (enter = next, number = jump, q = quit) === " % (page, canonical_last)
+            pagination_footer = "=== Page %d/%d (enter = next, number = jump, q = quit) === " % (page, canonical_last)
             response = self.pagination_controller(pagination_footer)
             if response is not None:
                 try:
@@ -1610,21 +1612,7 @@ def main():
         if config.has_section(current):
             pass
         else:
-#            try:
-# config in zip bundle
-#                me = zipfile.ZipFile(os.path.dirname(__file__), 'r')
-#                f = me.open('.mf_config')
-#            except:
-# config from pshell install directory (Windows fix)
-#                f = open(os.path.join(os.path.dirname(__file__), 'data', '.mf_config'))
-# read non ~ config as defaults
-
-# deprecated method
-#            config.readfp(f)
-
-# NEW - replacement
             config.read_string("[pawsey]\nserver = data.pawsey.org.au\nprotocol = https\nport = 443\nencrypt = True\ndomain = ivec\nnamespace = /projects\n")
-
 
 # get main config vars
         server = config.get(current, 'server')
@@ -1684,8 +1672,6 @@ def main():
 # NEW - deprec
     my_parser.args = args
     my_parser.keystone = keystone.keystone(args.api)
-
-
 
 
     my_parser.config_name = current
