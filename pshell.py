@@ -352,37 +352,57 @@ class parser(cmd.Cmd):
             print(line)
 
 
-# TODO - replace file with this -> which should do folders and files
-# TODO - also - query APIs (like keystone) for credential info
-    def do_api(self, line):
-        print("API - [%s]" % line)
-
+# ---
+# TODO - EC2 create/delete/list
+    def do_ec2(self, line):
+        args = line.split()
+        nargs = len(args)
 # do stuff like:
 # info https://nimbus.pawsey.org.au:5000 -> projects (eg magenta-storage)
 # info https://nimbus.pawsey.org.au:5000/magenta-storage/credentials
 # TODO map to ls https://nimbus etc
+#https://stackoverflow.com/questions/44751574/uploading-to-amazon-s3-via-curl-route/44751929
 
-        if self.keystone.is_authenticated() is False:
-            print("keystone - authenticating...")
-            xml_reply = self.mf_client.aterm_run('user.self.describe')
-            elem = xml_reply.find(".//user")
-            user = elem.attrib['user']
-            xml_reply = self.mf_client.aterm_run("secure.wallet.get :key ldap")
-            elem = xml_reply.find(".//value")
-            self.keystone.get_auth_token(user, elem.text)
+# ensure we're authenticated
+        self.keystone.sso_mfclient(self.mf_client)
 
-        if 'credentials' in line:
-            self.keystone.get_credentials()
-
-        if 'projects' in line:
-            self.keystone.get_projects()
+# list ec2 credentials (per project or for all if no project specified)
+        if 'list' in line:
+            print(" === ec2 ===")
+            project_dict = self.keystone.get_projects()
+            if len(args) == 2:
+                project_list = [ args[1] ]
+            else:
+                project_list = project_dict.keys()
+            credential_list = self.keystone.get_credentials()
+            for project_name in project_list:
+                print("project = %s" % project_name)
+                for credential in credential_list:
+                    if credential['tenant_id'] == project_dict[project_name]:
+                        print("    access = %s : secret = %s" % (credential['access'], credential['secret']))
 
         if 'create' in line:
-            self.keystone.credentials_create(line[7:])
+            if nargs > 1:
+                name = args[1]
+            else:
+                raise Exception("Error: missing project name")
+
+            print("Creating ec2 credential for project = %s" % name)
+            project_dict = self.keystone.get_projects()
+            if name in project_dict.keys():
+                project_id = project_dict[name]
+            else:
+                project_id = name
+            self.keystone.credentials_create(project_id)
 
         if 'delete' in line:
-            self.keystone.credentials_delete(line[7:])
+            if nargs > 1:
+                name = args[1]
+            else:
+                raise Exception("Error: missing access reference")
 
+            print("Deleting credential: access = %s" % name)
+            self.keystone.credentials_delete(name)
 
 
 # --- helper
@@ -1195,7 +1215,6 @@ class parser(cmd.Cmd):
         elem = result.find(".//identity/[actor='%s']/validity/to" % name)
         if elem is not None:
             return elem.text
-
         return "never"
 
 # ---
@@ -1216,7 +1235,15 @@ class parser(cmd.Cmd):
                 print("%s = %s" % (user_type, user_name))
 # associated roles
         for elem in result.iter('role'):
-            print("  role = %s" % elem.text)
+            print("    role = %s" % elem.text)
+
+# NEW - Keystone project membership query
+        if self.keystone is not None:
+            print("=== %s ===" % self.keystone.url)
+            self.keystone.sso_mfclient(self.mf_client)
+            project_dict = self.keystone.get_projects()
+            for name in project_dict.keys():
+                print("    %s" % name)
 
 # ---
     def help_processes(self):
@@ -1247,8 +1274,8 @@ class parser(cmd.Cmd):
         print("Usage: login\n")
 
     def do_login(self, line):
-        if self.interactive is False:
-            raise Exception(" Manual login not permitted in scripts")
+#        if self.interactive is False:
+#            raise Exception(" Manual login not permitted in scripts")
         self.mf_client.log("DEBUG", "Authentication domain [%s]" % self.mf_client.domain)
         user = input("Username: ")
         password = getpass.getpass("Password: ")
@@ -1587,7 +1614,7 @@ def main():
     p.add_argument("-u", dest='url', default=None, help="server URL eg https://mediaflux.org:443")
     p.add_argument("-d", dest='domain', default=None, help="login authentication domain")
     p.add_argument("-s", dest='session', default=None, help="session")
-    p.add_argument("-a", dest='api', default=None, help="Configure a new API service")
+    p.add_argument("--keystone", dest='keystone', default=None, help="A URL to the REST interface for Keystone (Openstack)")
 
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
@@ -1649,6 +1676,8 @@ def main():
         verbose = args.verbose
     if args.session is not None:
         session = args.session
+    if args.keystone is not None:
+        config.set(current, 'keystone', args.keystone)
 
 # establish mediaflux connection
     try:
@@ -1671,8 +1700,10 @@ def main():
     my_parser.mf_client = mf_client
 # NEW - deprec
     my_parser.args = args
-    my_parser.keystone = keystone.keystone(args.api)
-
+# NEW
+    if config.has_option(current, 'keystone'):
+        my_parser.keystone = keystone.keystone(config.get(current, 'keystone'))
+#    my_parser.keystone = keystone.keystone(args.keystone)
 
     my_parser.config_name = current
     my_parser.config_filepath = config_filepath

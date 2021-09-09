@@ -31,8 +31,6 @@ class keystone:
         self.url = url
         self.token = None
         self.user = None
-        print("init: %s" % self.url)
-        # TODO -> get /v3 ?
 
 #------------------------------------------------------------
 # necessary, but not sufficient
@@ -51,7 +49,16 @@ class keystone:
         stuff = json.loads(reply)
         self.user = stuff['token']['user']['id']
         self.token = response.headers.get('x-subject-token')
-        print("Authenticated as user [%s]" % self.user)
+#        print("Authenticated as user [%s]" % self.user)
+
+#------------------------------------------------------------
+    def sso_mfclient(self, mfclient):
+        xml_reply = mfclient.aterm_run('user.self.describe')
+        elem = xml_reply.find(".//user")
+        user = elem.attrib['user']
+        xml_reply = mfclient.aterm_run("secure.wallet.get :key ldap")
+        elem = xml_reply.find(".//value")
+        self.get_auth_token(user, elem.text)
 
 #------------------------------------------------------------
     def get_credentials(self):
@@ -62,8 +69,9 @@ class keystone:
         response = urllib.request.urlopen(request)
         reply = response.read()
         credential_list = json.loads(reply)['credentials']
-        for item in credential_list:
-            print("[%s] = %s : %s" % (item['tenant_id'], item['access'], item['secret']))
+#        for item in credential_list:
+#            print("[%s] = %s : %s" % (item['tenant_id'], item['access'], item['secret']))
+        return credential_list
 
 #------------------------------------------------------------
     def get_projects(self):
@@ -74,69 +82,49 @@ class keystone:
         response = urllib.request.urlopen(request)
         reply = response.read()
         project_list = json.loads(reply)
+
+        project_dict = {}
+
         for entry in project_list['projects']:
             project_id = entry['id']
             project_name = entry['name']
             project_enabled = entry['enabled']
-            print("%s : %s" % (project_name, project_id))
+#            print("%s : %s" % (project_name, project_id))
+            project_dict[project_name] = project_id
 
-# TODO - how to best link project (tenant_id) with credentials?
-#            ec2 = False
-#            for dict_item in credential_list:
-#                print(dict_item['tenant_id'])
-# not sure what the hell this is doing but it's wrong
-#                if project_id == dict_item['tentant_id']:
-#                if project_id in dict_item.values():
-#                    ec2 = True
-
+        return project_dict
 
 #------------------------------------------------------------
     def credentials_create(self, project):
 
 #         curl -g -i -X POST https://nimbus.pawsey.org.au:5000/v3/users/0da49abca73d9eaf24fab0a6cc14c6b953494b8008e3f436a4e2223db9c18115/credentials/OS-EC2 -H "Accept: application/json" -H "Content-Type: application/json" -H "User-Agent: python-keystoneclient" -H "X-Auth-Token: {SHA256}1a415063e2de80ec509085a7102068cebb70443a9e7b53f9503882b18c03ad2a" -d '{"tenant_id": "e26b4c0824854f09b13bb7ac6eb6a909"}'
-
 #RESP BODY: {"credential": {"user_id": "0da49abca73d9eaf24fab0a6cc14c6b953494b8008e3f436a4e2223db9c18115", "tenant_id": "e26b4c0824854f09b13bb7ac6eb6a909", "access": "ff64589a348c4fa893e93caa6c19cfbb", "secret": "677cdcfe90a446b48ba69d449d20db12", "trust_id": null, "links": {"self": "https://nimbus.pawsey.org.au:5000/v3/users/0da49abca73d9eaf24fab0a6cc14c6b953494b8008e3f436a4e2223db9c18115/credentials/OS-EC2/ff64589a348c4fa893e93caa6c19cfbb"}}}
-
-
-# NB: this has to be *exactly* right ... even a space in front of the project id string will bollocks it
-        print("create credential: [%s]" % project)
-# TODO - check line is in project_list?
-        if len(project) < 5:
-            print("empty project name?")
-            return
+# NB: project name has to be *exactly* right ... even a space in front of the project id string will bollocks it
+#        print("create credential: [%s]" % project)
 
 # TODO - this the correct/safe way to construct json payload?
         data = json.dumps({ "tenant_id": project })
-
         headers = {"Accept": "application/json", "Content-type": "application/json", "X-Auth-Token": self.token }
         url = "%s/v3/users/%s/credentials/OS-EC2" % (self.url, self.user)
         request = urllib.request.Request(url, data=data.encode(), headers=headers, method="POST")
         response = urllib.request.urlopen(request)
         reply = response.read()
-#        print(reply)
         credential = json.loads(reply)
-#        print(credential)
-
         print("Created access: %s" % credential['credential']['access'])
-
 
 #------------------------------------------------------------
     def credentials_delete(self, line):
 
 #REQ: curl -g -i -X DELETE https://nimbus.pawsey.org.au:5000/v3/users/0da49abca73d9eaf24fab0a6cc14c6b953494b8008e3f436a4e2223db9c18115/credentials/OS-EC2/ff64589a348c4fa893e93caa6c19cfbb -H "Accept: application/json" -H "User-Agent: python-keystoneclient" -H "X-Auth-Token: {SHA256}236b14f7b2eabb1b7c411f8a558396ea2fc8e218d73ebb2a1056905f099c5ce2"
 
-        print("delete credential: [%s]" % line)
-
         url = "%s/v3/users/%s/credentials/OS-EC2/%s" % (self.url, self.user, line)
-
         headers = {"Accept": "application/json", "X-Auth-Token": self.token }
-
         request = urllib.request.Request(url, headers=headers, method="DELETE")
         response = urllib.request.urlopen(request)
 
 # expected response.status = 204 (empty content)
         if response.status == 204:
-            print("success")
+            print("Success")
         else:
-            print("failed")
+            print("Error")
 
