@@ -31,6 +31,7 @@ class keystone:
         self.url = url
         self.token = None
         self.user = None
+        self.projects = None
 
 #------------------------------------------------------------
 # necessary, but not sufficient
@@ -75,6 +76,10 @@ class keystone:
 
 #------------------------------------------------------------
     def get_projects(self):
+
+        if self.projects is not None:
+            return self.projects
+
 # get user project membership
         projects_url = "/v3/users/%s/projects" % self.user
         headers = {"X-Auth-Token": self.token, "Content-type": "application/json"}
@@ -83,16 +88,16 @@ class keystone:
         reply = response.read()
         project_list = json.loads(reply)
 
-        project_dict = {}
+        self.projects = {}
 
         for entry in project_list['projects']:
             project_id = entry['id']
             project_name = entry['name']
             project_enabled = entry['enabled']
 #            print("%s : %s" % (project_name, project_id))
-            project_dict[project_name] = project_id
+            self.projects[project_name] = project_id
 
-        return project_dict
+        return self.projects
 
 #------------------------------------------------------------
     def credentials_create(self, project):

@@ -32,6 +32,14 @@ except:
 # NEW
 import keystone
 
+import s3client
+
+#try:
+#    import boto
+#except:
+#    print("Sorry, no S3 for you")
+#    pass
+
 
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
@@ -47,6 +55,7 @@ class parser(cmd.Cmd):
     config_filepath = None
     mf_client = None
     keystone = None
+    s3client = None
     cwd = '/projects'
     interactive = True
     need_auth = True
@@ -352,6 +361,28 @@ class parser(cmd.Cmd):
             print(line)
 
 
+
+# CURRENT
+# --- INIT for s3 -> project -> credentials
+    def do_s3(self, line):
+        print("s3")
+
+
+# TODO - credentials for the project
+        credential_list = self.keystone.get_credentials()
+        access = None
+        secret = None
+        for item in credential_list:
+            print(item['tenant_id'])
+            if line in item['tenant_id']:
+                access = item['access']
+                secret = item['secret']
+# TODO - set these credentials in self.s3client
+
+        print("access = %s" % access)
+
+
+
 # ---
 # TODO - EC2 create/delete/list
     def do_ec2(self, line):
@@ -554,8 +585,23 @@ class parser(cmd.Cmd):
                 else:
                     print(" %-10s | %s | %s" % (asset_id, asset_size, asset_name))
 
+
 # --- ls with no dependency on www.list
     def do_ls(self, line):
+
+# NEW - TODO - any way to pull magenta/acacia from keystone? assoc with --keystone API?
+# FIXME - need to implement this fork approach in a more robust way
+        if line.strip().startswith('/projects') is False:
+            project_dict = self.keystone.get_projects()
+            for name in project_dict.keys():
+                if line.strip()[1:].startswith(name) is True:
+#                if name in line:
+                    self.s3client.ls(line)
+                    return
+            print("unknown path")
+            return
+
+
 # make candidate absolute path from input line 
         flags, candidate = self.split_flags_filepath(line)
 # if flags contains 'l' -> show_content_state
@@ -827,6 +873,12 @@ class parser(cmd.Cmd):
         print("Usage: get <remote files or folders>\n")
 
     def do_get(self, line):
+
+# FIXME - more robust please!
+        if line.strip().startswith('/projects') is False:
+            self.s3client.get(line)
+            return
+
 # NB: use posixpath for mediaflux namespace manipulation
         line = self.absolute_remote_filepath(line)
 # sanitise as asset.query is special
@@ -1279,6 +1331,7 @@ class parser(cmd.Cmd):
         self.mf_client.log("DEBUG", "Authentication domain [%s]" % self.mf_client.domain)
         user = input("Username: ")
         password = getpass.getpass("Password: ")
+# login, else exception 
         self.mf_client.login(user, password)
         self.need_auth = False
 # save the authentication token
@@ -1287,12 +1340,16 @@ class parser(cmd.Cmd):
         self.config.write(f)
         f.close()
 
-#NEW - add to secure wallet for identity management
-#TODO - only do this IF identity API requires LDAP
-#TODO - test if there is an existing wallet (secure.wallet.can.be.used) AND that it's usable/accessible/has an LDAP entry
-        self.mf_client.aterm_run("secure.wallet.recreate :password %s" % password)
+# NEW - add to secure wallet for identity management
+        xml_reply = self.mf_client.aterm_run("secure.wallet.can.be.used")
+        elem = xml_reply.find(".//can")
+        if "true" in elem.text:
+            print("Wallet can be used")
+        else:
+            self.mf_client.aterm_run("secure.wallet.recreate :password %s" % password)
 # TODO - encrypt so it's not plain text 
         self.mf_client.aterm_run("secure.wallet.set :key ldap :value %s" % password)
+
 
 # --
     def help_delegate(self):
@@ -1703,6 +1760,8 @@ def main():
 # NEW
     if config.has_option(current, 'keystone'):
         my_parser.keystone = keystone.keystone(config.get(current, 'keystone'))
+        my_parser.s3client = s3client.s3client('https://nimbus.pawsey.org.au:8080')
+
 #    my_parser.keystone = keystone.keystone(args.keystone)
 
     my_parser.config_name = current
