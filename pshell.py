@@ -28,18 +28,9 @@ try:
 except:
     pass
 
-
 # NEW
 import keystone
-
 import s3client
-
-#try:
-#    import boto
-#except:
-#    print("Sorry, no S3 for you")
-#    pass
-
 
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
@@ -70,6 +61,12 @@ class parser(cmd.Cmd):
             self.prompt = "%s:offline>" % self.config_name
         else:
             self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+# NEW
+            if self.keystone:
+                self.keystone.connect(self.mf_client, refresh=False)
+                s3endpoint = self.keystone.s3_candidate_find()
+                if s3endpoint:
+                    self.s3client.mount('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], '/'+s3endpoint[0])
 
 # --- not logged in -> don't even attempt to process remote commands
     def precmd(self, line):
@@ -365,22 +362,19 @@ class parser(cmd.Cmd):
 # CURRENT
 # --- INIT for s3 -> project -> credentials
     def do_s3(self, line):
-        print("s3")
-
+        print("TODO - s3")
 
 # TODO - credentials for the project
-        credential_list = self.keystone.get_credentials()
-        access = None
-        secret = None
-        for item in credential_list:
-            print(item['tenant_id'])
-            if line in item['tenant_id']:
-                access = item['access']
-                secret = item['secret']
+#        credential_list = self.keystone.get_credentials()
+#        access = None
+#        secret = None
+#        for item in credential_list:
+#            print(item['tenant_id'])
+#            if line in item['tenant_id']:
+#                access = item['access']
+#                secret = item['secret']
 # TODO - set these credentials in self.s3client
-
-        print("access = %s" % access)
-
+#        print("access = %s" % access)
 
 
 # ---
@@ -393,47 +387,20 @@ class parser(cmd.Cmd):
 # info https://nimbus.pawsey.org.au:5000/magenta-storage/credentials
 # TODO map to ls https://nimbus etc
 #https://stackoverflow.com/questions/44751574/uploading-to-amazon-s3-via-curl-route/44751929
-
-# ensure we're authenticated
-        self.keystone.sso_mfclient(self.mf_client)
-
 # list ec2 credentials (per project or for all if no project specified)
         if 'list' in line:
             print(" === ec2 ===")
-            project_dict = self.keystone.get_projects()
-            if len(args) == 2:
-                project_list = [ args[1] ]
-            else:
-                project_list = project_dict.keys()
-            credential_list = self.keystone.get_credentials()
-            for project_name in project_list:
-                print("project = %s" % project_name)
-                for credential in credential_list:
-                    if credential['tenant_id'] == project_dict[project_name]:
-                        print("    access = %s : secret = %s" % (credential['access'], credential['secret']))
-
+            self.keystone.credentials_print(line)
         if 'create' in line:
             if nargs > 1:
-                name = args[1]
+                self.keystone.credentials_create(args[1])
             else:
-                raise Exception("Error: missing project name")
-
-            print("Creating ec2 credential for project = %s" % name)
-            project_dict = self.keystone.get_projects()
-            if name in project_dict.keys():
-                project_id = project_dict[name]
-            else:
-                project_id = name
-            self.keystone.credentials_create(project_id)
-
+                raise Exception("Error: missing project reference")
         if 'delete' in line:
             if nargs > 1:
-                name = args[1]
+                self.keystone.credentials_delete(args[1])
             else:
                 raise Exception("Error: missing access reference")
-
-            print("Deleting credential: access = %s" % name)
-            self.keystone.credentials_delete(name)
 
 
 # --- helper
@@ -589,16 +556,9 @@ class parser(cmd.Cmd):
 # --- ls with no dependency on www.list
     def do_ls(self, line):
 
-# NEW - TODO - any way to pull magenta/acacia from keystone? assoc with --keystone API?
-# FIXME - need to implement this fork approach in a more robust way
-        if line.strip().startswith('/projects') is False:
-            project_dict = self.keystone.get_projects()
-            for name in project_dict.keys():
-                if line.strip()[1:].startswith(name) is True:
-#                if name in line:
-                    self.s3client.ls(line)
-                    return
-            print("unknown path")
+# NEW 
+        if self.s3client.is_mine(line):
+            self.s3client.ls(line)
             return
 
 
@@ -1289,13 +1249,12 @@ class parser(cmd.Cmd):
         for elem in result.iter('role'):
             print("    role = %s" % elem.text)
 
-# NEW - Keystone project membership query
+# NEW 
+# TODO - always create (so can always call) but with dummy default data ... ???
         if self.keystone is not None:
-            print("=== %s ===" % self.keystone.url)
-            self.keystone.sso_mfclient(self.mf_client)
-            project_dict = self.keystone.get_projects()
-            for name in project_dict.keys():
-                print("    %s" % name)
+            self.keystone.whoami()
+        if self.s3client is not None:
+            self.s3client.whoami()
 
 # ---
     def help_processes(self):
@@ -1350,6 +1309,8 @@ class parser(cmd.Cmd):
 # TODO - encrypt so it's not plain text 
         self.mf_client.aterm_run("secure.wallet.set :key ldap :value %s" % password)
 
+        if self.keystone:
+            self.keystone.connect(self.mf_client, refresh=True)
 
 # --
     def help_delegate(self):
@@ -1760,7 +1721,7 @@ def main():
 # NEW
     if config.has_option(current, 'keystone'):
         my_parser.keystone = keystone.keystone(config.get(current, 'keystone'))
-        my_parser.s3client = s3client.s3client('https://nimbus.pawsey.org.au:8080')
+        my_parser.s3client = s3client.s3client()
 
 #    my_parser.keystone = keystone.keystone(args.keystone)
 
