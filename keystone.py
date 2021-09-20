@@ -37,8 +37,8 @@ class keystone:
 #------------------------------------------------------------
 # connect to keystone and acquire user details via mflux sso
     def connect(self, mfclient, refresh=False):
-        print("keystone connect(): %r" % refresh)
         if self.token == None or refresh == True:
+            print("keystone.connect()")
             self.sso_mfclient(mfclient)
             self.get_projects()
             self.get_credentials()
@@ -100,12 +100,9 @@ class keystone:
             project_enabled = entry['enabled']
             self.project_dict[project_name] = project_id
 
-
-
 #------------------------------------------------------------
     def s3_candidate_find(self):
-        print("searching for s3 candidate...")
-# TODO - could we get the s3 endpoint as well???
+# TODO - could we query the magenta url as well???
         for project_name in self.project_dict.keys():
             for credential in self.credential_list:
                 if credential['tenant_id'] == self.project_dict[project_name]:

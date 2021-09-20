@@ -53,7 +53,6 @@ class parser(cmd.Cmd):
     transfer_processes = 1
     terminal_height = 20
     script_output = None
-    args = {}
 
 # --- initial setup of prompt
     def preloop(self):
@@ -61,12 +60,6 @@ class parser(cmd.Cmd):
             self.prompt = "%s:offline>" % self.config_name
         else:
             self.prompt = "%s:%s>" % (self.config_name, self.cwd)
-# NEW
-            if self.keystone:
-                self.keystone.connect(self.mf_client, refresh=False)
-                s3endpoint = self.keystone.s3_candidate_find()
-                if s3endpoint:
-                    self.s3client.mount('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], '/'+s3endpoint[0])
 
 # --- not logged in -> don't even attempt to process remote commands
     def precmd(self, line):
@@ -358,25 +351,6 @@ class parser(cmd.Cmd):
             print(line)
 
 
-
-# CURRENT
-# --- INIT for s3 -> project -> credentials
-    def do_s3(self, line):
-        print("TODO - s3")
-
-# TODO - credentials for the project
-#        credential_list = self.keystone.get_credentials()
-#        access = None
-#        secret = None
-#        for item in credential_list:
-#            print(item['tenant_id'])
-#            if line in item['tenant_id']:
-#                access = item['access']
-#                secret = item['secret']
-# TODO - set these credentials in self.s3client
-#        print("access = %s" % access)
-
-
 # ---
 # TODO - EC2 create/delete/list
     def do_ec2(self, line):
@@ -556,12 +530,6 @@ class parser(cmd.Cmd):
 # --- ls with no dependency on www.list
     def do_ls(self, line):
 
-# NEW 
-        if self.s3client.is_mine(line):
-            self.s3client.ls(line)
-            return
-
-
 # make candidate absolute path from input line 
         flags, candidate = self.split_flags_filepath(line)
 # if flags contains 'l' -> show_content_state
@@ -569,6 +537,11 @@ class parser(cmd.Cmd):
             show_more = True
         else:
             show_more = False
+
+# NEW 
+        if self.s3client.is_mine(candidate):
+            self.s3client.ls(candidate)
+            return
 
         ns_list = []
         try:
@@ -834,13 +807,16 @@ class parser(cmd.Cmd):
 
     def do_get(self, line):
 
-# FIXME - more robust please!
-        if line.strip().startswith('/projects') is False:
+# NB: use posixpath for mediaflux namespace manipulation
+        line = self.absolute_remote_filepath(line)
+
+
+# NEW 
+        if self.s3client.is_mine(line):
             self.s3client.get(line)
             return
 
-# NB: use posixpath for mediaflux namespace manipulation
-        line = self.absolute_remote_filepath(line)
+
 # sanitise as asset.query is special
         double_escaped = self.escape_single_quotes(line)
 # collapsed namespace
@@ -984,6 +960,12 @@ class parser(cmd.Cmd):
         print("Usage: put <file or folder>\n")
 
     def do_put(self, line, meta=False):
+
+# NEW 
+        if self.s3client.is_mine(self.cwd):
+            self.s3client.put(line)
+            return
+
 # build upload list pairs
         upload_list = []
         if os.path.isdir(line):
@@ -1077,7 +1059,14 @@ class parser(cmd.Cmd):
         print("Usage: cd <folder>\n")
 
     def do_cd(self, line):
+
         candidate = self.absolute_remote_filepath(line)
+
+# NEW
+        if self.s3client.is_mine(candidate):
+            self.cwd = candidate
+            return
+
         if self.mf_client.namespace_exists(candidate):
             self.cwd = candidate
             print("Remote: %s" % self.cwd)
@@ -1311,6 +1300,10 @@ class parser(cmd.Cmd):
 
         if self.keystone:
             self.keystone.connect(self.mf_client, refresh=True)
+            s3endpoint = self.keystone.s3_candidate_find()
+# TODO - can we discover the magenta url and avoid the hard coding?
+            if s3endpoint:
+                self.s3client.mount('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], '/'+s3endpoint[0])
 
 # --
     def help_delegate(self):
@@ -1716,14 +1709,11 @@ def main():
 # hand control of mediaflux client over to parsing loop
     my_parser = parser()
     my_parser.mf_client = mf_client
-# NEW - deprec
-    my_parser.args = args
+
 # NEW
+    my_parser.s3client = s3client.s3client()
     if config.has_option(current, 'keystone'):
         my_parser.keystone = keystone.keystone(config.get(current, 'keystone'))
-        my_parser.s3client = s3client.s3client()
-
-#    my_parser.keystone = keystone.keystone(args.keystone)
 
     my_parser.config_name = current
     my_parser.config_filepath = config_filepath
@@ -1766,6 +1756,17 @@ def main():
 
 # interactive or input iterator (scripted)
     mf_client.log("DEBUG", "PSHELL=%s" % build)
+
+
+# NEW
+    if my_parser.keystone:
+        my_parser.keystone.connect(mf_client, refresh=False)
+        s3endpoint = my_parser.keystone.s3_candidate_find()
+# TODO - can we discover the magenta url and avoid the hard coding?
+        if s3endpoint:
+            my_parser.s3client.mount('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], '/'+s3endpoint[0])
+
+
     if my_parser.interactive:
         print(" === pshell: type 'help' for a list of commands ===")
         my_parser.loop_interactively()
