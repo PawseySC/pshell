@@ -80,18 +80,18 @@ class s3client:
             head,tail = posixpath.split(head)
 
         s3 = boto3.client('s3', endpoint_url=self.host, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
-        print("s3client.test() connect to: %s" % self.host)
 
         if len(args) > 1:
             bucket_name = args[-2]
-            print(" === bucket contents ===")
-            for key in s3.list_objects(Bucket=bucket_name)['Contents']:
-                print(key['Key'])
+
+# FIXME - apparently list_objects() is deprec, should use V2 ...
+            reply = s3.list_objects(Bucket=bucket_name, MaxKeys=100)
+            for item in reply['Contents']:
+                print("%d B | %s" % (item['Size'], item['Key']))
         else:
-            print("=== project buckets ===")
             response = s3.list_buckets()
             for item in response['Buckets']:
-                print(item['CreationDate'], item['Name'])
+                print("[Bucket] %s" % item['Name'])
 
 #------------------------------------------------------------
     def get(self, path):
