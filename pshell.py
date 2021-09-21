@@ -1311,7 +1311,7 @@ class parser(cmd.Cmd):
             s3endpoint = self.keystone.s3_candidate_find()
 # TODO - can we discover the magenta url and avoid the hard coding?
             if s3endpoint:
-                self.s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], '/'+s3endpoint[0])
+                self.s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], s3endpoint[0])
 
 # --
     def help_delegate(self):
@@ -1781,7 +1781,7 @@ def main():
         s3endpoint = my_parser.keystone.s3_candidate_find()
 # TODO - can we discover the magenta url and avoid the hard coding?
         if s3endpoint:
-            my_parser.s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], '/'+s3endpoint[0])
+            my_parser.s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], s3endpoint[0])
 
 # interactive or input iterator (scripted)
     if my_parser.interactive:
