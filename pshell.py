@@ -14,6 +14,7 @@ import time
 import json
 import urllib
 import getpass
+import logging
 import zipfile
 import argparse
 import datetime
@@ -961,11 +962,6 @@ class parser(cmd.Cmd):
 
     def do_put(self, line, meta=False):
 
-# NEW 
-        if self.s3client.is_mine(self.cwd):
-            self.s3client.put(line)
-            return
-
 # build upload list pairs
         upload_list = []
         if os.path.isdir(line):
@@ -995,7 +991,14 @@ class parser(cmd.Cmd):
                         if name.lower().endswith('.meta'):
                             pass
                     upload_list.append((self.cwd, local_fullpath))
+
 # built, now upload
+# TODO - wrapper for async upload ... worth looking at twisted for all of this???
+# NEW
+        if self.s3client.is_mine(self.cwd):
+            self.s3client.managed_put(upload_list)
+            return
+
         self.managed_put(upload_list, meta)
 
 # -- wrapper for monitoring an upload
@@ -1088,6 +1091,12 @@ class parser(cmd.Cmd):
 
     def do_mkdir(self, line, silent=False):
         ns_target = self.absolute_remote_filepath(line)
+
+# NEW
+        if self.s3client.is_mine(ns_target):
+            self.s3client.create_bucket(ns_target)
+            return
+
         try:
             self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % ns_target.replace('"', '\\\"'))
         except Exception as e:
@@ -1106,6 +1115,12 @@ class parser(cmd.Cmd):
     def do_rm(self, line):
 # build query corresponding to input
         fullpath = self.absolute_remote_filepath(line)
+
+# NEW
+        if self.s3client.is_mine(fullpath):
+            self.s3client.delete_object(fullpath)
+            return
+
         namespace = posixpath.dirname(fullpath)
         pattern = posixpath.basename(fullpath)
         base_query = "namespace='%s' and name='%s'" % (self.escape_single_quotes(namespace), self.escape_single_quotes(pattern))
@@ -1131,6 +1146,12 @@ class parser(cmd.Cmd):
 # -- rmdir
     def do_rmdir(self, line):
         ns_target = self.absolute_remote_filepath(line)
+
+# NEW
+        if self.s3client.is_mine(ns_target):
+            self.s3client.delete_bucket(ns_target)
+            return
+
         if self.mf_client.namespace_exists(ns_target):
             if self.ask("Remove folder: %s (y/n) " % ns_target):
                 self.mf_client.aterm_run('asset.namespace.destroy :namespace "%s"' % ns_target.replace('"', '\\\"'))
@@ -1140,19 +1161,6 @@ class parser(cmd.Cmd):
             raise Exception(" Could not find remote folder: %s" % ns_target)
 
 # -- local commands
-    def help_debug(self):
-        print("\nTurn debugging output on/off\n")
-        print("Usage: debug <value>\n")
-
-    def do_debug(self, line):
-        match = re.search(r"\d+", line)
-        if match:
-            self.mf_client.debug = int(match.group(0))
-        elif "true" in line or "on" in line:
-            self.mf_client.debug = 1
-        elif "false" in line or "off" in line:
-            self.mf_client.debug = 0
-        print("Debug=%r" % self.mf_client.debug)
 
 # --
     def help_lpwd(self):
@@ -1303,7 +1311,7 @@ class parser(cmd.Cmd):
             s3endpoint = self.keystone.s3_candidate_find()
 # TODO - can we discover the magenta url and avoid the hard coding?
             if s3endpoint:
-                self.s3client.mount('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], '/'+s3endpoint[0])
+                self.s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], '/'+s3endpoint[0])
 
 # --
     def help_delegate(self):
@@ -1616,6 +1624,7 @@ class parser(cmd.Cmd):
 def main():
     global build
 
+
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
     p.add_argument("-c", dest='current', default="pawsey", help="the config name in $HOME/.mf_config to connect to")
@@ -1684,15 +1693,25 @@ def main():
     if args.domain is not None:
         domain = args.domain
     if args.verbose is not None:
-        verbose = args.verbose
+        verbose = int(args.verbose)
     if args.session is not None:
         session = args.session
     if args.keystone is not None:
         config.set(current, 'keystone', args.keystone)
 
+# CURRENT
+    if verbose == 2:
+        logging_level = logging.DEBUG
+    elif verbose == 1:
+        logging_level = logging.INFO
+    else:
+        logging_level = logging.ERROR
+    logging.basicConfig(format='%(levelname)9s %(asctime)-15s >>> %(module)s.%(funcName)s(): %(message)s', level=logging_level)
+    logging.info("PSHELL=%s" % build)
+
 # establish mediaflux connection
     try:
-        mf_client = mfclient.mf_client(protocol=protocol, server=server, port=port, domain=domain, debug=verbose)
+        mf_client = mfclient.mf_client(protocol=protocol, server=server, port=port, domain=domain)
         mf_client.session = session
         mf_client.token = token
 
@@ -1741,7 +1760,8 @@ def main():
         else:
             readline.parse_and_bind("tab: complete")
     except:
-        mf_client.log("WARNING", "No readline module; tab completion unavailable")
+        logging.warning("No readline module; tab completion unavailable")
+
 
 # build non interactive input iterator
     input_list = []
@@ -1754,9 +1774,6 @@ def main():
         input_list = itertools.chain(input_list, args.command.split("&&"))
         my_parser.interactive = False
 
-# interactive or input iterator (scripted)
-    mf_client.log("DEBUG", "PSHELL=%s" % build)
-
 
 # NEW
     if my_parser.keystone:
@@ -1764,9 +1781,9 @@ def main():
         s3endpoint = my_parser.keystone.s3_candidate_find()
 # TODO - can we discover the magenta url and avoid the hard coding?
         if s3endpoint:
-            my_parser.s3client.mount('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], '/'+s3endpoint[0])
+            my_parser.s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], '/'+s3endpoint[0])
 
-
+# interactive or input iterator (scripted)
     if my_parser.interactive:
         print(" === pshell: type 'help' for a list of commands ===")
         my_parser.loop_interactively()

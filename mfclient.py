@@ -18,6 +18,7 @@ import socket
 import signal
 import urllib.request, urllib.error, urllib.parse
 import http.client
+import logging
 import datetime
 import platform
 import functools
@@ -45,12 +46,12 @@ def put_jump(mfclient, data):
         triplet of STRINGS (asset_ID/status, 2 input arguments) which will be concatenated on the mf_manager's summary list
     """
 
-    mfclient.log("DEBUG", "put_jump(%s,%s)" % (data[0], data[1]))
+    mfclient.logger.debug("put_jump(%s,%s)" % (data[0], data[1]))
     try:
         asset_id = mfclient.put(data[0], data[1])
         return (int(asset_id), data[0], data[1])
     except Exception as e:
-        mfclient.log("ERROR", "put_jump(%s): %s" % (data[1], str(e)))
+        mfclient.logger.debug("put_jump(%s): %s" % (data[1], str(e)))
 
 # report failure
     return (-1, data[0], data[1])
@@ -67,12 +68,12 @@ def get_jump(mfclient, data):
         A triplet of STRINGS (status, 2 input arguments) which will be concatenated on the mf_manager's summary list
     """
 
-    mfclient.log("DEBUG", "get_jump(%s,%s)" % (data[0], data[1]))
+    mfclient.logger.debug("get_jump(%s,%s)" % (data[0], data[1]))
     try:
         mfclient.get(data[0], data[1])
         return (0, data[0], data[1])
     except Exception as e:
-        mfclient.log("ERROR", "get_jump(): %s" % str(e))
+        mfclient.logger.error("get_jump(): %s" % str(e))
 
 # report failure
     return (-1, data[0], data[1])
@@ -124,6 +125,7 @@ class mf_client:
         self.session = session
         self.token = None
         self.debug = int(debug)
+        self.logger = logging.getLogger('mfclient')
         global build
 
 # can override to test fast http data transfers (with https logins)
@@ -161,29 +163,16 @@ class mf_client:
             self.data_get = "http://%s/mflux/content.mfjp" % server
             self.data_put = "%s:%s" % (server, 80)
 
-# if required, attempt to display more connection info
-        if self.debug > 0:
-            print("PLATFORM: %s" % platform.system())
-            print("MFCLIENT: %s" % build)
-            print("POST-URL: %s" % self.post_url)
-            print("DATA-GET: %s" % self.data_get)
-            print("DATA-PUT: %s" % self.data_put)
-            if self.protocol == "https":
-# first line of python version info is all we're interested in
-                version = sys.version
-                i = version.find("\n")
-                print("  PYTHON: %s" % version[:i])
-                print(" OPENSSL:", ssl.OPENSSL_VERSION)
-# early versions of python 2.7.x are missing the SSL context method
-                try:
-                    context = ssl.create_default_context()
-                    context.verify_mode = ssl.CERT_REQUIRED
-                    context.check_hostname = True
-                    c = context.wrap_socket(socket.socket(socket.AF_INET), server_hostname=self.server)
-                    c.connect((self.server, self.port))
-                    print("  CIPHER:", c.cipher())
-                except Exception as e:
-                    print(" WARNING: %s" % str(e))
+# more info
+        self.logger.info("PLATFORM=%s" % platform.system())
+        self.logger.info("MFCLIENT=%s" % build)
+        self.logger.info("POST=%s" % self.post_url)
+        self.logger.info("GET=%s" % self.data_get)
+        self.logger.info("PUT=%s" % self.data_put)
+        version = sys.version
+        i = version.find("\n")
+        self.logger.info("PYTHON=%s" % version[:i])
+        self.logger.info("OpenSSL=%s", ssl.OPENSSL_VERSION)
 
 #------------------------------------------------------------
     @staticmethod
@@ -229,7 +218,7 @@ class mf_client:
         if elem is not None:
             elem = tree.find(".//message")
             error_message = self._xml_succint_error(elem.text)
-            self.log("DEBUG", "_post() raise: [%s]" % error_message)
+            self.logger.debug("_post() raise: [%s]" % error_message)
             raise Exception(error_message)
 
         return tree
@@ -269,14 +258,14 @@ class mf_client:
 
 # different connection object for HTTPS vs HTTP
         if self.encrypted_data is True:
-            self.log("DEBUG", "Using https for data: [%s]" % self.data_put, level=2)
+            self.logger.debug("Using https for data: [%s]" % self.data_put)
             conn = http.client.HTTPSConnection(self.data_put, timeout=upload_timeout)
         else:
-            self.log("DEBUG", "Using http for data: [%s]" % self.data_put, level=2)
+            self.logger.debug("Using http for data: [%s]" % self.data_put)
             conn = http.client.HTTPConnection(self.data_put, timeout=upload_timeout)
 
 # kickoff
-        self.log("DEBUG", "[pid=%d] File send starting: %s" % (pid, filepath))
+        self.logger.debug("[pid=%d] File send starting: %s" % (pid, filepath))
         conn.putrequest('POST', '/__mflux_svc__')
 # headers
         conn.putheader('Connection', 'keep-alive')
@@ -310,7 +299,7 @@ class mf_client:
 # terminating line (len(boundary) + 8)
         chunk = "\r\n--%s--\r\n" % boundary
         conn.send(chunk.encode())
-        self.log("DEBUG", "[pid=%d] File send completed, waiting for server..." % pid)
+        self.logger.debug("[pid=%d] File send completed, waiting for server..." % pid)
 
 # get ACK from server (asset ID) else error (raise exception)
         resp = conn.getresponse()
@@ -401,11 +390,11 @@ class mf_client:
             while token is not None:
                 if token[0] == ':':
                     child = ET.SubElement(xml_node, '%s' % token[1:])
-                    self.log("DEBUG", "XML elem [%s]" % token[1:], level=2)
+                    self.logger.debug("XML elem [%s]" % token[1:])
 # if element contains : (eg csiro:seismic) then we need to inject the xmlns stuff
                     if ":" in token[1:]:
                         item_list = token[1:].split(":")
-                        self.log("DEBUG", "XML associate namespace [%s] with element [%s]" % (item_list[0], token[1:]), level=2)
+                        self.logger.debug("XML associate namespace [%s] with element [%s]" % (item_list[0], token[1:]), level=2)
                         child.set("xmlns:%s" % item_list[0], item_list[0])
                 elif token[0] == '<':
                     stack.append(xml_node)
@@ -417,7 +406,7 @@ class mf_client:
 # -number => it's a text value
                         number = float(token)
                         child.text = token
-                        self.log("DEBUG", "XML text [%s]" % child.text, level=2)
+                        self.logger.debug("XML text [%s]" % child.text)
                     except:
 # -other => it's an XML attribute/property
                         key = token[1:]
@@ -425,7 +414,7 @@ class mf_client:
                         if value.startswith('"') and value.endswith('"'):
                             value = value[1:-1]
                         child.set(key, value)
-                        self.log("DEBUG", "XML prop [%r = %r]" % (key, value), level=2)
+                        self.logger.debug("XML prop [%r = %r]" % (key, value))
                 else:
 # FIXME - some issues here with data strings with multiple spaces (ie we are doing a whitespace split & only adding one back)
                     if child.text is not None:
@@ -438,7 +427,7 @@ class mf_client:
 
 # don't display sensitive info
                     if child.tag.lower() == "password" or child.tag.lower() == 'token':
-                        self.log("DEBUG", "XML text [xxxxxxxx]", level=2)
+                        self.logger.debug("XML text [xxxxxxxx]")
 # NEW - cope with special characters that may bork parsing
 # NB: assumes :password is the LAST element in the service call
 # use everything (to EOL) after :password as the password
@@ -446,7 +435,7 @@ class mf_client:
                         if index > 10:
                             child.text = input_line[index+11:]
                     else:
-                        self.log("DEBUG", "XML text [%s]" % child.text, level=2)
+                        self.logger.debug("XML text [%s]" % child.text)
 
 # special case - out element - needs to be removed (replaced with outputs-via and an outputs-expected attribute)
                     if child.tag.lower() == "out":
@@ -465,7 +454,7 @@ class mf_client:
                     token = lexer.get_token()
 
         except Exception as e:
-            self.log("DEBUG", "aterm_run(): %s" % str(e))
+            self.logger.debug(str(e))
             raise SyntaxError
 
 # do any deletions to the tree after processing 
@@ -521,7 +510,7 @@ class mf_client:
 #        xml_hidden = self._xml_cloak(xml_text) 
 # PYTHON3 - bytes v strings
         xml_hidden = self._xml_cloak(xml_text.decode()).encode() 
-        self.log("DEBUG", "XML out: %s" % xml_hidden, level=2)
+        self.logger.debug("XML out: %s" % xml_hidden)
 
 # testing hook
         if post is not True:
@@ -536,7 +525,7 @@ class mf_client:
                     elem = reply.find(".//id")
                     job = elem.text
                     while True:
-                        self.log("DEBUG", "aterm_run(): background job [%s] poll..." % job)
+                        self.logger.debug("background job [%s] poll..." % job)
                         xml_poll = self.aterm_run("service.background.describe :id %s" % job)
                         elem = xml_poll.find(".//task/state")
                         item = xml_poll.find(".//task/exec-time")
@@ -551,7 +540,7 @@ class mf_client:
                             print("\r%s    " % text)
                             break
 # NB: it is an exception (error) to get results BEFORE completion
-                    self.log("DEBUG", "aterm_run(): background job [%s] complete, getting results" % job)
+                    self.logger.debug("background job [%s] complete, getting results" % job)
                     xml_poll = self.aterm_run("service.background.results.get :id %s" % job)
 # NB: mediaflux seems to not return any output if run in background (eg asset.get :id xxxx &)
 # this seems like a bug?
@@ -561,7 +550,7 @@ class mf_client:
 # CURRENT - process reply for any output
 # NB - can only cope with 1 output
                     if data_out_name is not None:
-                        self.log("DEBUG", "aterm_run(): output filename [%s]" % data_out_name)
+                        self.logger.debug("aterm_run(): output filename [%s]" % data_out_name)
                         elem_output = reply.find(".//outputs")
                         if elem_output is not None:
                             elem_id = elem_output.find(".//id")
@@ -588,17 +577,17 @@ class mf_client:
                                     with bytes_recv.get_lock():
                                         bytes_recv.value += len(data)
                         else:
-                            self.log("ERROR", "aterm_run(): missing output data in XML server response")
+                            self.logger.debug("missing output data in XML server response")
 # successful
                     return reply
 
             except Exception as e:
                 message = str(e)
-                self.log("DEBUG", "aterm_run(): %s" % message)
+                self.logger.debug(message)
                 if "session is not valid" in message:
 # restart the session if token exists
                     if self.token is not None:
-                        self.log("DEBUG", "aterm_run(): attempting login with token")
+                        self.logger.debug("attempting login with token")
                         # FIXME - need to put this in a separate exception handling ...
                         self.login(token=self.token)
 
@@ -606,7 +595,7 @@ class mf_client:
 #                        xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
                         xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text.decode()).encode()
 
-                        self.log("DEBUG", "aterm_run(): session restored, retrying command")
+                        self.logger.debug("session restored, retrying command")
                         continue
                 break
 
@@ -657,19 +646,19 @@ class mf_client:
         return
 
 #------------------------------------------------------------
-    def log(self, prefix, message, level=1):
-        """
-        Timestamp based message logging.
-        """
-
-        if "DEBUG" in prefix:
-            if level > int(self.debug):
-                return
-
-        ts = time.time()
-        st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-        message = st + " >>> [pid=%r] " % os.getpid() + message
-        print("%8s: %s" % (prefix, message))
+#    def log(self, prefix, message, level=1):
+#        """
+#        Timestamp based message logging.
+#        """
+#
+#        if "DEBUG" in prefix:
+#            if level > int(self.debug):
+#                return
+#
+#        ts = time.time()
+#        st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+#        message = st + " >>> [pid=%r] " % os.getpid() + message
+#        print("%8s: %s" % (prefix, message))
 
 #------------------------------------------------------------
     def logout(self):
@@ -695,7 +684,7 @@ class mf_client:
         """
 # security check
         if self.protocol != "https":
-            self.log("DEBUG", "Permitting unencrypted login; I hope you know what you're doing.")
+            self.logger.debug("Permitting unencrypted login; I hope you know what you're doing.")
 
 # NEW - priority order and auto lookup of token or session in appropriate config file section
 # NB: failed login calls raise an exception in aterm_run post XML handling
@@ -736,7 +725,7 @@ class mf_client:
 
         except Exception as e:
 # NB: max licence error can occur here
-            self.log("DEBUG", str(e))
+            self.logger.debug(str(e))
 
         return False
 
@@ -781,7 +770,7 @@ class mf_client:
         global bytes_recv
 
         if os.path.isfile(filepath) and not overwrite:
-            self.log("DEBUG", "Local file of that name (%s) already exists, skipping." % filepath)
+            self.logger.debug("Local file of that name (%s) already exists, skipping." % filepath)
             with bytes_recv.get_lock():
                 bytes_recv.value += os.path.getsize(filepath)
             return
@@ -839,7 +828,7 @@ class mf_client:
         result = self.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
         xml_id = result.find(".//id")
         if xml_id is None:
-            self.log("DEBUG", "No remote file found: [%s]" % remotepath)
+            self.logger.debugg("No remote file found: [%s]" % remotepath)
 # NB: must create intermediate directories if they don't exist (mediaflux won't do it by default)
             reply = self.aterm_run('asset.create :namespace -create "true" %s :name %s' % (namespace, filename))
             xml_id = reply.find(".//id")
@@ -853,17 +842,17 @@ class mf_client:
 # if sizes match (checksum compare is excrutiatingly slow) don't overwrite
             local_size = int(os.path.getsize(filepath))
             if remote_size == local_size:
-                self.log("DEBUG", "Match; skipping [%s] -> [%s]" % (filepath, remotepath))
+                self.logger.debug("Match; skipping [%s] -> [%s]" % (filepath, remotepath))
                 overwrite = False
                 with bytes_sent.get_lock():
                     bytes_sent.value += remote_size
             else:
-                self.log("DEBUG", "Mismatch; local=%r -> remote=%r" % (local_size, remote_size))
+                self.logger.debug("Mismatch; local=%r -> remote=%r" % (local_size, remote_size))
 
         asset_id = int(xml_id.text)
         # NB: create=true to generate intermediate directories (if needed)
         if overwrite is True:
-            self.log("DEBUG", "Uploading asset=%d: [%s] -> [%s]" % (asset_id, filepath, remotepath))
+            self.logger.debug("Uploading asset=%d: [%s] -> [%s]" % (asset_id, filepath, remotepath))
             xml_string = '<request><service name="service.execute" session="%s"><args><service name="asset.set">' % self.session
             xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
             asset_id = self._post_multipart_buffered(xml_string, filepath)
@@ -888,15 +877,15 @@ class mf_client:
 # if not supplied - count (potentially a lot slower)
         if total_bytes is None:
             total_bytes = 0
-            self.log("DEBUG", "Total upload bytes not supplied, counting...")
+            self.logger.debug("Total upload bytes not supplied, counting...")
             for namespace, filepath in list_namespace_filepath:
                 try:
                     total_bytes += os.path.getsize(filepath)
                 except:
-                    self.log("DEBUG", "Can't read %s, skipping." % filepath)
+                    self.logger.debug("Can't read %s, skipping." % filepath)
 # shenanigans to enable mfclient method to be called from the global process pool (python can't serialize instance methods)
         put_alias = functools.partial(put_jump, self)
-        self.log("DEBUG", "Total upload bytes: %d" % total_bytes)
+        self.logger.debug("Total upload bytes: %d" % total_bytes)
         return mf_manager(function=put_alias, arguments=list_namespace_filepath, processes=processes, total_bytes=total_bytes)
 
 #############################################################

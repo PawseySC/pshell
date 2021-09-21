@@ -7,6 +7,7 @@ Author: Sean Fleming
 
 import json
 import urllib
+import logging
 
 #########################################################
 class keystone:
@@ -33,12 +34,15 @@ class keystone:
         self.user = None
         self.project_dict = None
         self.credential_list = None
+        self.logger = logging.getLogger('keystone')
+# CURRENT
+        self.logger.setLevel(logging.DEBUG)
 
 #------------------------------------------------------------
 # connect to keystone and acquire user details via mflux sso
     def connect(self, mfclient, refresh=False):
         if self.token == None or refresh == True:
-            print("keystone.connect()")
+            self.logger.info("url=[%s]" % self.url)
             self.sso_mfclient(mfclient)
             self.get_projects()
             self.get_credentials()
@@ -60,21 +64,20 @@ class keystone:
         stuff = json.loads(reply)
         self.user = stuff['token']['user']['id']
         self.token = response.headers.get('x-subject-token')
-#        print("Authenticated as user [%s]" % self.user)
+        self.logger.debug("acquired token for user [%s]" % self.user)
 
 #------------------------------------------------------------
     def sso_mfclient(self, mfclient):
-        print("mflux sso...")
         xml_reply = mfclient.aterm_run('user.self.describe')
         elem = xml_reply.find(".//user")
         user = elem.attrib['user']
+        self.logger.debug("accessing mediaflux wallet for user [%s]" % user)
         xml_reply = mfclient.aterm_run("secure.wallet.get :key ldap")
         elem = xml_reply.find(".//value")
         self.get_auth_token(user, elem.text)
 
 #------------------------------------------------------------
     def get_credentials(self):
-        print("caching credentials...")
 # get user ec2 credentials 
         ec2_url = "/v3/users/%s/credentials/OS-EC2" % self.user
         headers = {"X-Auth-Token": self.token, "Content-type": "application/json"}
@@ -82,10 +85,10 @@ class keystone:
         response = urllib.request.urlopen(request)
         reply = response.read()
         self.credential_list = json.loads(reply)['credentials']
+        self.logger.debug("success")
 
 #------------------------------------------------------------
     def get_projects(self):
-        print("caching projects...")
 # get user project membership
         projects_url = "/v3/users/%s/projects" % self.user
         headers = {"X-Auth-Token": self.token, "Content-type": "application/json"}
@@ -99,6 +102,7 @@ class keystone:
             project_name = entry['name']
             project_enabled = entry['enabled']
             self.project_dict[project_name] = project_id
+        self.logger.debug("success")
 
 #------------------------------------------------------------
     def s3_candidate_find(self):
@@ -119,11 +123,12 @@ class keystone:
 #------------------------------------------------------------
     def credentials_create(self, project):
 
-        print("Creating ec2 credential for project = %s" % project)
         if project in self.project_dict.keys():
             project_id = self.project_dict[project]
         else:
             project_id = project
+
+        self.logger.info("Creating ec2 credential for project_id [%s]" % project_id)
 
 #         curl -g -i -X POST https://nimbus.pawsey.org.au:5000/v3/users/0da49abca73d9eaf24fab0a6cc14c6b953494b8008e3f436a4e2223db9c18115/credentials/OS-EC2 -H "Accept: application/json" -H "Content-Type: application/json" -H "User-Agent: python-keystoneclient" -H "X-Auth-Token: {SHA256}1a415063e2de80ec509085a7102068cebb70443a9e7b53f9503882b18c03ad2a" -d '{"tenant_id": "e26b4c0824854f09b13bb7ac6eb6a909"}'
 #RESP BODY: {"credential": {"user_id": "0da49abca73d9eaf24fab0a6cc14c6b953494b8008e3f436a4e2223db9c18115", "tenant_id": "e26b4c0824854f09b13bb7ac6eb6a909", "access": "ff64589a348c4fa893e93caa6c19cfbb", "secret": "677cdcfe90a446b48ba69d449d20db12", "trust_id": null, "links": {"self": "https://nimbus.pawsey.org.au:5000/v3/users/0da49abca73d9eaf24fab0a6cc14c6b953494b8008e3f436a4e2223db9c18115/credentials/OS-EC2/ff64589a348c4fa893e93caa6c19cfbb"}}}
@@ -145,12 +150,11 @@ class keystone:
     def credentials_delete(self, access):
  
 #REQ: curl -g -i -X DELETE https://nimbus.pawsey.org.au:5000/v3/users/0da49abca73d9eaf24fab0a6cc14c6b953494b8008e3f436a4e2223db9c18115/credentials/OS-EC2/ff64589a348c4fa893e93caa6c19cfbb -H "Accept: application/json" -H "User-Agent: python-keystoneclient" -H "X-Auth-Token: {SHA256}236b14f7b2eabb1b7c411f8a558396ea2fc8e218d73ebb2a1056905f099c5ce2"
-
+        self.logger.info("Destroying ec2 credential for access [%s]" % access)
         url = "%s/v3/users/%s/credentials/OS-EC2/%s" % (self.url, self.user, access)
         headers = {"Accept": "application/json", "X-Auth-Token": self.token }
         request = urllib.request.Request(url, headers=headers, method="DELETE")
         response = urllib.request.urlopen(request)
-
 # expected response.status = 204 (empty content)
         if response.status == 204:
             print("Success")
