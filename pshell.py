@@ -351,7 +351,6 @@ class parser(cmd.Cmd):
         for line in output_list:
             print(line)
 
-
 # ---
 # TODO - EC2 create/delete/list
     def do_ec2(self, line):
@@ -369,11 +368,13 @@ class parser(cmd.Cmd):
         if 'create' in line:
             if nargs > 1:
                 self.keystone.credentials_create(args[1])
+                self.keystone.discover_s3(self.s3client)
             else:
                 raise Exception("Error: missing project reference")
         if 'delete' in line:
             if nargs > 1:
                 self.keystone.credentials_delete(args[1])
+                self.keystone.discover_s3(self.s3client)
             else:
                 raise Exception("Error: missing access reference")
 
@@ -1308,10 +1309,7 @@ class parser(cmd.Cmd):
 
         if self.keystone:
             self.keystone.connect(self.mf_client, refresh=True)
-            s3endpoint = self.keystone.s3_candidate_find()
-# TODO - can we discover the magenta url and avoid the hard coding?
-            if s3endpoint:
-                self.s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], s3endpoint[0])
+            self.keystone.discover_s3(self.s3client)
 
 # --
     def help_delegate(self):
@@ -1774,14 +1772,10 @@ def main():
         input_list = itertools.chain(input_list, args.command.split("&&"))
         my_parser.interactive = False
 
-
 # NEW
     if my_parser.keystone:
         my_parser.keystone.connect(mf_client, refresh=False)
-        s3endpoint = my_parser.keystone.s3_candidate_find()
-# TODO - can we discover the magenta url and avoid the hard coding?
-        if s3endpoint:
-            my_parser.s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], s3endpoint[0])
+        my_parser.keystone.discover_s3(my_parser.s3client)
 
 # interactive or input iterator (scripted)
     if my_parser.interactive:

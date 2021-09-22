@@ -35,13 +35,13 @@ class s3client:
 # prefix - the keystone project assoc with access/secret ... and trigger for s3client pathways
 # VFS style ... TODO - allow for multiple mounts ... eg AWS
     def connect(self, host, access, secret, prefix):
+        self.logger.info('host=%s using acess=%s and linked to prefix=%s' % (host, access, prefix))
         self.host = host
         self.access = access
         self.secret = secret
         self.prefix = prefix
         if ok:
             self.s3 = boto3.client('s3', endpoint_url=self.host, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
-            self.logger.info('%s using %s' % (self.host, self.access))
 
 #------------------------------------------------------------
     def whoami(self):

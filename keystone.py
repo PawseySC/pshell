@@ -41,11 +41,27 @@ class keystone:
 #------------------------------------------------------------
 # connect to keystone and acquire user details via mflux sso
     def connect(self, mfclient, refresh=False):
+        self.logger.info("url=%r" % self.url)
+# TODO - more sophisticated checking here? eg token expired ...
         if self.token == None or refresh == True:
-            self.logger.info("url=[%s]" % self.url)
             self.sso_mfclient(mfclient)
-            self.get_projects()
-            self.get_credentials()
+
+# always done
+        self.get_projects()
+        self.get_credentials()
+
+#------------------------------------------------------------
+    def discover_s3(self, s3client):
+
+        s3endpoint = self.s3_candidate_find()
+
+# TODO - could potentially be a list of accessible endpoints
+        if s3endpoint:
+# TODO - can we discover the s3 url?
+            s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], s3endpoint[0])
+        else:
+# nothing found - clear the deck (ie ec2 credentials deleted)
+            s3client.connect(None, None, None, None)
 
 #------------------------------------------------------------
     def whoami(self):
