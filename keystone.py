@@ -36,7 +36,7 @@ class keystone:
         self.credential_list = None
         self.logger = logging.getLogger('keystone')
 # CURRENT
-        self.logger.setLevel(logging.DEBUG)
+#        self.logger.setLevel(logging.DEBUG)
 
 #------------------------------------------------------------
 # connect to keystone and acquire user details via mflux sso

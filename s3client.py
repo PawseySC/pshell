@@ -29,7 +29,7 @@ class s3client:
         self.s3 = None
         self.logger = logging.getLogger('s3client')
 # CURRENT
-        self.logger.setLevel(logging.DEBUG)
+#        self.logger.setLevel(logging.DEBUG)
 
 #------------------------------------------------------------
 # prefix - the keystone project assoc with access/secret ... and trigger for s3client pathways

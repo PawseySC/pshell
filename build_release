@@ -5,7 +5,7 @@ git tag $d
 cp pshell.py __main__.py
 sed -i tmp -e 's/^build.*$/build= "'$d'"/' __main__.py
 cp data/.mf_config .
-zip pshell.zip __main__.py mfclient.py .mf_config
+zip pshell.zip __main__.py mfclient.py keystone.py s3client.py .mf_config
 echo "#!/usr/bin/env python3" > pshell
 cat pshell.zip >> pshell
 chmod u+x pshell

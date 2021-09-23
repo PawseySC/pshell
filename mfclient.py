@@ -32,7 +32,7 @@ import configparser
 manage_lock = multiprocessing.Lock()
 bytes_sent = multiprocessing.Value('d', 0, lock=True)
 bytes_recv = multiprocessing.Value('d', 0, lock=True)
-build= "20200828164318"
+build= "20210923131216"
 
 #------------------------------------------------------------
 def put_jump(mfclient, data):
@@ -184,12 +184,18 @@ class mf_client:
 
 #------------------------------------------------------------
     def config_init(self, config_filepath=None, config_section=None):
+        """
+        Setup config file and section to update with session/token info
+        """
         self.logger.info("config filepath=[%s], config_section=[%s]" % (config_filepath, config_section))
         self.config_filepath = config_filepath
         self.config_section = config_section
 
 #------------------------------------------------------------
     def config_save(self, refresh_token=False, refresh_session=False):
+        """
+        Update session/token info in config file
+        """
         if self.config_filepath:
             config = configparser.ConfigParser()
             config.read(self.config_filepath)
@@ -366,14 +372,12 @@ class mf_client:
         """
         Helper method for hiding sensitive text in XML posts
         """
-
         text1 = re.sub(r'session=[^>]*', 'session="..."', text)
         text2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxx</password>', text1)
         text3 = re.sub(r'<token>.*?</token>', '<token>xxxxxxx</token>', text2)
         return text3
 
 #------------------------------------------------------------
-# NB: if an "invalid session" error occurs and we have a token then generate new session and retry
     def aterm_run(self, input_line, background=False, post=True):
         """
         Method for parsing aterm's compressed XML syntax and sending to the Mediaflux server
@@ -385,7 +389,6 @@ class mf_client:
         Returns:
             A STRING containing the server reply (if post is TRUE, if false - just the XML for test comparisons)
         """
-
 
 # intercept (before lexer!) and remove ampersand at end of line -> background job
         if input_line[-1:] == '&':
@@ -678,21 +681,6 @@ class mf_client:
         return
 
 #------------------------------------------------------------
-#    def log(self, prefix, message, level=1):
-#        """
-#        Timestamp based message logging.
-#        """
-#
-#        if "DEBUG" in prefix:
-#            if level > int(self.debug):
-#                return
-#
-#        ts = time.time()
-#        st = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-#        message = st + " >>> [pid=%r] " % os.getpid() + message
-#        print("%8s: %s" % (prefix, message))
-
-#------------------------------------------------------------
     def logout(self):
         """
         Destroy the current session (NB: delegate can auto-create a new session if available)
@@ -701,7 +689,6 @@ class mf_client:
         self.session = ""
 
 #------------------------------------------------------------
-#    def login(self, user=None, password=None, token=None, config_file=None, config_section=None):
     def login(self, user=None, password=None, token=None):
         """
         Authenticate to the current Mediaflux server and record the session ID on success
@@ -709,8 +696,6 @@ class mf_client:
         Input:
             user, password: STRINGS specifying user login details
                      token: STRING specifying a delegate credential
-               config_file: STRING indicating full path location to an INI style config file
-            config_section: STRING indicating section in the config file to use for credentials
 
         Raises:
             An error if authentication fails
@@ -719,25 +704,14 @@ class mf_client:
         if self.protocol != "https":
             self.logger.debug("Permitting unencrypted login; I hope you know what you're doing.")
 
-        print("token=%s" % token)
-
 # NEW - priority order and auto lookup of token or session in appropriate config file section
 # NB: failed login calls raise an exception in aterm_run post XML handling
         reply = None
         if user is not None and password is not None:
             reply = self.aterm_run("system.logon :domain %s :user %s :password %s" % (self.domain, user, password))
-#        elif token is not None:
         elif len(token) > 0: 
             reply = self.aterm_run("system.logon :token %s" % token)
             self.token = token
-
-#        elif config_file is not None and config_section is not None:
-#            config = configparser.ConfigParser()
-#            config.read(config_file)
-#            token = config.get(config_section, 'token')
-#            reply = self.aterm_run("system.logon :token %s" % token)
-#            self.token = token
-
         else:
             raise Exception("Invalid login call.")
 
@@ -756,7 +730,6 @@ class mf_client:
         if self.server is None:
             return True
         try:
-
 # CURRENT - I suspect this is not multiprocessing safe ...  resulting in the false "session expired" problem during downloads
             self.aterm_run("system.session.self.describe")
             return True
