@@ -778,9 +778,6 @@ class parser(cmd.Cmd):
                 else:
                     xml_command += ' :meta <%s >' % self.xml_to_mf(xml_child)
 
-# DEBUG
-#            print xml_command
-
 # update the asset metadata
             self.mf_client.aterm_run(xml_command)
 # re-analyze the content - stricly only needs to be done if type/ctype/lctype was changed
@@ -811,12 +808,10 @@ class parser(cmd.Cmd):
 # NB: use posixpath for mediaflux namespace manipulation
         line = self.absolute_remote_filepath(line)
 
-
 # NEW 
         if self.s3client.is_mine(line):
             self.s3client.get(line)
             return
-
 
 # sanitise as asset.query is special
         double_escaped = self.escape_single_quotes(line)
@@ -1282,28 +1277,22 @@ class parser(cmd.Cmd):
         print("Usage: login\n")
 
     def do_login(self, line):
-#        if self.interactive is False:
-#            raise Exception(" Manual login not permitted in scripts")
-        logging.debug("Authentication domain [%s]" % self.mf_client.domain)
+        logging.info("Authentication domain [%s]" % self.mf_client.domain)
         user = input("Username: ")
         password = getpass.getpass("Password: ")
 # login, else exception 
         self.mf_client.login(user, password)
         self.need_auth = False
-
-# save the authentication token
         self.mf_client.config_save(refresh_session=True)
-
 # NEW - add to secure wallet for identity management
         xml_reply = self.mf_client.aterm_run("secure.wallet.can.be.used")
         elem = xml_reply.find(".//can")
         if "true" in elem.text:
-            print("Wallet can be used")
+            logging.info("Wallet can be used")
         else:
             self.mf_client.aterm_run("secure.wallet.recreate :password %s" % password)
 # TODO - encrypt so it's not plain text 
         self.mf_client.aterm_run("secure.wallet.set :key ldap :value %s" % password)
-
         if self.keystone:
             try:
                 self.keystone.connect(self.mf_client, refresh=True)
@@ -1343,9 +1332,7 @@ class parser(cmd.Cmd):
                 if destroy_session:
                     self.mf_client.session = ""
                     self.need_auth = True
-
                 self.mf_client.config_save(refresh_token=True, refresh_session=True)
-
                 print("Delegate credentials removed.")
                 return
             else:
@@ -1758,7 +1745,6 @@ def main():
             readline.parse_and_bind("tab: complete")
     except:
         logging.warning("No readline module; tab completion unavailable")
-
 
 # build non interactive input iterator
     input_list = []

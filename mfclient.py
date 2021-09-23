@@ -46,11 +46,11 @@ def put_jump(mfclient, data):
         triplet of STRINGS (asset_ID/status, 2 input arguments) which will be concatenated on the mf_manager's summary list
     """
 
-    mfclient.logger.debug("put_jump(%s,%s)" % (data[0], data[1]))
     try:
         asset_id = mfclient.put(data[0], data[1])
         return (int(asset_id), data[0], data[1])
     except Exception as e:
+# FIXME - loggers don't work in separate process
         mfclient.logger.debug("put_jump(%s): %s" % (data[1], str(e)))
 
 # report failure
@@ -68,11 +68,11 @@ def get_jump(mfclient, data):
         A triplet of STRINGS (status, 2 input arguments) which will be concatenated on the mf_manager's summary list
     """
 
-    mfclient.logger.debug("get_jump(%s,%s)" % (data[0], data[1]))
     try:
         mfclient.get(data[0], data[1])
         return (0, data[0], data[1])
     except Exception as e:
+# FIXME - loggers don't work in separate process
         mfclient.logger.error("get_jump(): %s" % str(e))
 
 # report failure
@@ -866,7 +866,7 @@ class mf_client:
         result = self.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
         xml_id = result.find(".//id")
         if xml_id is None:
-            self.logger.debugg("No remote file found: [%s]" % remotepath)
+            self.logger.debug("No remote file found: [%s]" % remotepath)
 # NB: must create intermediate directories if they don't exist (mediaflux won't do it by default)
             reply = self.aterm_run('asset.create :namespace -create "true" %s :name %s' % (namespace, filename))
             xml_id = reply.find(".//id")
