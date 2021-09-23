@@ -97,7 +97,8 @@ class mf_client:
     All unexpected failures are handled by raising exceptions
     """
 
-    def __init__(self, protocol, port, server, domain="system", session="", timeout=120, debug=0):
+#    def __init__(self, protocol, port, server, domain="system", session="", timeout=120, debug=0):
+    def __init__(self, protocol, port, server, domain="system"):
         """
         Create a Mediaflux server connection instance. Raises an exception on failure.
 
@@ -121,11 +122,18 @@ class mf_client:
         self.server = server
         self.port = int(port)
         self.domain = domain
-        self.timeout = timeout
-        self.session = session
-        self.token = None
-        self.debug = int(debug)
+        self.timeout = 120
+
+# NB: there can be some subtle bugs in python library handling if these are "" vs None
+        self.session = ""
+        self.token = ""
+
         self.logger = logging.getLogger('mfclient')
+# TODO - set log level based on debug
+#        self.logger.setLevel(logging.DEBUG)
+
+        self.config_filepath = None
+        self.config_section = None
         global build
 
 # can override to test fast http data transfers (with https logins)
@@ -173,6 +181,29 @@ class mf_client:
         i = version.find("\n")
         self.logger.info("PYTHON=%s" % version[:i])
         self.logger.info("OpenSSL=%s", ssl.OPENSSL_VERSION)
+
+#------------------------------------------------------------
+    def config_init(self, config_filepath=None, config_section=None):
+        self.logger.info("config filepath=[%s], config_section=[%s]" % (config_filepath, config_section))
+        self.config_filepath = config_filepath
+        self.config_section = config_section
+
+#------------------------------------------------------------
+    def config_save(self, refresh_token=False, refresh_session=False):
+        if self.config_filepath:
+            config = configparser.ConfigParser()
+            config.read(self.config_filepath)
+
+            if refresh_token is True:
+                self.logger.info("Updating token")
+                config.set(self.config_section, 'token', self.token)
+
+            if refresh_session is True:
+                self.logger.info("Updating session")
+                config.set(self.config_section, 'session', self.session)
+
+            with open(self.config_filepath, 'w') as f:
+                config.write(f)
 
 #------------------------------------------------------------
     @staticmethod
@@ -355,6 +386,7 @@ class mf_client:
             A STRING containing the server reply (if post is TRUE, if false - just the XML for test comparisons)
         """
 
+
 # intercept (before lexer!) and remove ampersand at end of line -> background job
         if input_line[-1:] == '&':
             background = True
@@ -394,7 +426,7 @@ class mf_client:
 # if element contains : (eg csiro:seismic) then we need to inject the xmlns stuff
                     if ":" in token[1:]:
                         item_list = token[1:].split(":")
-                        self.logger.debug("XML associate namespace [%s] with element [%s]" % (item_list[0], token[1:]), level=2)
+                        self.logger.debug("XML associate namespace [%s] with element [%s]" % (item_list[0], token[1:]))
                         child.set("xmlns:%s" % item_list[0], item_list[0])
                 elif token[0] == '<':
                     stack.append(xml_node)
@@ -454,7 +486,7 @@ class mf_client:
                     token = lexer.get_token()
 
         except Exception as e:
-            self.logger.debug(str(e))
+            self.logger.error(str(e))
             raise SyntaxError
 
 # do any deletions to the tree after processing 
@@ -482,7 +514,6 @@ class mf_client:
             args = ET.SubElement(child, "args")
             for item in xml_root.findall("*"):
                 args.append(item)
-
 # FIXME - this should better merge with below so we also cover the case with outputs ...
         else:
 # wrap the service call in a service.execute to allow background execution, if desired 
@@ -586,7 +617,8 @@ class mf_client:
                 self.logger.debug(message)
                 if "session is not valid" in message:
 # restart the session if token exists
-                    if self.token is not None:
+#                    if self.token is not None:
+                    if len(self.token) > 0:
                         self.logger.debug("attempting login with token")
                         # FIXME - need to put this in a separate exception handling ...
                         self.login(token=self.token)
@@ -594,8 +626,8 @@ class mf_client:
 # PYTHON3 - due to the strings vs bytes change (ie xml_text is bytes rather than string) 
 #                        xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
                         xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text.decode()).encode()
-
                         self.logger.debug("session restored, retrying command")
+                        self.config_save(refresh_session=True)
                         continue
                 break
 
@@ -669,7 +701,8 @@ class mf_client:
         self.session = ""
 
 #------------------------------------------------------------
-    def login(self, user=None, password=None, token=None, config_file=None, config_section=None):
+#    def login(self, user=None, password=None, token=None, config_file=None, config_section=None):
+    def login(self, user=None, password=None, token=None):
         """
         Authenticate to the current Mediaflux server and record the session ID on success
 
@@ -686,20 +719,25 @@ class mf_client:
         if self.protocol != "https":
             self.logger.debug("Permitting unencrypted login; I hope you know what you're doing.")
 
+        print("token=%s" % token)
+
 # NEW - priority order and auto lookup of token or session in appropriate config file section
 # NB: failed login calls raise an exception in aterm_run post XML handling
         reply = None
         if user is not None and password is not None:
             reply = self.aterm_run("system.logon :domain %s :user %s :password %s" % (self.domain, user, password))
-        elif token is not None:
+#        elif token is not None:
+        elif len(token) > 0: 
             reply = self.aterm_run("system.logon :token %s" % token)
             self.token = token
-        elif config_file is not None and config_section is not None:
-            config = configparser.ConfigParser()
-            config.read(config_file)
-            token = config.get(config_section, 'token')
-            reply = self.aterm_run("system.logon :token %s" % token)
-            self.token = token
+
+#        elif config_file is not None and config_section is not None:
+#            config = configparser.ConfigParser()
+#            config.read(config_file)
+#            token = config.get(config_section, 'token')
+#            reply = self.aterm_run("system.logon :token %s" % token)
+#            self.token = token
+
         else:
             raise Exception("Invalid login call.")
 

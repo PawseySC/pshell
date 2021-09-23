@@ -42,7 +42,6 @@ delegate_max = 365
 
 # NB: we want errors from server on failure so we can produce a non 0 exit code, if required
 class parser(cmd.Cmd):
-    config = None
     config_name = None
     config_filepath = None
     mf_client = None
@@ -80,7 +79,7 @@ class parser(cmd.Cmd):
 
 # --- helper: attempt to complete a namespace
     def complete_namespace(self, partial_ns, start):
-        self.mf_client.log("\n   DEBUG", "cn seek: partial_ns=[%s] start=[%d]" % (partial_ns, start), level=2)
+        logging.debug("cn seek: partial_ns=[%s] start=[%d]" % (partial_ns, start))
 # extract any partial namespace to use as pattern match
         match = re.match(r".*/", partial_ns)
         if match:
@@ -101,7 +100,7 @@ class parser(cmd.Cmd):
 
 # construct an absolute namespace (required for any remote lookups)
         target_ns = self.absolute_remote_filepath(partial_ns[:offset])
-        self.mf_client.log("DEBUG", "cn seek: target_ns: [%s] : prefix=[%r] : pattern=[%r] : start=%r : xlat=%r" % (target_ns, prefix, pattern, start, xlat_offset), level=2)
+        logging.debug("cn seek: target_ns: [%s] : prefix=[%r] : pattern=[%r] : start=%r : xlat=%r" % (target_ns, prefix, pattern, start, xlat_offset))
 
 # generate listing in target namespace for completion matches
         result = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % target_ns)
@@ -120,13 +119,13 @@ class parser(cmd.Cmd):
                 if item is not None:
                     ns_list.append(item)
 
-        self.mf_client.log("DEBUG", "cn found: %r" % ns_list, level=2)
+        logging.debug("cn found: %r" % ns_list)
 
         return ns_list
 
 # --- helper: attempt to complete an asset
     def complete_asset(self, partial_asset_path, start):
-        self.mf_client.log("\n   DEBUG", "ca seek: partial_asset=[%s] start=[%d]" % (partial_asset_path, start), level=2)
+        logging.debug("ca seek: partial_asset=[%s] start=[%d]" % (partial_asset_path, start))
 # construct an absolute namespace (required for any remote lookups)
         candidate_ns = self.absolute_remote_filepath(partial_asset_path)
 
@@ -149,7 +148,7 @@ class parser(cmd.Cmd):
                 return None
 
         target_ns = self.escape_single_quotes(target_ns)
-        self.mf_client.log("DEBUG", "ca seek: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix), level=2)
+        logging.debug("ca seek: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix))
 
         if pattern is not None:
             result = self.mf_client.aterm_run("asset.query :where \"namespace='%s' and name ='%s*'\" :action get-values :xpath -ename name name" % (target_ns, pattern))
@@ -167,7 +166,7 @@ class parser(cmd.Cmd):
                 else:
                     asset_list.append(posixpath.join(prefix, elem.text))
 
-        self.mf_client.log("DEBUG", "ca found: %r" % asset_list, level=2)
+        logging.debug("ca found: %r" % asset_list)
 
         return asset_list
 
@@ -626,7 +625,7 @@ class parser(cmd.Cmd):
         count_bytes = 0
 
 # run in background as this can timeout on larger DMF folders
-        self.mf_client.log("DEBUG", "Polling online/offline statistics...") 
+        logging.debug("Polling online/offline statistics...") 
         result = self.mf_client.aterm_run('asset.content.status.statistics :where "%s" &' % base_query)
 
         for elem in result.iter("statistics"):
@@ -661,7 +660,7 @@ class parser(cmd.Cmd):
 # TODO - pending feedback from Arcitecta to solve or fix the issue
 # hmmm backgrounding doesnt appear to for iterators ...
 # result seems the same background or not ... but MF gives an error when using the background one (no session for iterator => MF bug?)
-        self.mf_client.log("DEBUG", "Getting download iterator...")
+        logging.debug("Getting download iterator...")
         result = self.mf_client.aterm_run('asset.query :where "%s and content online" :as iterator :action get-values :xpath -ename id id :xpath -ename namespace namespace :xpath -ename filename name' % base_query)
 
         elem = result.find(".//iterator")
@@ -670,7 +669,7 @@ class parser(cmd.Cmd):
 
         iterate = True
         while iterate:
-            self.mf_client.log("DEBUG", "Online iterator chunk")
+            logging.debug("Online iterator chunk")
 # get file list for this sub-set
             result = self.mf_client.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
 
@@ -691,7 +690,7 @@ class parser(cmd.Cmd):
                         relpath_list = remote_relpath.split("/")
                         local_relpath = os.sep.join(relpath_list)
                         path = os.path.join(os.getcwd(), local_relpath)
-                        self.mf_client.log("DEBUG", "local=%s : remote=%s" % (local_relpath, remote_relpath))
+                        logging.debug("local=%s : remote=%s" % (local_relpath, remote_relpath))
 
 # add valid download entry
                 if asset_id is not None and filename is not None:
@@ -707,14 +706,14 @@ class parser(cmd.Cmd):
             for elem in result.iter("iterated"):
                 state = elem.get('complete')
                 if "true" in state:
-                    self.mf_client.log("DEBUG", "Asset iteration completed")
+                    logging.debug("Asset iteration completed")
                     iterate = False
 
 # TODO - *** split out this from get_online_set() -> call ONCE on ALL files at the start, rather than polling
 # create any required local dirs (NB: may get exception if they exist - hence the catch)
         for local_path in list_local_path:
             try:
-                self.mf_client.log("DEBUG", "Creating local folder: %s" % local_path)
+                logging.debug("Creating local folder: %s" % local_path)
                 os.makedirs(local_path)
             except Exception as e:
 # TODO - this is too noisy currently as we're doing this more than we should, but unavoidable until the split out above *** is done
@@ -744,7 +743,7 @@ class parser(cmd.Cmd):
 
 # -- metadata populator
     def import_metadata(self, asset_id, filepath):
-        self.mf_client.log("DEBUG","import_metadata() [%s] : [%s]" % (asset_id, filepath))
+        logging.debug("import_metadata() [%s] : [%s]" % (asset_id, filepath))
         try:
             config = configparser.ConfigParser()
             config.read(filepath)
@@ -789,7 +788,7 @@ class parser(cmd.Cmd):
 #            self.mf_client.aterm_run("asset.reanalyze :id %r" % asset_id)
 
         except Exception as e:
-            self.mf_client.log("WARNING", "Metadata population failed: %s" % str(e))
+            logging.warning("Metadata population failed: %s" % str(e))
 
 # ---
     def help_import(self):
@@ -828,7 +827,7 @@ class parser(cmd.Cmd):
 # possible download on namespace
         candidate = posixpath.join(namespace, basename)
 
-        self.mf_client.log("DEBUG", "do_get(): namespace=[%s] , asset_query=[%s] , candidate_namespace=[%s]" % (namespace, basename, candidate))
+        logging.debug("do_get(): namespace=[%s] , asset_query=[%s] , candidate_namespace=[%s]" % (namespace, basename, candidate))
 
 # this requires different escaping to an asset.query
         if self.mf_client.namespace_exists(line):
@@ -845,7 +844,7 @@ class parser(cmd.Cmd):
 
 # get content statistics and init for transfer polling loop
         stats = self.poll_total(base_query)
-        self.mf_client.log("DEBUG", str(stats))
+        logging.debug(str(stats))
         if stats['total-bytes'] == 0:
             print("No data to download")
             return
@@ -861,7 +860,7 @@ class parser(cmd.Cmd):
         known_states = ["online-files", "online-bytes", "offline-files", "offline-bytes", "migrating-files", "migrating-bytes", "total-files", "total-bytes"]
         for key in list(stats.keys()):
             if key not in known_states:
-                self.mf_client.log("WARNING", "Content %s=%s" % (key, stats[key]))
+                logging.warning("Content %s=%s" % (key, stats[key]))
                 if "-files" in key:
                     bad_files += stats[key]
         todo = stats['total-files'] - bad_files
@@ -931,11 +930,11 @@ class parser(cmd.Cmd):
                     time.sleep(2)
 
             except KeyboardInterrupt:
-                self.mf_client.log("WARNING", "get interrupted by user")
+                logging.warning("interrupted by user")
                 return
 
             except Exception as e:
-                self.mf_client.log("ERROR", str(e))
+                logging.error(str(e))
                 return
 
             finally:
@@ -1005,7 +1004,7 @@ class parser(cmd.Cmd):
 # -- wrapper for monitoring an upload
     def managed_put(self, upload_list, meta=False):
         manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
-        self.mf_client.log("DEBUG", "Starting transfer...")
+        logging.debug("Starting transfer...")
         self.print_over("Total files=%d" % len(upload_list))
         start_time = time.time()
         try:
@@ -1023,11 +1022,11 @@ class parser(cmd.Cmd):
                 time.sleep(2)
 
         except KeyboardInterrupt:
-            self.mf_client.log("WARNING", "put interrupted by user")
+            logging.warning("interrupted by user")
             return
 
         except Exception as e:
-            self.mf_client.log("ERROR", str(e))
+            logging.error(str(e))
             return
 
         finally:
@@ -1285,17 +1284,15 @@ class parser(cmd.Cmd):
     def do_login(self, line):
 #        if self.interactive is False:
 #            raise Exception(" Manual login not permitted in scripts")
-        self.mf_client.log("DEBUG", "Authentication domain [%s]" % self.mf_client.domain)
+        logging.debug("Authentication domain [%s]" % self.mf_client.domain)
         user = input("Username: ")
         password = getpass.getpass("Password: ")
 # login, else exception 
         self.mf_client.login(user, password)
         self.need_auth = False
+
 # save the authentication token
-        self.config.set(self.config_name, 'session', self.mf_client.session)
-        f = open(self.config_filepath, "w")
-        self.config.write(f)
-        f.close()
+        self.mf_client.config_save(refresh_session=True)
 
 # NEW - add to secure wallet for identity management
         xml_reply = self.mf_client.aterm_run("secure.wallet.can.be.used")
@@ -1308,8 +1305,12 @@ class parser(cmd.Cmd):
         self.mf_client.aterm_run("secure.wallet.set :key ldap :value %s" % password)
 
         if self.keystone:
-            self.keystone.connect(self.mf_client, refresh=True)
-            self.keystone.discover_s3(self.s3client)
+            try:
+                self.keystone.connect(self.mf_client, refresh=True)
+                self.keystone.discover_s3(self.s3client)
+            except Exception as e:
+                logging.error(str(e))
+                pass
 
 # --
     def help_delegate(self):
@@ -1325,25 +1326,26 @@ class parser(cmd.Cmd):
             if line == "off":
                 try:
                     self.mf_client.aterm_run("secure.identity.token.all.destroy")
-                    self.mf_client.log("DEBUG", "Removed secure tokens from server")
+                    logging.debug("Removed secure tokens from server")
 # figure out the current session
                     reply = self.mf_client.aterm_run("actor.self.describe")
                     if 'identity' in reply.find(".//actor").attrib['type']:
                         destroy_session = True
                 except:
 # probably a bad session (eg generated from an expired token)
-                    self.mf_client.log("DEBUG", "Failed to remove secure tokens from server")
+                    logging.debug("Failed to remove secure tokens from server")
                     destroy_session = True
 # remove all auth info and update config
+                self.mf_client.token = ""
                 use_token = False
-                self.config.remove_option(self.config_name, 'token')
+
 # if current session is delegate based - destroy it too
                 if destroy_session:
-                    self.config.remove_option(self.config_name, 'session')
+                    self.mf_client.session = ""
                     self.need_auth = True
-                f = open(self.config_filepath, "w")
-                self.config.write(f)
-                f.close()
+
+                self.mf_client.config_save(refresh_token=True, refresh_session=True)
+
                 print("Delegate credentials removed.")
                 return
             else:
@@ -1368,21 +1370,19 @@ class parser(cmd.Cmd):
                 domain = actor[0:i]
                 user = actor[i+1:]
         if user is None or domain is None:
-            raise Exception(" Delegate identity %r is not allowed to delegate" % actor)
+            raise Exception("Delegate identity %r is not allowed to delegate" % actor)
 
 # create secure token (delegate) and assign current authenticated identity to the token
-        self.mf_client.log("DEBUG", "Attempting to delegate for: domain=%s, user=%s, until=%r" % (domain, user, expiry))
+        logging.debug("Attempting to delegate for: domain=%s, user=%s, until=%r" % (domain, user, expiry))
         result = self.mf_client.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16 :wallet true' % (expiry, actor, domain))
-        print("Delegate valid until: " + expiry)
-
         for elem in result.iter():
             if elem.tag == 'token':
-# remove current session ID (real user)
-                self.config.remove_option(self.config_name, 'session')
-                self.config.set(self.config_name, 'token', elem.text)
-                f = open(self.config_filepath, "w")
-                self.config.write(f)
-                f.close()
+                print("Delegate valid until: " + expiry)
+                self.mf_client.token = elem.text
+                self.mf_client.config_save(refresh_token=True)
+                return
+        raise Exception("Delegate command successfull; but failed to find return token")
+
 
 # -- helper: recursively get complete list of remote files under a given namespace
     def get_remote_set(self, remote_namespace):
@@ -1409,7 +1409,7 @@ class parser(cmd.Cmd):
 
 # --- helper: create the namespace and any intermediate namespaces, if required
     def mkdir_helper(self, namespace):
-        self.mf_client.log("DEBUG", "mkdir_helper(): %s" % namespace)
+        logging.debug(namespace)
         if self.mf_client.namespace_exists(namespace) is True:
             return
         else:
@@ -1459,7 +1459,7 @@ class parser(cmd.Cmd):
                     relpath = os.path.relpath(full_path, local_fullpath)
                     local_files.add(relpath)
         except Exception as e:
-            self.mf_client.log("ERROR", str(e))
+            logging.error(str(e))
 
 # starting summary
         print("Total remote files = %d" % len(remote_files))
@@ -1495,7 +1495,7 @@ class parser(cmd.Cmd):
                     elem = result.find(".//crc32")
                     remote_crc32 = int(elem.text, 16)
                 except Exception as e:
-                    self.mf_client.log("ERROR", "do_compare(): %s" % str(e))
+                    logging.error("do_compare(): %s" % str(e))
 # always report (warning) mismatched files
                 if local_crc32 == remote_crc32:
                     count_common += 1
@@ -1511,7 +1511,7 @@ class parser(cmd.Cmd):
                     elem = result.find(".//size")
                     remote_size = int(elem.text)
                 except Exception as e:
-                    self.mf_client.log("ERROR", "do_compare(): %s" % str(e))
+                    logging.error("do_compare(): %s" % str(e))
 # always report (warning) mismatched files
                 if local_size == remote_size:
                     count_common += 1
@@ -1537,7 +1537,7 @@ class parser(cmd.Cmd):
         elem = result.find(".//iterator")
         iter_id = elem.text
         while True:
-            self.mf_client.log("DEBUG", "Online iterator chunk")
+            logging.debug("Online iterator chunk")
             result = self.mf_client.aterm_run("asset.query.iterate :id %s :size %d" % (iter_id, iter_size))
 #  action the callback for this iteration
             iter_callback(result)
@@ -1545,7 +1545,7 @@ class parser(cmd.Cmd):
             elem = result.find(".//iterated")
             state = elem.get('complete')
             if "true" in state:
-                self.mf_client.log("DEBUG", "iteration completed")
+                logging.debug("iteration completed")
                 break
 
 # -- callback for do_publish url printing 
@@ -1601,6 +1601,7 @@ class parser(cmd.Cmd):
         while True:
             try:
                 self.cmdloop()
+
             except KeyboardInterrupt:
                 print(" Interrupted by user")
 
@@ -1615,13 +1616,9 @@ class parser(cmd.Cmd):
                     print("Exit: encountered EOF")
                     return
                 print(str(e))
-# TODO - handle via custom exception ?
-                if "session is not valid" in str(e):
-                    self.need_auth = True
 
 def main():
     global build
-
 
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
@@ -1712,6 +1709,8 @@ def main():
         mf_client = mfclient.mf_client(protocol=protocol, server=server, port=port, domain=domain)
         mf_client.session = session
         mf_client.token = token
+# NEW
+        mf_client.config_init(config_filepath=config_filepath, config_section=current)
 
     except Exception as e:
         print("Failed to connect to: %r://%r:%r" % (protocol, server, port))
@@ -1734,7 +1733,7 @@ def main():
 
     my_parser.config_name = current
     my_parser.config_filepath = config_filepath
-    my_parser.config = config
+
     my_parser.need_auth = need_auth
 # just in case the terminal height calculation returns a very low value
     my_parser.terminal_height = max(size[0], my_parser.terminal_height)
@@ -1774,8 +1773,12 @@ def main():
 
 # NEW
     if my_parser.keystone:
-        my_parser.keystone.connect(mf_client, refresh=False)
-        my_parser.keystone.discover_s3(my_parser.s3client)
+        try:
+            my_parser.keystone.connect(mf_client, refresh=False)
+            my_parser.keystone.discover_s3(my_parser.s3client)
+        except Exception as e:
+            logging.error(str(e))
+            pass
 
 # interactive or input iterator (scripted)
     if my_parser.interactive:

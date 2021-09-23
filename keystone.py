@@ -45,7 +45,6 @@ class keystone:
 # TODO - more sophisticated checking here? eg token expired ...
         if self.token == None or refresh == True:
             self.sso_mfclient(mfclient)
-
 # always done
         self.get_projects()
         self.get_credentials()

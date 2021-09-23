@@ -5,6 +5,7 @@ import sys
 import time
 import shutil
 import getpass
+import logging
 import urllib.request, urllib.error, urllib.parse
 import binascii
 import unittest
@@ -146,11 +147,9 @@ class mfclient_bugs(unittest.TestCase):
 
 # by default lexer silently drops any text starting with # (comment)
     def test_lexer_comment_handling(self):
-        self.mf_client.debug=2
         line = r"asset.set :id 123 :name #filename#"
         reply = self.mf_client.aterm_run(line, post=False)
         self.assertEqual(reply, '<request><service name="service.execute" session=""><args><service name="asset.set"><id>123</id><name>#filename#</name></service></args></service></request>')
-
 
 ######
 # main
@@ -159,7 +158,8 @@ if __name__ == '__main__':
 
 # acquire a dummy client instance
     try:
-        mf_client = mfclient.mf_client("http", "80", None, debug="1")
+        mf_client = mfclient.mf_client("http", "80", None)
+
         print("\n----------------------------------------------------------------------")
         print("Running offline tests for: mfclient module")
         print("----------------------------------------------------------------------\n")
