@@ -370,12 +370,14 @@ class mf_client:
     @staticmethod
     def _xml_cloak(text):
         """
-        Helper method for hiding sensitive text in XML posts
+        Helper method for hiding sensitive text in XML posts so they can be displayed
         """
         text1 = re.sub(r'session=[^>]*', 'session="..."', text)
         text2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxx</password>', text1)
         text3 = re.sub(r'<token>.*?</token>', '<token>xxxxxxx</token>', text2)
-        return text3
+# NEW - TODO - other forms?
+        text4 = re.sub(r'<service name="secure.wallet.set">.*?</service>', '<service name="secure.wallet.set">xxxxxxx</service>', text3)
+        return text4
 
 #------------------------------------------------------------
     def aterm_run(self, input_line, background=False, post=True):
@@ -425,7 +427,6 @@ class mf_client:
             while token is not None:
                 if token[0] == ':':
                     child = ET.SubElement(xml_node, '%s' % token[1:])
-                    self.logger.debug("XML elem [%s]" % token[1:])
 # if element contains : (eg csiro:seismic) then we need to inject the xmlns stuff
                     if ":" in token[1:]:
                         item_list = token[1:].split(":")
@@ -441,7 +442,6 @@ class mf_client:
 # -number => it's a text value
                         number = float(token)
                         child.text = token
-                        self.logger.debug("XML text [%s]" % child.text)
                     except:
 # -other => it's an XML attribute/property
                         key = token[1:]
@@ -449,7 +449,6 @@ class mf_client:
                         if value.startswith('"') and value.endswith('"'):
                             value = value[1:-1]
                         child.set(key, value)
-                        self.logger.debug("XML prop [%r = %r]" % (key, value))
                 else:
 # FIXME - some issues here with data strings with multiple spaces (ie we are doing a whitespace split & only adding one back)
                     if child.text is not None:
@@ -460,17 +459,13 @@ class mf_client:
                         else:
                             child.text = token
 
-# don't display sensitive info
-                    if child.tag.lower() == "password" or child.tag.lower() == 'token':
-                        self.logger.debug("XML text [xxxxxxxx]")
 # NEW - cope with special characters that may bork parsing
-# NB: assumes :password is the LAST element in the service call
 # use everything (to EOL) after :password as the password
+                    if child.tag.lower() == "password":
+# FIXME - ugly & assumes :password is the LAST element in the service call
                         index = input_line.find(" :password")
                         if index > 10:
                             child.text = input_line[index+11:]
-                    else:
-                        self.logger.debug("XML text [%s]" % child.text)
 
 # special case - out element - needs to be removed (replaced with outputs-via and an outputs-expected attribute)
                     if child.tag.lower() == "out":
