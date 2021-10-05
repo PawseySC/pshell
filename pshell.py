@@ -22,6 +22,7 @@ import itertools
 import posixpath
 import configparser
 import xml.etree.ElementTree as ET
+import multiprocessing
 import mfclient
 # no readline on windows
 try:
@@ -32,6 +33,10 @@ except:
 # NEW
 import keystone
 import s3client
+# NEW
+import getopt
+import shlex
+
 
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
@@ -650,6 +655,8 @@ class parser(cmd.Cmd):
 
         return total
 
+
+# TODO - this can probably be completely replaced with the new "asset.preparation.request.create" 
 # prepare state - online + offline init
 # return list of (online) files to download
     def get_online_set(self, base_query, base_namespace):
@@ -1050,6 +1057,47 @@ class parser(cmd.Cmd):
             rate = manager.bytes_sent() / elapsed
             rate = rate / 1000000.0
             print("\nCompleted at %.1f MB/s" % rate)
+
+
+# NEW
+
+    def do_copy(self, line):
+        logging.info("in: %s" % line)
+
+# TODO - options for metadata copy as well (IF src = mflux)
+#        option_list, tail = getopt.getopt(line, "r")
+#        logging.info("options: %r" % option_list)
+#        logging.info("tail: %r" % tail)
+
+        try:
+            path_list = shlex.split(line, posix=True)
+            logging.info("copy [%r]" % path_list)
+
+        except Exception as e:
+            logging.debug(str(e))
+
+        if len(path_list) != 2:
+            raise Exception("Expected only two path arguments: source and destination")
+
+# expect source or destination to be S3 and the other to be mflux
+        if self.s3client.is_mine(path_list[0]) == self.s3client.is_mine(path_list[1]):
+            raise Exception("Require source and destination to be different storage systems")
+
+# CURRENT - only supporting mflux -> s3
+        if self.mf_client.namespace_exists(path_list[0]):
+            logging.info("Confirmed mediaflux namespace: %s" % path_list[0])
+        else:
+            raise Exception("Unsupported source for copy (expected single file? wildcards? namespace?")
+
+# away we go ...
+
+# 3rd party transfer (queues?) from mflux to s3 endpoint
+# NB: currently thinking path will be dropped ... ie /projects/a/b/etc/file.txt -> s3:bucket/file.txt
+# might have to have some smarts though if there is a max limit on # objects per bucket 
+
+
+# TODO - mfclient.s3copy_managed() method for this ???
+
 
 # --
     def help_cd(self):
@@ -1609,54 +1657,81 @@ def main():
 
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
-    p.add_argument("-c", dest='current', default="pawsey", help="the config name in $HOME/.mf_config to connect to")
+    p.add_argument("-c", dest='current', default=None, help="the config name in $HOME/.mf_config to connect to")
     p.add_argument("-i", dest='script', help="input script file containing pshell commands")
     p.add_argument("-o", dest='output', default=None, help="output any failed commands to a script")
     p.add_argument("-v", dest='verbose', default=None, help="set verbosity level (0,1,2)")
-    p.add_argument("-u", dest='url', default=None, help="server URL eg https://mediaflux.org:443")
-    p.add_argument("-d", dest='domain', default=None, help="login authentication domain")
+    p.add_argument("-u", dest='url', default='https://data.pawsey.org.au:443', help="Mediaflux server URL")
+    p.add_argument("-d", dest='domain', default="ivec", help="login authentication domain")
     p.add_argument("-s", dest='session', default=None, help="session")
+    p.add_argument("-t", dest='token', default=None, help="token")
     p.add_argument("--keystone", dest='keystone', default=None, help="A URL to the REST interface for Keystone (Openstack)")
-
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
-    current = args.current
-    script = args.script
-    verbose = 0
-    session = ""
-    token = None
-#    config_changed = False
 
-# ascertain local path for storing the config, fallback to CWD if system gives a dud path for ~
+# NEW
+    logging_level = logging.ERROR
+    if args.verbose is not None:
+        if args.verbose == "2":
+            logging_level = logging.DEBUG
+        elif args.verbose == "1":
+            logging_level = logging.INFO
+
+#    print("log level = %d" % logging_level)
+    logging.basicConfig(format='%(levelname)9s %(asctime)-15s >>> %(module)s.%(funcName)s(): %(message)s', level=logging_level)
+    logging.info("PSHELL=%s" % build)
+
+# get local path for storing the config, fallback to CWD if system gives a dud path for ~
     config_filepath = os.path.expanduser("~/.mf_config")
     try:
         open(config_filepath, 'a').close()
     except:
         config_filepath = os.path.join(os.getcwd(), ".mf_config")
-# build config
     config = configparser.ConfigParser()
+    logging.debug("Reading config file: [%s]" % config_filepath)
     config.read(config_filepath)
-# use config in ~ if it exists
+# attempt to use the current section in the config for connection info
     try:
-        if config.has_section(current):
-            pass
+        logging.debug("Using section: [%s] in config" % args.current)
+        server = config.get(args.current, 'server')
+        protocol = config.get(args.current, 'protocol')
+        port = config.get(args.current, 'port')
+        domain = config.get(args.current, 'domain')
+    except:
+# connection info doesn't exist or is incomplete - fallback to url or die trying
+        logging.debug("Using url: [%s] for base config" % args.url)
+        cmd = urllib.parse.urlparse(args.url)
+        protocol = cmd.scheme
+        server = cmd.hostname
+        port = cmd.port
+        if port == 80:
+            encrypt=False
         else:
-            config.read_string("[pawsey]\nserver = data.pawsey.org.au\nprotocol = https\nport = 443\nencrypt = True\ndomain = ivec\nnamespace = /projects\n")
+            encrypt=True
+        domain = args.domain
+        args.current = server
 
-# get main config vars
-        server = config.get(current, 'server')
-        protocol = config.get(current, 'protocol')
-        port = config.get(current, 'port')
-        domain = config.get(current, 'domain')
-# no .mf_config in ~ or zip bundle or cwd => die
-    except Exception as e:
-        print("Failed to find a valid config file: %s" % str(e))
-        exit(-1)
+# no such config section - add and save
+    if config.has_section(args.current) is False:
+        logging.debug("Adding section: [%s] in config" % args.current)
+        config[args.current] = {'server':str(server), 'protocol':str(protocol), 'port':str(port), 'encrypt':str(encrypt), 'domain':str(domain) }
+#        config[args.current]['namespace'] = '/projects'
+        with open(config_filepath, 'w') as f:
+            config.write(f)
 
-    if config.has_option(current, 'session'):
-        session = config.get(current, 'session')
-    if config.has_option(current, 'token'):
-        token = config.get(current, 'token')
+# get session (if any)
+    session = args.session
+    if session is None:
+        if config.has_option(args.current, 'session'):
+            session = config.get(args.current, 'session')
+# get token (if any)
+    token = args.token
+    if token is None:
+        if config.has_option(args.current, 'token'):
+            token = config.get(args.current, 'token')
+# NEW
+    if args.keystone is not None:
+        config.set(args.current, 'keystone', args.keystone)
 
 # extract terminal size for auto pagination
     try:
@@ -1666,42 +1741,15 @@ def main():
 # FIXME - make this work with windows
         size = (80, 20)
 
-# command line arguments override; but only if specified ie not none
-    if args.url is not None:
-        cmd = urllib.parse.urlparse(args.url)
-        protocol = cmd.scheme
-        server = cmd.hostname
-        port = cmd.port
-    if args.domain is not None:
-        domain = args.domain
-    if args.verbose is not None:
-        verbose = int(args.verbose)
-    if args.session is not None:
-        session = args.session
-    if args.keystone is not None:
-        config.set(current, 'keystone', args.keystone)
-
-# CURRENT
-    if verbose == 2:
-        logging_level = logging.DEBUG
-    elif verbose == 1:
-        logging_level = logging.INFO
-    else:
-        logging_level = logging.ERROR
-    logging.basicConfig(format='%(levelname)9s %(asctime)-15s >>> %(module)s.%(funcName)s(): %(message)s', level=logging_level)
-    logging.info("PSHELL=%s" % build)
-
 # establish mediaflux connection
     try:
         mf_client = mfclient.mf_client(protocol=protocol, server=server, port=port, domain=domain)
         mf_client.session = session
         mf_client.token = token
-# NEW
-        mf_client.config_init(config_filepath=config_filepath, config_section=current)
-
+        mf_client.config_init(config_filepath=config_filepath, config_section=args.current)
     except Exception as e:
-        print("Failed to connect to: %r://%r:%r" % (protocol, server, port))
-        print("Error: %s" % str(e))
+        logging.error("Failed to connect to: %r://%r:%r" % (protocol, server, port))
+        logging.error(str(e))
         exit(-1)
 
 # auth test - will automatically attempt to use a token (if it exists) to re-generate a valid session
@@ -1715,10 +1763,10 @@ def main():
 
 # NEW
     my_parser.s3client = s3client.s3client()
-    if config.has_option(current, 'keystone'):
-        my_parser.keystone = keystone.keystone(config.get(current, 'keystone'))
+    if config.has_option(args.current, 'keystone'):
+        my_parser.keystone = keystone.keystone(config.get(args.current, 'keystone'))
 
-    my_parser.config_name = current
+    my_parser.config_name = args.current
     my_parser.config_filepath = config_filepath
 
     my_parser.need_auth = need_auth
@@ -1749,8 +1797,8 @@ def main():
 # build non interactive input iterator
     input_list = []
     my_parser.interactive = True
-    if script:
-        input_list = itertools.chain(input_list, open(script))
+    if args.script:
+        input_list = itertools.chain(input_list, open(args.script))
         my_parser.interactive = False
 # FIXME - stricly, need regex to avoid split on quote protected &&
     if len(args.command) != 0:
@@ -1774,7 +1822,7 @@ def main():
         for item in input_list:
             line = item.strip()
             try:
-                print("%s:%s> %s" % (current, my_parser.cwd, line))
+                print("%s:%s> %s" % (args.current, my_parser.cwd, line))
                 my_parser.onecmd(line)
             except KeyboardInterrupt:
                 print(" Interrupted by user")
@@ -1788,4 +1836,6 @@ def main():
 
 
 if __name__ == '__main__':
+# On Windows calling this function is necessary.
+#    multiprocessing.freeze_support()
     main()
