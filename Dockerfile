@@ -16,7 +16,7 @@ copy keystone.py /
 copy s3client.py /
 
 # only way I could get this file (which usually sits in ~ into the container)
-#copy .mf_config /root/.mf_config
+copy .mf_config /root/.mf_config
 
 ENTRYPOINT ["/bin/bash"]
 #ENTRYPOINT ["python3", "pshell.py"]

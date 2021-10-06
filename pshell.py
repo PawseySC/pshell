@@ -1110,7 +1110,7 @@ class parser(cmd.Cmd):
 
 # NEW
         if self.s3client.is_mine(candidate):
-            self.cwd = candidate
+            self.cwd = self.s3client.cd(candidate)
             return
 
         if self.mf_client.namespace_exists(candidate):
