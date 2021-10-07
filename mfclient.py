@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import ssl
+import math
 import time
 import zlib
 import shlex
@@ -118,11 +119,13 @@ class mf_client:
             Error if server appears to be unreachable
         """
 # configure interfaces
+        self.type = "mfclient"
         self.protocol = protocol
         self.server = server
         self.port = int(port)
         self.domain = domain
         self.timeout = 120
+        self.cwd = None
 
 # NB: there can be some subtle bugs in python library handling if these are "" vs None
         self.session = ""
@@ -181,6 +184,54 @@ class mf_client:
         i = version.find("\n")
         self.logger.info("PYTHON=%s" % version[:i])
         self.logger.info("OpenSSL=%s", ssl.OPENSSL_VERSION)
+
+
+#------------------------------------------------------------
+# deprec?
+    def authenticated(self):
+        """
+        Check client authentication state
+
+        Returns:
+             A BOOLEAN value depending on the current authentication status of the Mediaflux connection
+        """
+        if self.server is None:
+            return True
+        try:
+# CURRENT - I suspect this is not multiprocessing safe ...  resulting in the false "session expired" problem during downloads
+            self.aterm_run("system.session.self.describe")
+            return True
+
+        except Exception as e:
+# NB: max licence error can occur here
+            self.logger.debug(str(e))
+
+        return False
+
+#------------------------------------------------------------
+# NEW
+
+    def connect(self):
+
+        try:
+            if self.session is not None:
+                self.aterm_run("system.session.self.describe")
+                self.logger.info("session ok")
+                return True
+        except Exception as e:
+            self.logger.info("session invalid")
+
+        try:
+            if self.token is not None:
+                self.login(token=self.token)
+                self.logger.info("token ok")
+                return True
+        except Exception as e:
+            self.logger.info("token invalid")
+
+        self.logger.info("Not authenticated to remote")
+        return False
+
 
 #------------------------------------------------------------
     def config_init(self, config_filepath=None, config_section=None):
@@ -715,27 +766,6 @@ class mf_client:
         self.session = elem.text
 
 #------------------------------------------------------------
-    def authenticated(self):
-        """
-        Check client authentication state
-
-        Returns:
-             A BOOLEAN value depending on the current authentication status of the Mediaflux connection
-        """
-        if self.server is None:
-            return True
-        try:
-# CURRENT - I suspect this is not multiprocessing safe ...  resulting in the false "session expired" problem during downloads
-            self.aterm_run("system.session.self.describe")
-            return True
-
-        except Exception as e:
-# NB: max licence error can occur here
-            self.logger.debug(str(e))
-
-        return False
-
-#------------------------------------------------------------
     def namespace_exists(self, namespace):
         """
         Wrapper around the generic service call mechanism (for testing namespace existence) that parses the result XML and returns a BOOLEAN
@@ -747,6 +777,255 @@ class mf_client:
                 return True
 
         return False
+
+#------------------------------------------------------------
+    def absolute_namespace(self, line):
+        """
+        enforce absolute remote namespace path
+        """
+
+        self.logger.debug("cwd = [%s] input = [%s]" % (self.cwd, line))
+
+        if line.startswith('"') and line.endswith('"'):
+            line = line[1:-1]
+
+        if not posixpath.isabs(line):
+            line = posixpath.join(self.cwd, line)
+
+        fullpath = posixpath.normpath(line)
+
+        return fullpath
+
+#------------------------------------------------------------
+    def complete_namespace(self, partial_ns, start):
+        """
+        Command line completion for folders
+        """
+
+        self.logger.debug("cn seek: partial_ns=[%s] start=[%d]" % (partial_ns, start))
+
+# extract any partial namespace to use as pattern match
+        match = re.match(r".*/", partial_ns)
+        if match:
+            offset = match.end()
+            pattern = partial_ns[offset:]
+        else:
+            offset = 0
+            pattern = partial_ns
+
+# namespace fragment prefix (if any) to include in the returned candidate
+        prefix = partial_ns[start:offset]
+# offset to use when extracting completion string from candidate matches
+        xlat_offset = max(0, start-offset)
+
+# special case - we "know" .. is a namespace
+        if pattern == "..":
+            return [partial_ns[start:]+"/"]
+
+# construct an absolute namespace (required for any remote lookups)
+        target_ns = self.absolute_namespace(partial_ns[:offset])
+        self.logger.debug("cn seek: target_ns: [%s] : prefix=[%r] : pattern=[%r] : start=%r : xlat=%r" % (target_ns, prefix, pattern, start, xlat_offset))
+
+# generate listing in target namespace for completion matches
+        result = self.aterm_run('asset.namespace.list :namespace "%s"' % target_ns)
+
+        ns_list = []
+        for elem in result.iter('namespace'):
+            if elem.text is not None:
+# namespace matches the pattern we're looking for?
+                item = None
+                if len(pattern) != 0:
+                    if elem.text.startswith(pattern):
+                        item = posixpath.join(prefix, elem.text[xlat_offset:]+"/")
+                else:
+                    item = posixpath.join(prefix, elem.text[xlat_offset:]+"/")
+
+                if item is not None:
+                    ns_list.append(item)
+
+        self.logger.debug("cn found: %r" % ns_list)
+
+        return ns_list
+
+# --- helper
+    def escape_single_quotes(self, namespace):
+        return namespace.replace("'", "\\'")
+
+#------------------------------------------------------------
+    def complete_asset(self, partial_asset_path, start):
+        """
+        Command line completion for files
+        """
+
+        self.logger.debug("ca seek: partial_asset=[%s] start=[%d]" % (partial_asset_path, start))
+# construct an absolute namespace (required for any remote lookups)
+        candidate_ns = self.absolute_namespace(partial_asset_path)
+
+        if self.namespace_exists(candidate_ns):
+# candidate is a namespace -> it's our target for listing
+            target_ns = candidate_ns
+# no pattern -> add all namespaces
+            pattern = None
+# replacement prefix for any matches
+            prefix = partial_asset_path[start:]
+        else:
+# candidate not a namespace -> set the parent as the namespace target
+            match = re.match(r".*/", candidate_ns)
+            if match:
+                target_ns = match.group(0)
+# extract pattern to search and prefix for any matches
+                pattern = candidate_ns[match.end():]
+                prefix = partial_asset_path[start:-len(pattern)]
+            else:
+                return None
+
+        target_ns = self.escape_single_quotes(target_ns)
+        self.logger.debug("ca seek: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix))
+
+        if pattern is not None:
+            result = self.aterm_run("asset.query :where \"namespace='%s' and name ='%s*'\" :action get-values :xpath -ename name name" % (target_ns, pattern))
+        else:
+            result = self.aterm_run("asset.query :where \"namespace='%s'\" :action get-values :xpath -ename name name" % target_ns)
+
+#       ALT? eg for elem in result.findall(".//name")
+        asset_list = []
+        for elem in result.iter("name"):
+            if elem.text is not None:
+#                asset_list.append(posixpath.join(prefix, elem.text))
+# NEW - check we're not suggesting a repeat of the non-editable part of the completion string
+                if elem.text.startswith(partial_asset_path[:start]):
+                    asset_list.append(posixpath.join(prefix, elem.text)[start:])
+                else:
+                    asset_list.append(posixpath.join(prefix, elem.text))
+
+        self.logger.debug("ca found: %r" % asset_list)
+
+        return asset_list
+
+#------------------------------------------------------------
+    def human_size(self, nbytes):
+        suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
+
+        try:
+            nbytes = int(nbytes)
+        except Exception as e:
+            self.logger.debug("Bad input integer [%r]" % nbytes)
+            nbytes = 0
+
+        if nbytes:
+            rank = int((math.log10(nbytes)) / 3)
+            rank = min(rank, len(suffixes) - 1)
+            human = nbytes / (1000.0 ** rank)
+            f = ("%.2f" % human).rstrip('0').rstrip('.')
+        else:
+            f = "0"
+            rank = 0
+
+        return "%6s %-2s" % (f, suffixes[rank])
+
+#------------------------------------------------------------
+    def rmdir(self, namespace):
+        """
+        remove a namespace
+        """
+        self.aterm_run('asset.namespace.destroy :namespace "%s"' % namespace.replace('"', '\\\"'))
+
+#------------------------------------------------------------
+    def mkdir(self, namespace):
+        """
+        create a namespace
+        """
+        self.aterm_run('asset.namespace.create :namespace "%s"' % namespace.replace('"', '\\\"'))
+
+#------------------------------------------------------------
+    def cd(self, namespace):
+
+        if self.namespace_exists(namespace):
+            self.cwd = namespace
+            return namespace
+
+        raise Exception("So such folder")
+
+#------------------------------------------------------------
+    def rm(self, fullpath):
+        """
+        remove a file
+        """
+        self.aterm_run('asset.destroy :id "path=%s"' % fullpath)
+
+#------------------------------------------------------------
+    def info(self, fullpath):
+        """
+        information on a file
+        """
+
+        output_list = []
+        result = self.aterm_run('asset.get :id "path=%s"' % self.absolute_remote_filepath(line))
+        elem = result.find(".//asset")
+        output_list.append("%-10s : %s" % ('asset ID', elem.attrib['id']))
+        xpath_list = [".//asset/path", ".//asset/ctime", ".//asset/type", ".//content/size", ".//content/csum"]
+        for xpath in xpath_list:
+            elem = result.find(xpath)
+            if elem is not None:
+                output_list.append("%-10s : %s" % (elem.tag, elem.text))
+# get content status 
+        result = self.aterm_run('asset.content.status :id "path=%s"' % self.absolute_remote_filepath(line))
+        elem = result.find(".//asset/state")
+        if elem is not None:
+            output_list.append("%-10s : %s" % (elem.tag, elem.text))
+
+# published (public URL)
+        result = self.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % self.absolute_remote_filepath(line))
+        elem = result.find(".//exists")
+        if elem is not None:
+            output_list.append("published  : %s" % elem.text)
+
+        for line in output_list:
+            print(line)
+
+#------------------------------------------------------------
+    def ls_iter(self, namespace):
+        """
+        generator for namespace/asset listing
+        """
+
+        self.logger.info("namespace = [%s]" % namespace)
+
+        if self.namespace_exists(namespace):
+            reply = self.aterm_run('asset.namespace.list :namespace "%s"' % namespace)
+            ns_list = reply.findall('.//namespace/namespace')
+            for ns in ns_list:
+                yield "[folder] %s" % ns.text
+
+# FIXME - if no assets - this will generate an exception (no iterator) 
+        result = self.aterm_run("asset.query :where \"namespace='%s'\" :as iterator :action get-values :xpath -ename id id :xpath -ename name name :xpath -ename size content/size" % namespace)
+        elem = result.find(".//iterator")
+        iterator = elem.text
+        self.logger.info("asset query iterator = [%s]" % iterator)
+
+        iterate_size = 100
+        iterate = True
+        while iterate:
+            self.logger.debug("Online iterator chunk")
+            result = self.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
+
+# FIXME - when we run out of assets we'll get a None somewhere
+#            for elem in result.iter("asset"):
+            for elem in result.findall(".//asset"):
+                asset_id = '?'
+                name = '?'
+                size = '?'
+                for child in elem:
+                    if child.tag == "id":
+                        asset_id = child.text
+                    if child.tag == "name":
+                        name = child.text
+                    if child.tag == "size":
+                        size = self.human_size(child.text)
+ 
+                yield " %-10s | %s | %s" % (asset_id, size, name)
+
+        return
 
 #------------------------------------------------------------
     def get_local_checksum(self, filepath):
@@ -761,13 +1040,13 @@ class mf_client:
         return current & 0xFFFFFFFF
 
 #------------------------------------------------------------
-    def get(self, asset_id, filepath, overwrite=False):
+#    def get(self, asset_id, filepath, overwrite=False):
+    def get(self, remote_filepath, overwrite=False):
         """
-        Download an asset to a local filepath
+        Download a remote file to the current working directory
 
         Args:
-            asset_id: an INTEGER representing the Mediaflux asset ID on the server
-            filepath: a STRING representing the full path and filename to download the asset content to
+            filepath: a STRING representing the full path and filename of the remote file
             overwrite: a BOOLEAN indicating action if local copy exists
 
         Raises:
@@ -775,17 +1054,20 @@ class mf_client:
         """
         global bytes_recv
 
-        if os.path.isfile(filepath) and not overwrite:
-            self.logger.debug("Local file of that name (%s) already exists, skipping." % filepath)
+        local_filepath = os.path.join(os.getcwd(), posixpath.basename(remote_filepath))
+        self.logger.info("Downloading remote [%s] to local [%s]" % (remote_filepath, local_filepath))
+
+        if os.path.isfile(local_filepath) and not overwrite:
+            self.logger.debug("Local file of that name already exists, skipping.")
             with bytes_recv.get_lock():
-                bytes_recv.value += os.path.getsize(filepath)
+                bytes_recv.value += os.path.getsize(local_filepath)
             return
 
 # Windows path names and the posix lexer in aterm_run() are not good friends
         if "Windows" in platform.system():
-            filepath = filepath.replace("\\", "\\\\")
+            local_filepath = local_filepath.replace("\\", "\\\\")
 
-        reply = self.aterm_run("asset.get :id %s :out %s" % (asset_id, filepath))
+        reply = self.aterm_run('asset.get :id "path=%s" :out %s' % (remote_filepath, local_filepath))
 
 #------------------------------------------------------------
     def get_managed(self, list_asset_filepath, total_bytes, processes=4):

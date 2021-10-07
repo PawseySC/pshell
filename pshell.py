@@ -36,6 +36,7 @@ import s3client
 # NEW
 import getopt
 import shlex
+import pathlib
 
 
 # standard lib python command line client for mediaflux
@@ -47,11 +48,18 @@ delegate_max = 365
 
 # NB: we want errors from server on failure so we can produce a non 0 exit code, if required
 class parser(cmd.Cmd):
+
+    config = None
     config_name = None
     config_filepath = None
+
+# CURRENT - turn into list of remotes 
     mf_client = None
     keystone = None
     s3client = None
+# NEW
+    remotes = {}
+
     cwd = '/projects'
     interactive = True
     need_auth = True
@@ -61,167 +69,93 @@ class parser(cmd.Cmd):
 
 # --- initial setup of prompt
     def preloop(self):
-        if self.need_auth:
-            self.prompt = "%s:offline>" % self.config_name
-        else:
-            self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+#        if self.need_auth:
+#            self.prompt = "%s:offline>" % self.config_name
+#        else:
+#            self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+         self.prompt = "%s:%s>" % (self.config_name, self.cwd)
 
 # --- not logged in -> don't even attempt to process remote commands
     def precmd(self, line):
-        if self.need_auth:
-            if self.requires_auth(line):
-                print("Not logged in.")
-                return cmd.Cmd.precmd(self, "")
+
+# CURRENT - can't really do this anymore as we've potentially got multiple endpoints
+#        if self.need_auth:
+#            if self.requires_auth(line):
+#                print("Not logged in.")
+#                return cmd.Cmd.precmd(self, "")
         return cmd.Cmd.precmd(self, line)
 
 # --- prompt refresh (eg after login/logout)
     def postcmd(self, stop, line):
-        if self.need_auth:
-            self.prompt = "%s:offline>" % self.config_name
-        else:
-            self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+#        if self.need_auth:
+#            self.prompt = "%s:offline>" % self.config_name
+#        else:
+#            self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+
+        self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+
         return cmd.Cmd.postcmd(self, stop, line)
 
-# --- helper: attempt to complete a namespace
-    def complete_namespace(self, partial_ns, start):
-        logging.debug("cn seek: partial_ns=[%s] start=[%d]" % (partial_ns, start))
-# extract any partial namespace to use as pattern match
-        match = re.match(r".*/", partial_ns)
-        if match:
-            offset = match.end()
-            pattern = partial_ns[offset:]
-        else:
-            offset = 0
-            pattern = partial_ns
 
-# namespace fragment prefix (if any) to include in the returned candidate
-        prefix = partial_ns[start:offset]
-# offset to use when extracting completion string from candidate matches
-        xlat_offset = max(0, start-offset)
 
-# special case - we "know" .. is a namespace
-        if pattern == "..":
-            return [partial_ns[start:]+"/"]
 
-# construct an absolute namespace (required for any remote lookups)
-        target_ns = self.absolute_remote_filepath(partial_ns[:offset])
-        logging.debug("cn seek: target_ns: [%s] : prefix=[%r] : pattern=[%r] : start=%r : xlat=%r" % (target_ns, prefix, pattern, start, xlat_offset))
-
-# generate listing in target namespace for completion matches
-        result = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % target_ns)
-
-        ns_list = []
-        for elem in result.iter('namespace'):
-            if elem.text is not None:
-# namespace matches the pattern we're looking for?
-                item = None
-                if len(pattern) != 0:
-                    if elem.text.startswith(pattern):
-                        item = posixpath.join(prefix, elem.text[xlat_offset:]+"/")
-                else:
-                    item = posixpath.join(prefix, elem.text[xlat_offset:]+"/")
-
-                if item is not None:
-                    ns_list.append(item)
-
-        logging.debug("cn found: %r" % ns_list)
-
-        return ns_list
-
-# --- helper: attempt to complete an asset
-    def complete_asset(self, partial_asset_path, start):
-        logging.debug("ca seek: partial_asset=[%s] start=[%d]" % (partial_asset_path, start))
-# construct an absolute namespace (required for any remote lookups)
-        candidate_ns = self.absolute_remote_filepath(partial_asset_path)
-
-        if self.mf_client.namespace_exists(candidate_ns):
-# candidate is a namespace -> it's our target for listing
-            target_ns = candidate_ns
-# no pattern -> add all namespaces
-            pattern = None
-# replacement prefix for any matches
-            prefix = partial_asset_path[start:]
-        else:
-# candidate not a namespace -> set the parent as the namespace target
-            match = re.match(r".*/", candidate_ns)
-            if match:
-                target_ns = match.group(0)
-# extract pattern to search and prefix for any matches
-                pattern = candidate_ns[match.end():]
-                prefix = partial_asset_path[start:-len(pattern)]
-            else:
-                return None
-
-        target_ns = self.escape_single_quotes(target_ns)
-        logging.debug("ca seek: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix))
-
-        if pattern is not None:
-            result = self.mf_client.aterm_run("asset.query :where \"namespace='%s' and name ='%s*'\" :action get-values :xpath -ename name name" % (target_ns, pattern))
-        else:
-            result = self.mf_client.aterm_run("asset.query :where \"namespace='%s'\" :action get-values :xpath -ename name name" % target_ns)
-
-#       ALT? eg for elem in result.findall(".//name")
-        asset_list = []
-        for elem in result.iter("name"):
-            if elem.text is not None:
-#                asset_list.append(posixpath.join(prefix, elem.text))
-# NEW - check we're not suggesting a repeat of the non-editable part of the completion string
-                if elem.text.startswith(partial_asset_path[:start]):
-                    asset_list.append(posixpath.join(prefix, elem.text)[start:])
-                else:
-                    asset_list.append(posixpath.join(prefix, elem.text))
-
-        logging.debug("ca found: %r" % asset_list)
-
-        return asset_list
 
 # NB: if the return result is ambigious (>1 option) it'll require 2 presses to get the list
 # turn off DEBUG -> gets in the way of commandline completion
 # NB: index offsets are 1 greater than the command under completion
 
+# TODO - rename asset->file namespace->folder ... generic
 # ---
     def complete_get(self, text, line, start_index, end_index):
-        candidate_list = self.complete_asset(line[4:end_index], start_index-4)
-        candidate_list += self.complete_namespace(line[4:end_index], start_index-4)
+        remote = self.remotes_get(line)
+        candidate_list = remote.complete_asset(line[4:end_index], start_index-4)
+        candidate_list += remote.complete_namespace(line[4:end_index], start_index-4)
         return candidate_list
 
 # ---
     def complete_rm(self, text, line, start_index, end_index):
-        candidate_list = self.complete_asset(line[3:end_index], start_index-3)
-        candidate_list += self.complete_namespace(line[3:end_index], start_index-3)
+        remote = self.remotes_get(line)
+        candidate_list = remote.complete_asset(line[3:end_index], start_index-3)
+        candidate_list += remote.complete_namespace(line[3:end_index], start_index-3)
         return candidate_list
 
 # ---
     def complete_file(self, text, line, start_index, end_index):
-        candidate_list = self.complete_asset(line[5:end_index], start_index-5)
-        candidate_list += self.complete_namespace(line[5:end_index], start_index-5)
+        remote = self.remotes_get(line)
+        candidate_list = remote.complete_asset(line[5:end_index], start_index-5)
+        candidate_list += remote.complete_namespace(line[5:end_index], start_index-5)
         return candidate_list
 
 # ---
     def complete_publish(self, text, line, start_index, end_index):
-        candidate_list = self.complete_asset(line[8:end_index], start_index-8)
-        candidate_list += self.complete_namespace(line[8:end_index], start_index-8)
+        remote = self.remotes_get(line)
+        candidate_list = remote.complete_asset(line[8:end_index], start_index-8)
+        candidate_list += remote.complete_namespace(line[8:end_index], start_index-8)
         return candidate_list
 
 # ---
     def complete_ls(self, text, line, start_index, end_index):
-        candidate_list = self.complete_asset(line[3:end_index], start_index-3)
-        candidate_list += self.complete_namespace(line[3:end_index], start_index-3)
+        remote = self.remotes_get(line)
+        candidate_list = remote.complete_asset(line[3:end_index], start_index-3)
+        candidate_list += remote.complete_namespace(line[3:end_index], start_index-3)
         return candidate_list
 
 # ---
     def complete_cd(self, text, line, start_index, end_index):
-        ns_list = self.complete_namespace(line[3:end_index], start_index-3)
+        remote = self.remotes_get(line)
+        ns_list = remote.complete_namespace(line[3:end_index], start_index-3)
         return ns_list
 
 # ---
-    def complete_mkdir(self, text, line, start_index, end_index):
-        ns_list = self.complete_namespace(line[6:end_index], start_index-6)
-        return ns_list
+#    def complete_mkdir(self, text, line, start_index, end_index):
+#        remote = self.remotes_get(line)
+#        ns_list = remote.complete_namespace(line[6:end_index], start_index-6)
+#        return ns_list
 
 # ---
     def complete_rmdir(self, text, line, start_index, end_index):
-        ns_list = self.complete_namespace(line[6:end_index], start_index-6)
+        remote = self.remotes_get(line)
+        ns_list = remote.complete_namespace(line[6:end_index], start_index-6)
         return ns_list
 
 # ---
@@ -234,6 +168,96 @@ class parser(cmd.Cmd):
         reply = self.mf_client.aterm_run(line)
         self.mf_client.xml_print(reply)
         return
+
+
+# --- helper: 
+    def config_save(self):
+        logging.info("saving config to file = %s" % self.config_filepath)
+        with open(self.config_filepath, 'w') as f:
+            self.config.write(f)
+
+
+    def remotes_config_save(self, mount):
+
+        module = self.remotes[mount]
+        logging.info("mount = [%s] module = [%r]" % (mount, module))
+
+        endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
+
+        if module.type == 'mfclient':
+            endpoints[mount]['session'] = module.session
+            endpoints[mount]['token'] = module.token
+        else:
+            logging.info("TODO - refresh on remote credentials for [%s]" % module.type)
+
+        self.config[self.config_name] = {'endpoints':json.dumps(endpoints) }
+        self.config_save()
+
+
+
+# CURRENT
+    def remotes_add(self, mount='/remote', module=None):
+
+        logging.info("mount = [%s], module = [%r]" % (mount, module))
+
+        self.remotes[mount] = module
+
+# init cwd
+        self.cwd = module.cd(mount)
+
+# NEW
+        if module.connect() is True:
+
+            logging.info("connected=True, update config section [%s] in config [%r]" % (self.config_name, self.config))
+
+            self.remotes_config_save(mount)
+
+#            if module.type == 'mfclient':
+#                endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
+#
+#                endpoint = endpoints[mount]
+#                endpoint['session'] = module.session
+#
+#                self.config[self.config_name] = {'endpoints':json.dumps(endpoints) }
+#
+#            self.config_save()
+
+
+    def remotes_mount_get(self, path):
+        fullpath = self.absolute_remote_filepath(path)
+        logging.info("fullpath = [%s]" % fullpath)
+        mypath = pathlib.PurePosixPath(fullpath)
+        try:
+            mount = "%s%s" % (mypath.parts[0], mypath.parts[1])
+            logging.info("mount = [%r]" % mount)
+            return mount
+        except Exception as e:
+            logging.debug(str(e))
+
+        return None
+
+
+# TODO - rename remotes_client_get
+
+    def remotes_get(self, path):
+
+        mount = self.remotes_mount_get(path)
+        if mount in self.remotes:
+            logging.info("active remote = [%r]" % self.remotes[mount])
+            return self.remotes[mount]
+
+        return None
+
+
+
+    def do_remotes(self, line):
+        logging.info("line = [%s]" % line)
+        if "list" in line:
+            print(self.remotes)
+
+
+
+
 
 # --- helper
     def requires_auth(self, line):
@@ -329,31 +353,42 @@ class parser(cmd.Cmd):
         print("Usage: file <filename>\n")
 
     def do_file(self, line):
+
+        fullpath = self.absolute_remote_filepath(line)
+
+        remote = self.remotes_get(fullpath)
+
+        try:
+            remote.info(fullpath)
+        except Exception as e:
+            logging.debug(str(e))
+
+
 # get asset metadata
-        output_list = []
-        result = self.mf_client.aterm_run('asset.get :id "path=%s"' % self.absolute_remote_filepath(line))
-        elem = result.find(".//asset")
-        output_list.append("%-10s : %s" % ('asset ID', elem.attrib['id']))
-        xpath_list = [".//asset/path", ".//asset/ctime", ".//asset/type", ".//content/size", ".//content/csum"]
-        for xpath in xpath_list:
-            elem = result.find(xpath)
-            if elem is not None:
-                output_list.append("%-10s : %s" % (elem.tag, elem.text))
+#        output_list = []
+#        result = self.mf_client.aterm_run('asset.get :id "path=%s"' % self.absolute_remote_filepath(line))
+#        elem = result.find(".//asset")
+#        output_list.append("%-10s : %s" % ('asset ID', elem.attrib['id']))
+#        xpath_list = [".//asset/path", ".//asset/ctime", ".//asset/type", ".//content/size", ".//content/csum"]
+#        for xpath in xpath_list:
+#            elem = result.find(xpath)
+#            if elem is not None:
+#                output_list.append("%-10s : %s" % (elem.tag, elem.text))
 # get content status 
-        result = self.mf_client.aterm_run('asset.content.status :id "path=%s"' % self.absolute_remote_filepath(line))
-        elem = result.find(".//asset/state")
-        if elem is not None:
-            output_list.append("%-10s : %s" % (elem.tag, elem.text))
+#        result = self.mf_client.aterm_run('asset.content.status :id "path=%s"' % self.absolute_remote_filepath(line))
+#        elem = result.find(".//asset/state")
+#        if elem is not None:
+#            output_list.append("%-10s : %s" % (elem.tag, elem.text))
 
 # published (public URL)
-        result = self.mf_client.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % self.absolute_remote_filepath(line))
-        elem = result.find(".//exists")
-        if elem is not None:
-            output_list.append("published  : %s" % elem.text)
+#        result = self.mf_client.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % self.absolute_remote_filepath(line))
+#        elem = result.find(".//exists")
+#        if elem is not None:
+#            output_list.append("published  : %s" % elem.text)
 
 # output info
-        for line in output_list:
-            print(line)
+#        for line in output_list:
+#            print(line)
 
 # ---
 # TODO - EC2 create/delete/list
@@ -373,12 +408,14 @@ class parser(cmd.Cmd):
             if nargs > 1:
                 self.keystone.credentials_create(args[1])
                 self.keystone.discover_s3(self.s3client)
+                self.remotes_add('/'+self.s3client.prefix, self.s3client)
             else:
                 raise Exception("Error: missing project reference")
         if 'delete' in line:
             if nargs > 1:
                 self.keystone.credentials_delete(args[1])
                 self.keystone.discover_s3(self.s3client)
+                self.remotes_add('/'+self.s3client.prefix, self.s3client)
             else:
                 raise Exception("Error: missing access reference")
 
@@ -545,9 +582,26 @@ class parser(cmd.Cmd):
             show_more = False
 
 # NEW 
-        if self.s3client.is_mine(candidate):
-            self.s3client.ls(candidate)
-            return
+        remote = self.remotes_get(candidate)
+
+        remote_list = remote.ls_iter(candidate)
+
+        for line in remote_list:
+            print(line)
+
+        return
+
+
+#        try:
+#            remote.ls(candidate)
+#            return
+#        except Exception as e:
+#            logging.info(str(e))
+
+#        if self.s3client.is_mine(candidate):
+#            self.s3client.ls(candidate)
+#            return
+
 
         ns_list = []
         try:
@@ -816,9 +870,16 @@ class parser(cmd.Cmd):
         line = self.absolute_remote_filepath(line)
 
 # NEW 
-        if self.s3client.is_mine(line):
-            self.s3client.get(line)
+        remote = self.remotes_get(line)
+        try:
+            remote.get(line)
             return
+        except Exception as e:
+            logging.info(str(e))
+
+#        if self.s3client.is_mine(line):
+#            self.s3client.get(line)
+#            return
 
 # sanitise as asset.query is special
         double_escaped = self.escape_single_quotes(line)
@@ -997,11 +1058,19 @@ class parser(cmd.Cmd):
 # built, now upload
 # TODO - wrapper for async upload ... worth looking at twisted for all of this???
 # NEW
-        if self.s3client.is_mine(self.cwd):
-            self.s3client.managed_put(upload_list)
-            return
 
-        self.managed_put(upload_list, meta)
+        remote = self.remotes_get(line)
+        try:
+            remote.managed_put(upload_list)
+#        remote.managed_put(upload_list, meta)
+            return
+        except Exception as e:
+            logging.info(str(e))
+
+#        if self.s3client.is_mine(self.cwd):
+#            self.s3client.managed_put(upload_list)
+#            return
+
 
 # -- wrapper for monitoring an upload
     def managed_put(self, upload_list, meta=False):
@@ -1099,7 +1168,7 @@ class parser(cmd.Cmd):
 # TODO - mfclient.s3copy_managed() method for this ???
 
 
-# --
+#------------------------------------------------------------
     def help_cd(self):
         print("\nChange the current remote folder\n")
         print("Usage: cd <folder>\n")
@@ -1109,16 +1178,23 @@ class parser(cmd.Cmd):
         candidate = self.absolute_remote_filepath(line)
 
 # NEW
-        if self.s3client.is_mine(candidate):
-            self.cwd = self.s3client.cd(candidate)
-            return
+        remote = self.remotes_get(candidate)
 
-        if self.mf_client.namespace_exists(candidate):
-            self.cwd = candidate
-            print("Remote: %s" % self.cwd)
-        else:
-            raise Exception(" Could not find remote folder: %s" % candidate)
-# --
+        try:
+            self.cwd = remote.cd(candidate)
+            return
+        except Exception as e:
+            logging.info(str(e))
+
+#        if self.s3client.is_mine(candidate):
+#            self.cwd = self.s3client.cd(candidate)
+#        if self.mf_client.namespace_exists(candidate):
+#            self.cwd = candidate
+#            print("Remote: %s" % self.cwd)
+#        else:
+#            raise Exception(" Could not find remote folder: %s" % candidate)
+
+#------------------------------------------------------------
     def help_pwd(self):
         print("\nDisplay the current remote folder\n")
         print("Usage: pwd\n")
@@ -1127,7 +1203,7 @@ class parser(cmd.Cmd):
     def do_pwd(self, line):
         print("Remote: %s" % repr(self.cwd))
 
-# --
+#------------------------------------------------------------
     def help_mkdir(self):
         print("\nCreate a remote folder\n")
         print("Usage: mkdir <folder>\n")
@@ -1136,19 +1212,29 @@ class parser(cmd.Cmd):
         ns_target = self.absolute_remote_filepath(line)
 
 # NEW
-        if self.s3client.is_mine(ns_target):
-            self.s3client.create_bucket(ns_target)
-            return
+        remote = self.remotes_get(ns_target)
+        remote.mkdir(ns_target)
 
-        try:
-            self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % ns_target.replace('"', '\\\"'))
-        except Exception as e:
-            if "already exists" in str(e):
-                if silent is False:
-                    print("Folder already exists: %s" % ns_target)
-                pass
-            else:
-                raise e
+
+#        try:
+#            remote.create_bucket(ns_target)
+#            return
+#        except Exception as e:
+#            logging.info(str(e))
+
+#        if self.s3client.is_mine(ns_target):
+#            self.s3client.create_bucket(ns_target)
+#            return
+
+#        try:
+#            self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % ns_target.replace('"', '\\\"'))
+#        except Exception as e:
+#            if "already exists" in str(e):
+#                if silent is False:
+#                    print("Folder already exists: %s" % ns_target)
+#                pass
+#            else:
+#                raise e
 
 # --
     def help_rm(self):
@@ -1160,26 +1246,28 @@ class parser(cmd.Cmd):
         fullpath = self.absolute_remote_filepath(line)
 
 # NEW
-        if self.s3client.is_mine(fullpath):
-            self.s3client.delete_object(fullpath)
-            return
+        remote = self.remotes_get(fullpath)
 
-        namespace = posixpath.dirname(fullpath)
-        pattern = posixpath.basename(fullpath)
-        base_query = "namespace='%s' and name='%s'" % (self.escape_single_quotes(namespace), self.escape_single_quotes(pattern))
+        if self.ask("Delete files (y/n) "):
+            remote.rm(fullpath)
+
+
+#        namespace = posixpath.dirname(fullpath)
+#        pattern = posixpath.basename(fullpath)
+#        base_query = "namespace='%s' and name='%s'" % (self.escape_single_quotes(namespace), self.escape_single_quotes(pattern))
 
 # prepare - count matches
-        result = self.mf_client.aterm_run('asset.query :where "%s" :action count' % base_query)
+#        result = self.mf_client.aterm_run('asset.query :where "%s" :action count' % base_query)
 # confirm remove
-        elem = result.find(".//value")
-        count = int(elem.text)
-        if count == 0:
-            print("No match")
-        else:
-            if self.ask("Remove %d files: (y/n) " % count):
-                self.mf_client.aterm_run('asset.query :where "%s" :action pipe :service -name asset.destroy' % base_query)
-            else:
-                print("Aborted")
+#        elem = result.find(".//value")
+#        count = int(elem.text)
+#        if count == 0:
+#            print("No match")
+#        else:
+#            if self.ask("Remove %d files: (y/n) " % count):
+#                self.mf_client.aterm_run('asset.query :where "%s" :action pipe :service -name asset.destroy' % base_query)
+#            else:
+#                print("Aborted")
 
 # -- rmdir
     def help_rmdir(self):
@@ -1191,17 +1279,22 @@ class parser(cmd.Cmd):
         ns_target = self.absolute_remote_filepath(line)
 
 # NEW
-        if self.s3client.is_mine(ns_target):
-            self.s3client.delete_bucket(ns_target)
-            return
-
-        if self.mf_client.namespace_exists(ns_target):
-            if self.ask("Remove folder: %s (y/n) " % ns_target):
-                self.mf_client.aterm_run('asset.namespace.destroy :namespace "%s"' % ns_target.replace('"', '\\\"'))
-            else:
-                print("Aborted")
+        remote = self.remotes_get(ns_target)
+        if self.ask("Remove folder: %s (y/n) " % ns_target):
+            remote.rmdir(ns_target)
         else:
-            raise Exception(" Could not find remote folder: %s" % ns_target)
+            print("Aborted")
+
+
+#        try:
+#            remote.delete_bucket(ns_target)
+#            return
+#        except Exception as e:
+#            logging.info(str(e))
+#        if self.s3client.is_mine(ns_target):
+#            self.s3client.delete_bucket(ns_target)
+#            return
+
 
 # -- local commands
 
@@ -1325,29 +1418,50 @@ class parser(cmd.Cmd):
         print("Usage: login\n")
 
     def do_login(self, line):
-        logging.info("Authentication domain [%s]" % self.mf_client.domain)
-        user = input("Username: ")
-        password = getpass.getpass("Password: ")
-# login, else exception 
-        self.mf_client.login(user, password)
-        self.need_auth = False
-        self.mf_client.config_save(refresh_session=True)
+
+        remote = self.remotes_get(self.cwd)
+        logging.info("remote type = [%s]" % remote.type)
+        if remote.type == 'mfclient':
+            logging.info("Authentication domain [%s]" % remote.domain)
+            user = input("Username: ")
+            password = getpass.getpass("Password: ")
+            remote.login(user, password)
+
+# NEW
+
+            mount = self.remotes_mount_get(self.cwd)
+            self.remotes_config_save(mount)
+
+
+#            endpoint = json.loads(self.config.get(self.config_name, 'endpoint'))
+#            endpoint['session'] = remote.session
+#            self.config[self.config_name] = {'endpoint':json.dumps(endpoint) }
+#            self.config_save()
+
+# deprec?
+#            self.need_auth = False
+
+
+#        self.mf_client.config_save(refresh_session=True)
 # NEW - add to secure wallet for identity management
-        xml_reply = self.mf_client.aterm_run("secure.wallet.can.be.used")
-        elem = xml_reply.find(".//can")
-        if "true" in elem.text:
-            logging.info("Wallet can be used")
-        else:
-            self.mf_client.aterm_run("secure.wallet.recreate :password %s" % password)
+#        xml_reply = self.mf_client.aterm_run("secure.wallet.can.be.used")
+#        elem = xml_reply.find(".//can")
+#        if "true" in elem.text:
+#            logging.info("Wallet can be used")
+#        else:
+#            self.mf_client.aterm_run("secure.wallet.recreate :password %s" % password)
 # TODO - encrypt so it's not plain text 
-        self.mf_client.aterm_run("secure.wallet.set :key ldap :value %s" % password)
-        if self.keystone:
-            try:
-                self.keystone.connect(self.mf_client, refresh=True)
-                self.keystone.discover_s3(self.s3client)
-            except Exception as e:
-                logging.error(str(e))
-                pass
+#        self.mf_client.aterm_run("secure.wallet.set :key ldap :value %s" % password)
+#
+#        if self.keystone:
+#            try:
+#                self.keystone.connect(self.mf_client, refresh=True)
+#                self.keystone.discover_s3(self.s3client)
+#            except Exception as e:
+#                logging.error(str(e))
+#                pass
+
+
 
 # --
     def help_delegate(self):
@@ -1356,16 +1470,22 @@ class parser(cmd.Cmd):
         print("Usage: delegate <days/off>\n")
 
     def do_delegate(self, line):
+
+        remote = self.remotes_get(self.cwd)
+        if remote.type != 'mfclient':
+            return
+
+
 # argument parse
         dt = delegate_default
         destroy_session = False
         if line:
             if line == "off":
                 try:
-                    self.mf_client.aterm_run("secure.identity.token.all.destroy")
+                    remote.aterm_run("secure.identity.token.all.destroy")
                     logging.debug("Removed secure tokens from server")
 # figure out the current session
-                    reply = self.mf_client.aterm_run("actor.self.describe")
+                    reply = remote.aterm_run("actor.self.describe")
                     if 'identity' in reply.find(".//actor").attrib['type']:
                         destroy_session = True
                 except:
@@ -1373,14 +1493,17 @@ class parser(cmd.Cmd):
                     logging.debug("Failed to remove secure tokens from server")
                     destroy_session = True
 # remove all auth info and update config
-                self.mf_client.token = ""
+                remote.token = ""
                 use_token = False
 
 # if current session is delegate based - destroy it too
                 if destroy_session:
-                    self.mf_client.session = ""
+                    remote.session = ""
                     self.need_auth = True
-                self.mf_client.config_save(refresh_token=True, refresh_session=True)
+
+#                self.mf_client.config_save(refresh_token=True, refresh_session=True)
+                self.config_save()
+
                 print("Delegate credentials removed.")
                 return
             else:
@@ -1396,7 +1519,7 @@ class parser(cmd.Cmd):
         domain = None
         user = None
         name = None
-        result = self.mf_client.aterm_run("actor.self.describe")
+        result = remote.aterm_run("actor.self.describe")
         elem = result.find(".//actor")
         if elem is not None:
             actor = elem.attrib['name']
@@ -1409,12 +1532,20 @@ class parser(cmd.Cmd):
 
 # create secure token (delegate) and assign current authenticated identity to the token
         logging.debug("Attempting to delegate for: domain=%s, user=%s, until=%r" % (domain, user, expiry))
-        result = self.mf_client.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16 :wallet true' % (expiry, actor, domain))
+        result = remote.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16 :wallet true' % (expiry, actor, domain))
         for elem in result.iter():
             if elem.tag == 'token':
                 print("Delegate valid until: " + expiry)
-                self.mf_client.token = elem.text
-                self.mf_client.config_save(refresh_token=True)
+                remote.token = elem.text
+
+# NEW
+                endpoint = json.loads(self.config.get(self.config_name, 'endpoint'))
+                endpoint['token'] = remote.token
+                self.config[self.config_name] = {'endpoint':json.dumps(endpoint) }
+                self.config_save()
+
+
+#                self.mf_client.config_save(refresh_token=True)
                 return
         raise Exception("Delegate command successfull; but failed to find return token")
 
@@ -1657,14 +1788,15 @@ def main():
 
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
-    p.add_argument("-c", dest='current', default=None, help="the config name in $HOME/.mf_config to connect to")
+    p.add_argument("-c", dest='current', default='pawsey', help="the config name in $HOME/.mf_config to connect to")
     p.add_argument("-i", dest='script', help="input script file containing pshell commands")
     p.add_argument("-o", dest='output', default=None, help="output any failed commands to a script")
     p.add_argument("-v", dest='verbose', default=None, help="set verbosity level (0,1,2)")
-    p.add_argument("-u", dest='url', default='https://data.pawsey.org.au:443', help="Mediaflux server URL")
-    p.add_argument("-d", dest='domain', default="ivec", help="login authentication domain")
+    p.add_argument("-u", dest='url', default=None, help="Remote endpoint")
+    p.add_argument("-d", dest='domain', default='ivec', help="login authentication domain")
     p.add_argument("-s", dest='session', default=None, help="session")
     p.add_argument("-t", dest='token', default=None, help="token")
+    p.add_argument("-m", dest='mount', default='/projects', help="mount point for remote")
     p.add_argument("--keystone", dest='keystone', default=None, help="A URL to the REST interface for Keystone (Openstack)")
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
@@ -1681,57 +1813,90 @@ def main():
     logging.basicConfig(format='%(levelname)9s %(asctime)-15s >>> %(module)s.%(funcName)s(): %(message)s', level=logging_level)
     logging.info("PSHELL=%s" % build)
 
+
+# TODO - may have to completely rework the ini file for the endpoint/type/name structure
+#import ConfigParser
+#import json
+#IniRead = ConfigParser.ConfigParser()
+#IniRead.read('{0}\{1}'.format(config_path, 'config.ini'))
+#value = json.loads(IniRead.get('Section', 'Value'))
+
 # get local path for storing the config, fallback to CWD if system gives a dud path for ~
-    config_filepath = os.path.expanduser("~/.mf_config")
+#    config_filepath = os.path.expanduser("~/.mf_config")
+
+    config_filepath = os.path.expanduser("~/.pshell_config")
     try:
         open(config_filepath, 'a').close()
     except:
-        config_filepath = os.path.join(os.getcwd(), ".mf_config")
+        config_filepath = os.path.join(os.getcwd(), ".pshell_config")
+
     config = configparser.ConfigParser()
     logging.debug("Reading config file: [%s]" % config_filepath)
     config.read(config_filepath)
+
 # attempt to use the current section in the config for connection info
     try:
-        logging.debug("Using section: [%s] in config" % args.current)
-        server = config.get(args.current, 'server')
-        protocol = config.get(args.current, 'protocol')
-        port = config.get(args.current, 'port')
-        domain = config.get(args.current, 'domain')
-    except:
-# connection info doesn't exist or is incomplete - fallback to url or die trying
-        logging.debug("Using url: [%s] for base config" % args.url)
-        cmd = urllib.parse.urlparse(args.url)
-        protocol = cmd.scheme
-        server = cmd.hostname
-        port = cmd.port
-        if port == 80:
-            encrypt=False
+        add_endpoint = True
+        if config.has_section(args.current) is True:
+            logging.info("Using section: [%s] in config" % args.current)
+            endpoints = json.loads(config.get(args.current, 'endpoints'))
         else:
-            encrypt=True
-        domain = args.domain
-        args.current = server
+
+            if args.url is None:
+                args.url = 'https://data.pawsey.org.au:443'
+            else:
+                args.current = 'custom'
+            
+            logging.info("Overriding with url: [%s]" % args.url)
+
+# WTF - not extracting the port
+            aaa = urllib.parse.urlparse(args.url)
+
+# HACK - workaround for urlparse not extracting port, despite the doco indicating it should
+            p = '(?:http.*://)?(?P<host>[^:/ ]+).?(?P<port>[0-9]*).*'
+            m = re.search(p,args.url)
+            port = m.group('port')
+
+            logging.info(str(aaa))
+
+# FIXME - historically, have to assume it's mflux but now could be s3 
+# FIXME - could adopt a scheme where we use "mflux://data.pawsey.org.au:443" and "s3://etc" ... and assume the proto from the port
+            endpoint = {'name':args.current, 'type':'mfclient', 'protocol':aaa.scheme, 'server':aaa.hostname, 'port':port, 'domain':args.domain }
+
+            if port == 80:
+                endpoint['encrypt'] = False
+            else:
+                endpoint['encrypt'] = True
 
 # no such config section - add and save
-    if config.has_section(args.current) is False:
-        logging.debug("Adding section: [%s] in config" % args.current)
-        config[args.current] = {'server':str(server), 'protocol':str(protocol), 'port':str(port), 'encrypt':str(encrypt), 'domain':str(domain) }
-#        config[args.current]['namespace'] = '/projects'
-        with open(config_filepath, 'w') as f:
-            config.write(f)
+
+            logging.info("Saving section: [%s] in config" % args.current)
+
+            endpoints = { args.mount:endpoint }
+            config[args.current] = {'endpoints':json.dumps(endpoints)}
+            with open(config_filepath, 'w') as f:
+                config.write(f)
+
+    except Exception as e:
+        logging.debug(str(e))
+        logging.info("No remote endpoints configured.")
+        add_endpoint = False
+
 
 # get session (if any)
-    session = args.session
-    if session is None:
-        if config.has_option(args.current, 'session'):
-            session = config.get(args.current, 'session')
+#    session = args.session
+#    if session is None:
+#        if config.has_option(args.current, 'session'):
+#            session = config.get(args.current, 'session')
 # get token (if any)
-    token = args.token
-    if token is None:
-        if config.has_option(args.current, 'token'):
-            token = config.get(args.current, 'token')
-# NEW
-    if args.keystone is not None:
-        config.set(args.current, 'keystone', args.keystone)
+#    token = args.token
+#    if token is None:
+#        if config.has_option(args.current, 'token'):
+#            token = config.get(args.current, 'token')
+#
+#    if args.keystone is not None:
+#        config.set(args.current, 'keystone', args.keystone)
+
 
 # extract terminal size for auto pagination
     try:
@@ -1742,43 +1907,94 @@ def main():
         size = (80, 20)
 
 # establish mediaflux connection
-    try:
-        mf_client = mfclient.mf_client(protocol=protocol, server=server, port=port, domain=domain)
-        mf_client.session = session
-        mf_client.token = token
-        mf_client.config_init(config_filepath=config_filepath, config_section=args.current)
-    except Exception as e:
-        logging.error("Failed to connect to: %r://%r:%r" % (protocol, server, port))
-        logging.error(str(e))
-        exit(-1)
+#    try:
+#        mf_client = mfclient.mf_client(protocol=protocol, server=server, port=port, domain=domain)
+#        mf_client.session = session
+#        mf_client.token = token
+#        mf_client.config_init(config_filepath=config_filepath, config_section=args.current)
+#    except Exception as e:
+#        logging.error("Failed to connect to: %r://%r:%r" % (protocol, server, port))
+#        logging.error(str(e))
+#        exit(-1)
 
 # auth test - will automatically attempt to use a token (if it exists) to re-generate a valid session
-    need_auth = True
-    if mf_client.authenticated():
-        need_auth = False
+#    need_auth = True
+#    if mf_client.authenticated():
+#        need_auth = False
 
 # hand control of mediaflux client over to parsing loop
     my_parser = parser()
-    my_parser.mf_client = mf_client
 
-# NEW
-    my_parser.s3client = s3client.s3client()
-    if config.has_option(args.current, 'keystone'):
-        my_parser.keystone = keystone.keystone(config.get(args.current, 'keystone'))
-
+    my_parser.config = config
     my_parser.config_name = args.current
     my_parser.config_filepath = config_filepath
 
-    my_parser.need_auth = need_auth
+#    my_parser.need_auth = need_auth
+    my_parser.need_auth = True
+
+
+# TODO - rework from config.endpoint_list
+
+    endpoint = None
+
+# add endpoints
+    try:
+
+        for mount in endpoints:
+
+            endpoint = endpoints[mount]
+
+            logging.info("Connecting [%s] on [%s]" % (mount, endpoint))
+
+            if endpoint['type'] == 'mfclient':
+                logging.info("Adding mediaflux endpoint")
+                mf_client = mfclient.mf_client(protocol=endpoint['protocol'], server=endpoint['server'], port=endpoint['port'], domain=endpoint['domain'])
+
+                if 'session' in endpoint:
+                    mf_client.session = endpoint['session']
+                if 'token' in endpoint:
+                    mf_client.token = endpoint['token']
+
+                my_parser.remotes_add(mount, mf_client)
+
+
+            elif endpoint['type'] == 's3':
+                loging.info("TODO - config S3 endpoint")
+
+    except Exception as e:
+        logging.error(str(e))
+
+
+# CURRENT - this will break everything until we fully implement new remotes lookup
+
+#    my_parser.mf_client = mf_client
+
+
+
+# NEW
+#    my_parser.s3client = s3client.s3client()
+#    if config.has_option(args.current, 'keystone'):
+#        my_parser.keystone = keystone.keystone(config.get(args.current, 'keystone'))
+
+# even NEWER
+#    my_parser.remotes_add('/projects', mf_client)
+
+
+
+
 # just in case the terminal height calculation returns a very low value
     my_parser.terminal_height = max(size[0], my_parser.terminal_height)
 # HACK - auto adjust process count based on network capability 
 # the main issue is low capability drives being overstressed by too many random requests
 # FIXME - ideally we'd sample rw io for disk and net to compute the sweet spot
-    if mf_client.encrypted_data:
-       my_parser.transfer_processes = 2
-    else:
-       my_parser.transfer_processes = 4
+#    if mf_client.encrypted_data:
+#       my_parser.transfer_processes = 2
+#    else:
+#       my_parser.transfer_processes = 4
+    my_parser.transfer_processes = 2
+
+
+
 # NEW - restart script
     if args.output is not None:
         my_parser.script_output = args.output
@@ -1810,6 +2026,8 @@ def main():
         try:
             my_parser.keystone.connect(mf_client, refresh=False)
             my_parser.keystone.discover_s3(my_parser.s3client)
+            my_parser.remotes_add('/'+my_parser.s3client.prefix, my_parser.s3client)
+
         except Exception as e:
             logging.error(str(e))
             pass

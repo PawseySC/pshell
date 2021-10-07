@@ -28,6 +28,7 @@ class s3client:
         self.prefix = None
         self.cwd = None
         self.s3 = None
+        self.type = "s3"
         self.logger = logging.getLogger('s3client')
 # CURRENT
 #        self.logger.setLevel(logging.DEBUG)
@@ -187,6 +188,8 @@ class s3client:
                         print("%d B | %s" % (item['Size'], item['Key']))
 
 # TODO - pagination
+# testing directory = /magenta-storage/mybucket/mediaflux_store_598_4/data
+
             try:
                 is_truncated = reply['IsTruncated']
                 if is_truncated:
@@ -197,7 +200,6 @@ class s3client:
 
             except Exception as e:
                 self.logger.info(str(e))
-
 
 
 #            paginator = self.s3.get_paginator('list_objects_v2')
@@ -238,7 +240,7 @@ class s3client:
             self.put(item[0], item[1])
 
 #------------------------------------------------------------
-    def delete_object(self, filepath):
+    def rm(self, filepath):
         bucket,key = self.path_split(filepath)
 
         if bucket is not None and key is not None:
@@ -249,7 +251,7 @@ class s3client:
 
 #------------------------------------------------------------
 # TODO - this might have to become create bucket/folder -> split the components and then implement separately
-    def create_bucket(self, path):
+    def mkdir(self, path):
 
         bucket,key = self.path_split(path)
 
@@ -259,7 +261,7 @@ class s3client:
             raise Exception("No valid remote bucket in path [%s]" % path)
 
 #------------------------------------------------------------
-    def delete_bucket(self, path):
+    def rmdir(self, path):
         bucket,key = self.path_split(path)
 
         if bucket is not None and key is None:
