@@ -54,9 +54,9 @@ class parser(cmd.Cmd):
     config_filepath = None
 
 # CURRENT - turn into list of remotes 
-    mf_client = None
+#    mf_client = None
     keystone = None
-    s3client = None
+#    s3client = None
 # NEW
     remotes = {}
 
@@ -169,21 +169,17 @@ class parser(cmd.Cmd):
         self.mf_client.xml_print(reply)
         return
 
-
-# --- helper: 
+#------------------------------------------------------------
     def config_save(self):
         logging.info("saving config to file = %s" % self.config_filepath)
         with open(self.config_filepath, 'w') as f:
             self.config.write(f)
 
-
+# ---
     def remotes_config_save(self, mount):
-
         module = self.remotes[mount]
         logging.info("mount = [%s] module = [%r]" % (mount, module))
-
         endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
-
         if module.type == 'mfclient':
             endpoints[mount]['session'] = module.session
             endpoints[mount]['token'] = module.token
@@ -193,36 +189,18 @@ class parser(cmd.Cmd):
         self.config[self.config_name] = {'endpoints':json.dumps(endpoints) }
         self.config_save()
 
-
-
-# CURRENT
+# ---
     def remotes_add(self, mount='/remote', module=None):
 
         logging.info("mount = [%s], module = [%r]" % (mount, module))
-
         self.remotes[mount] = module
 
 # init cwd
         self.cwd = module.cd(mount)
-
-# NEW
         if module.connect() is True:
-
-            logging.info("connected=True, update config section [%s] in config [%r]" % (self.config_name, self.config))
-
             self.remotes_config_save(mount)
 
-#            if module.type == 'mfclient':
-#                endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
-#
-#                endpoint = endpoints[mount]
-#                endpoint['session'] = module.session
-#
-#                self.config[self.config_name] = {'endpoints':json.dumps(endpoints) }
-#
-#            self.config_save()
-
-
+# ---
     def remotes_mount_get(self, path):
         fullpath = self.absolute_remote_filepath(path)
         logging.info("fullpath = [%s]" % fullpath)
@@ -236,24 +214,23 @@ class parser(cmd.Cmd):
 
         return None
 
-
-# TODO - rename remotes_client_get
-
+# ---
     def remotes_get(self, path):
-
         mount = self.remotes_mount_get(path)
         if mount in self.remotes:
             logging.info("active remote = [%r]" % self.remotes[mount])
             return self.remotes[mount]
-
         return None
 
-
-
+# ---
     def do_remotes(self, line):
         logging.info("line = [%s]" % line)
-        if "list" in line:
-            print(self.remotes)
+#        if "list" in line:
+        for mount, client in self.remotes.items():
+            print("%-20s [%s]" % (mount, client.status))
+
+# TODO - if "add" in line ...
+
 
 
 
@@ -353,42 +330,10 @@ class parser(cmd.Cmd):
         print("Usage: file <filename>\n")
 
     def do_file(self, line):
-
-        fullpath = self.absolute_remote_filepath(line)
-
-        remote = self.remotes_get(fullpath)
-
-        try:
+        remote = self.remotes_get(line)
+        if remote is not None:
+            fullpath = self.absolute_remote_filepath(line)
             remote.info(fullpath)
-        except Exception as e:
-            logging.debug(str(e))
-
-
-# get asset metadata
-#        output_list = []
-#        result = self.mf_client.aterm_run('asset.get :id "path=%s"' % self.absolute_remote_filepath(line))
-#        elem = result.find(".//asset")
-#        output_list.append("%-10s : %s" % ('asset ID', elem.attrib['id']))
-#        xpath_list = [".//asset/path", ".//asset/ctime", ".//asset/type", ".//content/size", ".//content/csum"]
-#        for xpath in xpath_list:
-#            elem = result.find(xpath)
-#            if elem is not None:
-#                output_list.append("%-10s : %s" % (elem.tag, elem.text))
-# get content status 
-#        result = self.mf_client.aterm_run('asset.content.status :id "path=%s"' % self.absolute_remote_filepath(line))
-#        elem = result.find(".//asset/state")
-#        if elem is not None:
-#            output_list.append("%-10s : %s" % (elem.tag, elem.text))
-
-# published (public URL)
-#        result = self.mf_client.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % self.absolute_remote_filepath(line))
-#        elem = result.find(".//exists")
-#        if elem is not None:
-#            output_list.append("published  : %s" % elem.text)
-
-# output info
-#        for line in output_list:
-#            print(line)
 
 # ---
 # TODO - EC2 create/delete/list
@@ -494,8 +439,9 @@ class parser(cmd.Cmd):
 # concat everything else onto the final result
                     else:
                         result += key
-            else:
-                print(prompt)
+#            else:
+                # TODO - sleep?
+#                print(prompt)
 
         return result
 
@@ -505,172 +451,32 @@ class parser(cmd.Cmd):
         print("Navigation in paginated output can be achieved by entering a page number, [enter] for next page or q to quit.\n")
         print("Usage: ls <file pattern or folder name>\n")
 
-# --- paginated ls
-    def remote_ls_print(self, namespace, namespace_list, namespace_count, asset_count, page, page_size, query, show_content_state=False):
-        page_count = max(1, 1+int((namespace_count+asset_count-1) / page_size))
-#        print "remote_ls(): [%s] nc=%d ac=%d - p=%d pc=%d ps=%d - query=%s" % (namespace, namespace_count, asset_count, page, page_count, page_size, query)
-
-# number of namespaces and assets to show, given current pagination values
-        namespace_todo = max(0, min(page_size, namespace_count - (page-1)*page_size))
-        asset_todo = min(page_size, asset_count+namespace_count - (page-1)*page_size) - namespace_todo
-        namespace_page_count = 1 + int((namespace_count-1) / page_count)
-
-        if namespace_todo > 0:
-            namespace_start = (page-1) * page_size
-            for i in range(namespace_start,namespace_start+namespace_todo):
-                elem = namespace_list[i]
-                print("[Folder] %s" % elem.text)
-
-        if asset_todo > 0:
-            asset_start = abs(min(0, namespace_count - (page-1)*page_size - namespace_todo))+1
-            reply = self.mf_client.aterm_run('asset.query :where "%s" :sort < :key name :nulls include > :action get-values :xpath "id" -ename "id" :xpath "name" -ename "name" :xpath "content/type" -ename "type" :xpath "content/size" -ename "size" :xpath "mtime" -ename "mtime" :size %d :idx %d' % (query, asset_todo, asset_start))
-            asset_list = reply.findall('.//asset')
-
-# get the content status - this can be slow (timeouts) -> optional 
-            if show_content_state is True:
-                xml_reply_state = self.mf_client.aterm_run('asset.query :where "%s" :sort < :key name :nulls include > :size %d :idx %d :action pipe :service -name asset.content.status :pipe-generate-result-xml true' % (query, asset_todo, asset_start))
-
-# NEW - for robustness - match asset IDs from the 2 separate queries to populate a single document
-            for elem in reply.findall('.//asset'):
-                child = elem.find('.//id')
-                asset_id = child.text
-
-                elem_state = ET.SubElement(elem, 'state')
-                try:
-                    xml_state = xml_reply_state.find(".//asset[@id='%s']/state" % asset_id)
-                    elem_state.text = xml_state.text
-                except:
-                    elem_state.text = "?"
-
-            asset_name = "?"
-            for i, elem in enumerate(asset_list):
-                child = elem.find('.//id')
-                asset_id = child.text
-
-                child = elem.find('.//name')
-                if child.text is not None:
-                    asset_name = child.text
-                else:
-                    asset_name = "?"
-
-                child = elem.find('.//size')
-                if child.text is not None:
-                    asset_size = self.human_size(int(child.text))
-                else:
-                    asset_size = self.human_size(0)
-
-                if show_content_state is True:
-                    child = elem.find('.//state')
-                    if "online" in child.text:
-                        asset_state = "online    |"
-                    else:
-                        asset_state = "%-9s |" % child.text
-                    print(" %-10s | %s %s | %s" % (asset_id, asset_state, asset_size, asset_name))
-                else:
-                    print(" %-10s | %s | %s" % (asset_id, asset_size, asset_name))
-
-
 # --- ls with no dependency on www.list
     def do_ls(self, line):
 
-# make candidate absolute path from input line 
-        flags, candidate = self.split_flags_filepath(line)
-# if flags contains 'l' -> show_content_state
-        if 'l' in flags:
-            show_more = True
-        else:
-            show_more = False
+        fullpath = self.absolute_remote_filepath(line)
 
-# NEW 
-        remote = self.remotes_get(candidate)
+        remote = self.remotes_get(fullpath)
+        try:
+            remote_list = remote.ls_iter(fullpath)
+        except Exception as e:
+            logging.debug(str(e))
+            return
 
-        remote_list = remote.ls_iter(candidate)
-
+        count = 0
         for line in remote_list:
             print(line)
+            count = count+1
+            size = max(1, min(self.terminal_height - 3, 100))
 
-        return
-
-
-#        try:
-#            remote.ls(candidate)
-#            return
-#        except Exception as e:
-#            logging.info(str(e))
-
-#        if self.s3client.is_mine(candidate):
-#            self.s3client.ls(candidate)
-#            return
-
-
-        ns_list = []
-        try:
-# candidate is a namespace reference
-            reply = self.mf_client.aterm_run('asset.namespace.list :namespace "%s"' % candidate)
-            cwd = candidate
-# count namespaces 
-            ns_list = reply.findall('.//namespace/namespace')
-            namespace_count = len(ns_list)
-            query = "namespace='%s'" % cwd
-
-        except Exception as e:
-# candidate is not a namespace -> assume input line is a filter
-            cwd = posixpath.dirname(candidate)
-            name_filter = posixpath.basename(candidate)
-            name_filter = name_filter.replace("'", "\'")
-# we have a filter -> ignore namespaces
-            namespace_count = 0
-            query = "namespace='%s' and name='%s'" % (cwd, name_filter)
-
-# count assets 
-        reply = self.mf_client.aterm_run("asset.query :where \"%s\" :action count" % query)
-        elem = reply.find(".//value")
-        asset_count = int(elem.text)
-# setup pagination
-        page = 1
-# remove header+footer+input command from page size
-        page_size = max(1, min(self.terminal_height - 3, 100))
-        canonical_last =  1 + int((namespace_count + asset_count - 1) / page_size )
-        if canonical_last == 0:
-            pagination_complete = True
-        else:
-            pagination_complete = False
-
-        show_header = True
-        while pagination_complete is False:
-            pagination_footer = None
-            if show_header:
-                print("%d items, %d items per page, remote folder: %s" % (namespace_count+asset_count, page_size, cwd))
-                show_header = False
-            page = max(1, min(page, canonical_last))
-
-# print the current page
-            self.remote_ls_print(cwd, ns_list, namespace_count, asset_count, page, page_size, query, show_content_state=show_more)
-
-# auto exit on last page
-            if page == canonical_last:
-                break
-
-# non-interactive - auto iterate through remaining pages
-            if self.interactive is False:
-                time.sleep(1)
-                page = page + 1
-                continue
-
-# pagination control
-            pagination_footer = "=== Page %d/%d (enter = next, number = jump, q = quit) === " % (page, canonical_last)
-            response = self.pagination_controller(pagination_footer)
-            if response is not None:
-                try:
-                    page = int(response)
-                except:
+            if count > size:
+                pagination_footer = "=== (enter = next, q = quit) === " 
+                response = self.pagination_controller(pagination_footer)
+                if response is not None:
                     if response == 'q' or response == 'quit':
-                        pagination_complete = True
-                        break
+                        return
                     else:
-                        page = page + 1
-                        if page > canonical_last:
-                            pagination_complete = True
+                        count = 0
 
 # --
     def poll_total(self, base_query):
@@ -1163,10 +969,7 @@ class parser(cmd.Cmd):
 # 3rd party transfer (queues?) from mflux to s3 endpoint
 # NB: currently thinking path will be dropped ... ie /projects/a/b/etc/file.txt -> s3:bucket/file.txt
 # might have to have some smarts though if there is a max limit on # objects per bucket 
-
-
 # TODO - mfclient.s3copy_managed() method for this ???
-
 
 #------------------------------------------------------------
     def help_cd(self):
@@ -1174,25 +977,13 @@ class parser(cmd.Cmd):
         print("Usage: cd <folder>\n")
 
     def do_cd(self, line):
-
         candidate = self.absolute_remote_filepath(line)
-
-# NEW
         remote = self.remotes_get(candidate)
-
         try:
             self.cwd = remote.cd(candidate)
             return
         except Exception as e:
-            logging.info(str(e))
-
-#        if self.s3client.is_mine(candidate):
-#            self.cwd = self.s3client.cd(candidate)
-#        if self.mf_client.namespace_exists(candidate):
-#            self.cwd = candidate
-#            print("Remote: %s" % self.cwd)
-#        else:
-#            raise Exception(" Could not find remote folder: %s" % candidate)
+            print("No such remote folder, for valid folders type: remotes list")
 
 #------------------------------------------------------------
     def help_pwd(self):
@@ -1210,33 +1001,10 @@ class parser(cmd.Cmd):
 
     def do_mkdir(self, line, silent=False):
         ns_target = self.absolute_remote_filepath(line)
-
-# NEW
         remote = self.remotes_get(ns_target)
         remote.mkdir(ns_target)
 
-
-#        try:
-#            remote.create_bucket(ns_target)
-#            return
-#        except Exception as e:
-#            logging.info(str(e))
-
-#        if self.s3client.is_mine(ns_target):
-#            self.s3client.create_bucket(ns_target)
-#            return
-
-#        try:
-#            self.mf_client.aterm_run('asset.namespace.create :namespace "%s"' % ns_target.replace('"', '\\\"'))
-#        except Exception as e:
-#            if "already exists" in str(e):
-#                if silent is False:
-#                    print("Folder already exists: %s" % ns_target)
-#                pass
-#            else:
-#                raise e
-
-# --
+#------------------------------------------------------------
     def help_rm(self):
         print("\nDelete remote file(s)\n")
         print("Usage: rm <file or pattern>\n")
@@ -1244,13 +1012,9 @@ class parser(cmd.Cmd):
     def do_rm(self, line):
 # build query corresponding to input
         fullpath = self.absolute_remote_filepath(line)
-
-# NEW
         remote = self.remotes_get(fullpath)
-
         if self.ask("Delete files (y/n) "):
             remote.rm(fullpath)
-
 
 #        namespace = posixpath.dirname(fullpath)
 #        pattern = posixpath.basename(fullpath)
@@ -1277,24 +1041,11 @@ class parser(cmd.Cmd):
 # -- rmdir
     def do_rmdir(self, line):
         ns_target = self.absolute_remote_filepath(line)
-
-# NEW
         remote = self.remotes_get(ns_target)
         if self.ask("Remove folder: %s (y/n) " % ns_target):
             remote.rmdir(ns_target)
         else:
             print("Aborted")
-
-
-#        try:
-#            remote.delete_bucket(ns_target)
-#            return
-#        except Exception as e:
-#            logging.info(str(e))
-#        if self.s3client.is_mine(ns_target):
-#            self.s3client.delete_bucket(ns_target)
-#            return
-
 
 # -- local commands
 
@@ -1363,31 +1114,34 @@ class parser(cmd.Cmd):
         return "never"
 
 # ---
-    def help_whoami(self):
-        print("\nReport the current authenticated user or delegate and associated roles\n")
-        print("Usage: whoami\n")
+# TODO - FIX ALL THIS
 
-    def do_whoami(self, line):
-        result = self.mf_client.aterm_run("actor.self.describe")
+# NEW - kind of replaced by remotes -> ie identity is mount point specific
+
+#    def help_whoami(self):
+#        print("\nReport the current authenticated user or delegate and associated roles\n")
+#        print("Usage: whoami\n")
+#
+#    def do_whoami(self, line):
+#        result = self.mf_client.aterm_run("actor.self.describe")
 # main identity
-        for elem in result.iter('actor'):
-            user_name = elem.attrib['name']
-            user_type = elem.attrib['type']
-            if 'identity' in user_type:
-                expiry = self.delegate_actor_expiry(user_name)
-                print("user = delegate (expires %s)" % expiry)
-            else:
-                print("%s = %s" % (user_type, user_name))
+#        for elem in result.iter('actor'):
+#            user_name = elem.attrib['name']
+#            user_type = elem.attrib['type']
+#            if 'identity' in user_type:
+#                expiry = self.delegate_actor_expiry(user_name)
+#                print("user = delegate (expires %s)" % expiry)
+#            else:
+#                print("%s = %s" % (user_type, user_name))
 # associated roles
-        for elem in result.iter('role'):
-            print("    role = %s" % elem.text)
-
+#        for elem in result.iter('role'):
+#            print("    role = %s" % elem.text)
 # NEW 
 # TODO - always create (so can always call) but with dummy default data ... ???
-        if self.keystone is not None:
-            self.keystone.whoami()
-        if self.s3client is not None:
-            self.s3client.whoami()
+#        if self.keystone is not None:
+#            self.keystone.whoami()
+#        if self.s3client is not None:
+#            self.s3client.whoami()
 
 # ---
     def help_processes(self):
@@ -1409,8 +1163,12 @@ class parser(cmd.Cmd):
         print("Usage: logout\n")
 
     def do_logout(self, line):
-        self.mf_client.logout()
-        self.need_auth = True
+        remote = self.remotes_get(self.cwd)
+        if remote is not None:
+            remote.logout()
+
+#        self.mf_client.logout()
+#        self.need_auth = True
 
 # ---
     def help_login(self):
@@ -1428,7 +1186,6 @@ class parser(cmd.Cmd):
             remote.login(user, password)
 
 # NEW
-
             mount = self.remotes_mount_get(self.cwd)
             self.remotes_config_save(mount)
 
@@ -1932,22 +1689,12 @@ def main():
 #    my_parser.need_auth = need_auth
     my_parser.need_auth = True
 
-
-# TODO - rework from config.endpoint_list
-
-    endpoint = None
-
 # add endpoints
     try:
-
         for mount in endpoints:
-
             endpoint = endpoints[mount]
-
-            logging.info("Connecting [%s] on [%s]" % (mount, endpoint))
-
+            logging.info("Connecting [%s] endpoint on [%s]" % (endpoint['type'], mount))
             if endpoint['type'] == 'mfclient':
-                logging.info("Adding mediaflux endpoint")
                 mf_client = mfclient.mf_client(protocol=endpoint['protocol'], server=endpoint['server'], port=endpoint['port'], domain=endpoint['domain'])
 
                 if 'session' in endpoint:
@@ -1956,7 +1703,6 @@ def main():
                     mf_client.token = endpoint['token']
 
                 my_parser.remotes_add(mount, mf_client)
-
 
             elif endpoint['type'] == 's3':
                 loging.info("TODO - config S3 endpoint")

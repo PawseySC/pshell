@@ -126,17 +126,18 @@ class mf_client:
         self.domain = domain
         self.timeout = 120
         self.cwd = None
+# message for parent
+        self.status = "not connected"
 
 # NB: there can be some subtle bugs in python library handling if these are "" vs None
         self.session = ""
         self.token = ""
-
         self.logger = logging.getLogger('mfclient')
 # TODO - set log level based on debug
 #        self.logger.setLevel(logging.DEBUG)
+#        self.config_filepath = None
+#        self.config_section = None
 
-        self.config_filepath = None
-        self.config_section = None
         global build
 
 # can override to test fast http data transfers (with https logins)
@@ -195,6 +196,9 @@ class mf_client:
         Returns:
              A BOOLEAN value depending on the current authentication status of the Mediaflux connection
         """
+
+        self.logger.info(" >>>> HELLO <<<<")
+
         if self.server is None:
             return True
         try:
@@ -209,58 +213,61 @@ class mf_client:
         return False
 
 #------------------------------------------------------------
-# NEW
-
     def connect(self):
-
-        try:
-            if self.session is not None:
-                self.aterm_run("system.session.self.describe")
-                self.logger.info("session ok")
-                return True
-        except Exception as e:
-            self.logger.info("session invalid")
-
-        try:
-            if self.token is not None:
-                self.login(token=self.token)
-                self.logger.info("token ok")
-                return True
-        except Exception as e:
-            self.logger.info("token invalid")
-
-        self.logger.info("Not authenticated to remote")
+        """
+        Acquire a connection status description
+        """
+        for i in range(0,1):
+# convert session into a connection description
+            try:
+                if self.session is not None:
+                    reply = self.aterm_run("system.session.self.describe")
+                    self.status = "connected:"
+                    elem = reply.find(".//user")
+                    if elem is not None:
+                        self.status += " as user=%s" % elem.text
+                    return True
+            except Exception as e:
+                self.logger.info("session invalid")
+# session was invalid, try to get a new session via a token and retry
+            try:
+                if self.token is not None:
+                    self.login(token=self.token)
+                    self.logger.info("token ok")
+            except Exception as e:
+                self.logger.info("token invalid")
+                break
+        self.status = "Not connected"
         return False
 
+#------------------------------------------------------------
+#    def config_init(self, config_filepath=None, config_section=None):
+#        """
+#        Setup config file and section to update with session/token info
+#        """
+#        self.logger.info("config filepath=[%s], config_section=[%s]" % (config_filepath, config_section))
+#        self.config_filepath = config_filepath
+#        self.config_section = config_section
 
 #------------------------------------------------------------
-    def config_init(self, config_filepath=None, config_section=None):
-        """
-        Setup config file and section to update with session/token info
-        """
-        self.logger.info("config filepath=[%s], config_section=[%s]" % (config_filepath, config_section))
-        self.config_filepath = config_filepath
-        self.config_section = config_section
-
-#------------------------------------------------------------
-    def config_save(self, refresh_token=False, refresh_session=False):
-        """
-        Update session/token info in config file
-        """
-        if self.config_filepath:
-            config = configparser.ConfigParser()
-            config.read(self.config_filepath)
-
-            if refresh_token is True:
-                self.logger.info("Updating token")
-                config.set(self.config_section, 'token', self.token)
-
-            if refresh_session is True:
-                self.logger.info("Updating session")
-                config.set(self.config_section, 'session', self.session)
-
-            with open(self.config_filepath, 'w') as f:
-                config.write(f)
+#    def config_save(self, refresh_token=False, refresh_session=False):
+#        """
+#        Update session/token info in config file
+#        """
+#        if self.config_filepath:
+#            config = configparser.ConfigParser()
+#            config.read(self.config_filepath)
+#
+#            if refresh_token is True:
+#                self.logger.info("Updating token")
+#                config.set(self.config_section, 'token', self.token)
+#
+#            if refresh_session is True:
+#                self.logger.info("Updating session")
+#                config.set(self.config_section, 'session', self.session)
+#
+#            with open(self.config_filepath, 'w') as f:
+#                config.write(f)
 
 #------------------------------------------------------------
     @staticmethod
@@ -676,7 +683,7 @@ class mf_client:
 #                        xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
                         xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text.decode()).encode()
                         self.logger.debug("session restored, retrying command")
-                        self.config_save(refresh_session=True)
+#                        self.config_save(refresh_session=True)
                         continue
                 break
 
@@ -732,6 +739,7 @@ class mf_client:
         Destroy the current session (NB: delegate can auto-create a new session if available)
         """
         self.aterm_run("system.logoff")
+        self.status = "not connected"
         self.session = ""
 
 #------------------------------------------------------------
@@ -764,6 +772,8 @@ class mf_client:
 # if no exception has been raised, we should have a valid reply from the server at this point
         elem = reply.find(".//session")
         self.session = elem.text
+# refresh connection information
+        self.connect()
 
 #------------------------------------------------------------
     def namespace_exists(self, namespace):
@@ -951,16 +961,17 @@ class mf_client:
         """
         remove a file
         """
+        self.logger.info("[%s]" % fullpath)
         self.aterm_run('asset.destroy :id "path=%s"' % fullpath)
 
 #------------------------------------------------------------
     def info(self, fullpath):
         """
-        information on a file
+        information on a named file
         """
-
+        self.logger.info("[%s]" % fullpath)
         output_list = []
-        result = self.aterm_run('asset.get :id "path=%s"' % self.absolute_remote_filepath(line))
+        result = self.aterm_run('asset.get :id "path=%s"' % fullpath)
         elem = result.find(".//asset")
         output_list.append("%-10s : %s" % ('asset ID', elem.attrib['id']))
         xpath_list = [".//asset/path", ".//asset/ctime", ".//asset/type", ".//content/size", ".//content/csum"]
@@ -969,13 +980,13 @@ class mf_client:
             if elem is not None:
                 output_list.append("%-10s : %s" % (elem.tag, elem.text))
 # get content status 
-        result = self.aterm_run('asset.content.status :id "path=%s"' % self.absolute_remote_filepath(line))
+        result = self.aterm_run('asset.content.status :id "path=%s"' % fullpath)
         elem = result.find(".//asset/state")
         if elem is not None:
             output_list.append("%-10s : %s" % (elem.tag, elem.text))
 
 # published (public URL)
-        result = self.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % self.absolute_remote_filepath(line))
+        result = self.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % fullpath)
         elem = result.find(".//exists")
         if elem is not None:
             output_list.append("published  : %s" % elem.text)
@@ -988,29 +999,26 @@ class mf_client:
         """
         generator for namespace/asset listing
         """
-
-        self.logger.info("namespace = [%s]" % namespace)
-
+        self.logger.info("[%s]" % namespace)
+# iterate over namespaces
         if self.namespace_exists(namespace):
             reply = self.aterm_run('asset.namespace.list :namespace "%s"' % namespace)
             ns_list = reply.findall('.//namespace/namespace')
             for ns in ns_list:
                 yield "[folder] %s" % ns.text
-
-# FIXME - if no assets - this will generate an exception (no iterator) 
+# iterateo over assets 
         result = self.aterm_run("asset.query :where \"namespace='%s'\" :as iterator :action get-values :xpath -ename id id :xpath -ename name name :xpath -ename size content/size" % namespace)
         elem = result.find(".//iterator")
         iterator = elem.text
-        self.logger.info("asset query iterator = [%s]" % iterator)
-
         iterate_size = 100
-        iterate = True
-        while iterate:
-            self.logger.debug("Online iterator chunk")
+        complete = "false"
+        while complete != "true":
             result = self.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
-
-# FIXME - when we run out of assets we'll get a None somewhere
-#            for elem in result.iter("asset"):
+            elem = result.find(".//iterated")
+            if elem is not None:
+                complete = elem.attrib['complete'].lower()
+            self.logger.debug("asset query iterator chunk [%s] - complete[%s]" % (iterator, complete))
+# parse the asset results
             for elem in result.findall(".//asset"):
                 asset_id = '?'
                 name = '?'
@@ -1022,10 +1030,7 @@ class mf_client:
                         name = child.text
                     if child.tag == "size":
                         size = self.human_size(child.text)
- 
                 yield " %-10s | %s | %s" % (asset_id, size, name)
-
-        return
 
 #------------------------------------------------------------
     def get_local_checksum(self, filepath):

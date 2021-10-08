@@ -29,6 +29,7 @@ class s3client:
         self.cwd = None
         self.s3 = None
         self.type = "s3"
+        self.status = "not connected"
         self.logger = logging.getLogger('s3client')
 # CURRENT
 #        self.logger.setLevel(logging.DEBUG)
