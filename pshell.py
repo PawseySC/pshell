@@ -359,7 +359,7 @@ class parser(cmd.Cmd):
 # list ec2 credentials (per project or for all if no project specified)
 
         if self.keystone is None:
-            raise Exception("No keystone url supplied.")
+            raise Exception("Missing keystone url.")
 
         if 'discover' in line:
             logging.info("Attempting discovery via: [%s]" % self.keystone)
@@ -384,7 +384,6 @@ class parser(cmd.Cmd):
             return
 
         if 'list' in line:
-            print(" === ec2 ===")
             self.keystone.credentials_print(line)
             return
 
@@ -718,10 +717,6 @@ class parser(cmd.Cmd):
         except Exception as e:
             logging.info(str(e))
 
-#        if self.s3client.is_mine(line):
-#            self.s3client.get(line)
-#            return
-
 # sanitise as asset.query is special
         double_escaped = self.escape_single_quotes(line)
 # collapsed namespace
@@ -908,9 +903,6 @@ class parser(cmd.Cmd):
         except Exception as e:
             logging.info(str(e))
 
-#        if self.s3client.is_mine(self.cwd):
-#            self.s3client.managed_put(upload_list)
-#            return
 
 
 # -- wrapper for monitoring an upload
@@ -989,9 +981,10 @@ class parser(cmd.Cmd):
         if len(path_list) != 2:
             raise Exception("Expected only two path arguments: source and destination")
 
+# FIXME - do via remote module types
 # expect source or destination to be S3 and the other to be mflux
-        if self.s3client.is_mine(path_list[0]) == self.s3client.is_mine(path_list[1]):
-            raise Exception("Require source and destination to be different storage systems")
+#        if self.s3client.is_mine(path_list[0]) == self.s3client.is_mine(path_list[1]):
+#            raise Exception("Require source and destination to be different storage systems")
 
 # CURRENT - only supporting mflux -> s3
         if self.mf_client.namespace_exists(path_list[0]):
@@ -1147,36 +1140,6 @@ class parser(cmd.Cmd):
         if elem is not None:
             return elem.text
         return "never"
-
-# ---
-# TODO - FIX ALL THIS
-
-# NEW - kind of replaced by remotes -> ie identity is mount point specific
-
-#    def help_whoami(self):
-#        print("\nReport the current authenticated user or delegate and associated roles\n")
-#        print("Usage: whoami\n")
-#
-#    def do_whoami(self, line):
-#        result = self.mf_client.aterm_run("actor.self.describe")
-# main identity
-#        for elem in result.iter('actor'):
-#            user_name = elem.attrib['name']
-#            user_type = elem.attrib['type']
-#            if 'identity' in user_type:
-#                expiry = self.delegate_actor_expiry(user_name)
-#                print("user = delegate (expires %s)" % expiry)
-#            else:
-#                print("%s = %s" % (user_type, user_name))
-# associated roles
-#        for elem in result.iter('role'):
-#            print("    role = %s" % elem.text)
-# NEW 
-# TODO - always create (so can always call) but with dummy default data ... ???
-#        if self.keystone is not None:
-#            self.keystone.whoami()
-#        if self.s3client is not None:
-#            self.s3client.whoami()
 
 # ---
     def help_processes(self):

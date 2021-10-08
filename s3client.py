@@ -27,7 +27,7 @@ class s3client:
         self.access = access
         self.secret = secret
 # TODO - rename to mount or something - prefix is confusing with the aws definition of prefix
-        self.prefix = None
+#        self.prefix = None
         self.cwd = None
         self.s3 = None
         self.status = "not connected"
@@ -40,7 +40,7 @@ class s3client:
 # VFS style ... TODO - allow for multiple mounts ... eg AWS
 #    def connect(self, host, access, secret, prefix):
     def connect(self):
-        self.logger.info('endpoint=%s using acess=%s and visible on path=%s' % (self.host, self.access, self.prefix))
+        self.logger.info('endpoint=%s using acess=%s' % (self.host, self.access))
         try:
             self.s3 = boto3.client('s3', endpoint_url=self.host, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
             self.status = "connected: as access=%s" % self.access
@@ -49,27 +49,7 @@ class s3client:
 
 #------------------------------------------------------------
     def endpoint(self):
-        return { 'type':self.type, 'host':self.host, 'access':self.access, 'secret':self.secret, 'prefix':self.prefix }
-
-#------------------------------------------------------------
-# deprec -> status
-    def whoami(self):
-        print("=== %s ===" % self.host)
-        if self.prefix is not None:
-            print("    %s : access = %r" % (self.prefix, self.access))
-
-#------------------------------------------------------------
-# deprec -> pshell controlled via mount
-    def is_mine(self, path):
-
-        mypath = pathlib.PurePosixPath(path)
-        try:
-            if mypath.parts[1] == self.prefix:
-                self.logger.info('[%s] = True' % path)
-                return True
-        except:
-            pass
-        return False
+        return { 'type':self.type, 'host':self.host, 'access':self.access, 'secret':self.secret }
 
 #------------------------------------------------------------
 # split a key into prefix + filter

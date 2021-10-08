@@ -71,12 +71,6 @@ class keystone:
             s3client.prefix = None
 
 #------------------------------------------------------------
-    def whoami(self):
-        print("=== %s ===" % self.url)
-        for name in self.project_dict.keys():
-            print("    %s" % name)
-
-#------------------------------------------------------------
     def get_auth_token(self, user, password):
         data = '{ "auth": { "identity": { "methods": ["password"], "password": { "user": { "name": "%s", "domain": { "name": "pawsey" }, "password": "%s" } } } } }' % (user, password)
         length = len(data)
@@ -104,8 +98,8 @@ class keystone:
             try:
                 xml_reply = mfclient.aterm_run("secure.wallet.get :key ldap")
                 elem = xml_reply.find(".//value")
+                # main call
                 self.get_auth_token(user, elem.text)
-                self.logger.info("success")
                 return
             except Exception as e:
                 self.logger.debug(str(e))
@@ -152,14 +146,14 @@ class keystone:
 #------------------------------------------------------------
     def s3_candidate_find(self):
 # TODO - could we query the magenta url as well???
-        for project_name in self.project_dict.keys():
+        for project_name in self.project_dict():
             for credential in self.credential_list:
                 if credential['tenant_id'] == self.project_dict[project_name]:
                     return (project_name, credential['access'], credential['secret'])
 
 #------------------------------------------------------------
     def credentials_print(self, project):
-        for project_name in self.project_dict.keys():
+        for project_name in self.project_dict:
             print("project = %s" % project_name)
             for credential in self.credential_list:
                 if credential['tenant_id'] == self.project_dict[project_name]:
