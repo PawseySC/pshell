@@ -61,49 +61,30 @@ class parser(cmd.Cmd):
 
     cwd = '/projects'
     interactive = True
-    need_auth = True
     transfer_processes = 1
     terminal_height = 20
     script_output = None
 
 # --- initial setup of prompt
     def preloop(self):
-#        if self.need_auth:
-#            self.prompt = "%s:offline>" % self.config_name
-#        else:
-#            self.prompt = "%s:%s>" % (self.config_name, self.cwd)
          self.prompt = "%s:%s>" % (self.config_name, self.cwd)
 
 # --- not logged in -> don't even attempt to process remote commands
     def precmd(self, line):
-
-# CURRENT - can't really do this anymore as we've potentially got multiple endpoints
-#        if self.need_auth:
-#            if self.requires_auth(line):
-#                print("Not logged in.")
-#                return cmd.Cmd.precmd(self, "")
         return cmd.Cmd.precmd(self, line)
 
 # --- prompt refresh (eg after login/logout)
     def postcmd(self, stop, line):
-#        if self.need_auth:
-#            self.prompt = "%s:offline>" % self.config_name
-#        else:
-#            self.prompt = "%s:%s>" % (self.config_name, self.cwd)
-
         self.prompt = "%s:%s>" % (self.config_name, self.cwd)
-
         return cmd.Cmd.postcmd(self, stop, line)
-
-
-
-
 
 # NB: if the return result is ambigious (>1 option) it'll require 2 presses to get the list
 # turn off DEBUG -> gets in the way of commandline completion
 # NB: index offsets are 1 greater than the command under completion
 
+
 # TODO - rename asset->file namespace->folder ... generic
+
 # ---
     def complete_get(self, text, line, start_index, end_index):
         remote = self.remotes_get(line)
@@ -146,12 +127,6 @@ class parser(cmd.Cmd):
         return ns_list
 
 # ---
-#    def complete_mkdir(self, text, line, start_index, end_index):
-#        remote = self.remotes_get(line)
-#        ns_list = remote.complete_namespace(line[6:end_index], start_index-6)
-#        return ns_list
-
-# ---
     def complete_rmdir(self, text, line, start_index, end_index):
         remote = self.remotes_get(line)
         ns_list = remote.complete_namespace(line[6:end_index], start_index-6)
@@ -163,9 +138,10 @@ class parser(cmd.Cmd):
 
 # ---
     def default(self, line):
+        raise Exception("Unknown command passthrough not implemented")
 # unrecognized - assume it's an aterm command
-        reply = self.mf_client.aterm_run(line)
-        self.mf_client.xml_print(reply)
+#        reply = self.mf_client.aterm_run(line)
+#        self.mf_client.xml_print(reply)
         return
 
 #------------------------------------------------------------
@@ -183,16 +159,12 @@ class parser(cmd.Cmd):
 # TODO - only if refresh=True
         for mount, endpoint in endpoints.items():
             client = self.remotes_get(mount)
-
-            logging.info("updating mount=[%s] using client=[%r]" % (mount, client))
-
+            logging.debug("updating mount=[%s] using client=[%r]" % (mount, client))
 # refresh the config endpoint via the client
             if client is not None:
                 endpoints[mount] = client.endpoint()
 
-#        self.config[self.config_name] = {'endpoints':json.dumps(endpoints) }
         self.config[self.config_name]['endpoints'] = json.dumps(endpoints)
-
         self.config_save()
 
 # ---
@@ -214,11 +186,9 @@ class parser(cmd.Cmd):
 # ---
     def remotes_mount_get(self, path):
         fullpath = self.absolute_remote_filepath(path)
-        logging.info("fullpath = [%s]" % fullpath)
         mypath = pathlib.PurePosixPath(fullpath)
         try:
             mount = "%s%s" % (mypath.parts[0], mypath.parts[1])
-            logging.info("mount = [%r]" % mount)
             return mount
         except Exception as e:
             logging.debug(str(e))
@@ -229,20 +199,16 @@ class parser(cmd.Cmd):
     def remotes_get(self, path):
         mount = self.remotes_mount_get(path)
         if mount in self.remotes:
-            logging.info("active remote = [%r]" % self.remotes[mount])
             return self.remotes[mount]
         return None
 
 # ---
     def do_remotes(self, line):
-        logging.info("line = [%s]" % line)
 #        if "list" in line:
         for mount, client in self.remotes.items():
             print("%-20s [%s]" % (mount, client.status))
 
 # TODO - if "add" in line ...
-
-
 
 
 
@@ -706,16 +672,12 @@ class parser(cmd.Cmd):
 
     def do_get(self, line):
 
-# NB: use posixpath for mediaflux namespace manipulation
         line = self.absolute_remote_filepath(line)
-
-# NEW 
         remote = self.remotes_get(line)
-        try:
+        if remote is not None:
             remote.get(line)
-            return
-        except Exception as e:
-            logging.info(str(e))
+        return
+
 
 # sanitise as asset.query is special
         double_escaped = self.escape_single_quotes(line)
@@ -1132,15 +1094,6 @@ class parser(cmd.Cmd):
 #         reply = self.mf_client.aterm_run("secure.shell.execute :command ls :host magnus.pawsey.org.au :private-key < :name sean :key \"%s\" >" % pkey)
 #         self.mf_client.xml_print(reply)
 
-# --- helper
-    def delegate_actor_expiry(self, name):
-# NB: can't specify the actor as that requires blanket admin perms ...
-        result = self.mf_client.aterm_run("secure.identity.token.describe")
-        elem = result.find(".//identity/[actor='%s']/validity/to" % name)
-        if elem is not None:
-            return elem.text
-        return "never"
-
 # ---
     def help_processes(self):
         print("\nSet the number of concurrent processes to use when transferring files.")
@@ -1165,9 +1118,6 @@ class parser(cmd.Cmd):
         if remote is not None:
             remote.logout()
 
-#        self.mf_client.logout()
-#        self.need_auth = True
-
 # ---
     def help_login(self):
         print("\nInitiate login to the current remote server\n")
@@ -1182,41 +1132,16 @@ class parser(cmd.Cmd):
             user = input("Username: ")
             password = getpass.getpass("Password: ")
             remote.login(user, password)
-
 # NEW
             mount = self.remotes_mount_get(self.cwd)
             self.remotes_config_save()
 
 
-#            endpoint = json.loads(self.config.get(self.config_name, 'endpoint'))
-#            endpoint['session'] = remote.session
-#            self.config[self.config_name] = {'endpoint':json.dumps(endpoint) }
-#            self.config_save()
-
-# deprec?
-#            self.need_auth = False
-
-
-#        self.mf_client.config_save(refresh_session=True)
 # NEW - add to secure wallet for identity management
 #        xml_reply = self.mf_client.aterm_run("secure.wallet.can.be.used")
-#        elem = xml_reply.find(".//can")
-#        if "true" in elem.text:
-#            logging.info("Wallet can be used")
-#        else:
 #            self.mf_client.aterm_run("secure.wallet.recreate :password %s" % password)
 # TODO - encrypt so it's not plain text 
 #        self.mf_client.aterm_run("secure.wallet.set :key ldap :value %s" % password)
-#
-#        if self.keystone:
-#            try:
-#                self.keystone.connect(self.mf_client, refresh=True)
-#                self.keystone.discover_s3(self.s3client)
-#            except Exception as e:
-#                logging.error(str(e))
-#                pass
-
-
 # this can only be done with an authenticated mfclient
 #            my_parser.keystone.connect(mf_client, refresh=False)
 #            my_parser.keystone.discover_s3(my_parser.s3client)
@@ -1259,9 +1184,7 @@ class parser(cmd.Cmd):
 # if current session is delegate based - destroy it too
                 if destroy_session:
                     remote.session = ""
-                    self.need_auth = True
 
-#                self.mf_client.config_save(refresh_token=True, refresh_session=True)
                 self.config_save()
 
                 print("Delegate credentials removed.")
@@ -1297,15 +1220,11 @@ class parser(cmd.Cmd):
             if elem.tag == 'token':
                 print("Delegate valid until: " + expiry)
                 remote.token = elem.text
-
 # NEW
                 endpoint = json.loads(self.config.get(self.config_name, 'endpoint'))
                 endpoint['token'] = remote.token
                 self.config[self.config_name] = {'endpoint':json.dumps(endpoint) }
                 self.config_save()
-
-
-#                self.mf_client.config_save(refresh_token=True)
                 return
         raise Exception("Delegate command successfull; but failed to find return token")
 
@@ -1332,16 +1251,6 @@ class parser(cmd.Cmd):
                     iterate = False
 
         return remote_files
-
-# --- helper: create the namespace and any intermediate namespaces, if required
-    def mkdir_helper(self, namespace):
-        logging.debug(namespace)
-        if self.mf_client.namespace_exists(namespace) is True:
-            return
-        else:
-            head, tail = posixpath.split(namespace)
-            self.mkdir_helper(head)
-            self.do_mkdir(namespace, silent=True)
 
 # --- compare
     def help_compare(self):
@@ -1643,19 +1552,6 @@ def main():
         add_endpoint = False
 
 
-# get session (if any)
-#    session = args.session
-#    if session is None:
-#        if config.has_option(args.current, 'session'):
-#            session = config.get(args.current, 'session')
-# get token (if any)
-#    token = args.token
-#    if token is None:
-#        if config.has_option(args.current, 'token'):
-#            token = config.get(args.current, 'token')
-#
-
-
 # extract terminal size for auto pagination
     try:
         import fcntl, termios, struct
@@ -1664,21 +1560,6 @@ def main():
 # FIXME - make this work with windows
         size = (80, 20)
 
-# establish mediaflux connection
-#    try:
-#        mf_client = mfclient.mf_client(protocol=protocol, server=server, port=port, domain=domain)
-#        mf_client.session = session
-#        mf_client.token = token
-#        mf_client.config_init(config_filepath=config_filepath, config_section=args.current)
-#    except Exception as e:
-#        logging.error("Failed to connect to: %r://%r:%r" % (protocol, server, port))
-#        logging.error(str(e))
-#        exit(-1)
-
-# auth test - will automatically attempt to use a token (if it exists) to re-generate a valid session
-#    need_auth = True
-#    if mf_client.authenticated():
-#        need_auth = False
 
 # hand control of mediaflux client over to parsing loop
     my_parser = parser()
@@ -1687,18 +1568,12 @@ def main():
     my_parser.config_name = args.current
     my_parser.config_filepath = config_filepath
 
-#    my_parser.need_auth = need_auth
-    my_parser.need_auth = True
-
-
-
 # add discovery url
     if args.keystone is not None:
         my_parser.config.set(args.current, 'keystone', args.keystone)
 
     if my_parser.config.has_option(args.current, 'keystone'):
         my_parser.keystone = keystone.keystone(my_parser.config.get(args.current, 'keystone'))
-
 
 # add endpoints
     try:
@@ -1719,23 +1594,8 @@ def main():
                 client = s3client.s3client(host=endpoint['host'], access=endpoint['access'], secret=endpoint['secret'])
                 my_parser.remotes_add(mount, client)
 
-
     except Exception as e:
         logging.error(str(e))
-
-
-
-#        config[args.current] = {'keystone':args.keystone}
-#        config.set(args.current, 'keystone', args.keystone)
-
-
-
-
-# this can only be done with an authenticated mfclient
-#            my_parser.keystone.connect(mf_client, refresh=False)
-#            my_parser.keystone.discover_s3(my_parser.s3client)
-#            my_parser.remotes_add('/'+my_parser.s3client.prefix, my_parser.s3client)
-
 
 
 # just in case the terminal height calculation returns a very low value
@@ -1750,7 +1610,7 @@ def main():
     my_parser.transfer_processes = 2
 
 
-# NEW - restart script
+# restart script
     if args.output is not None:
         my_parser.script_output = args.output
 
@@ -1775,17 +1635,6 @@ def main():
     if len(args.command) != 0:
         input_list = itertools.chain(input_list, args.command.split("&&"))
         my_parser.interactive = False
-
-# NEW
-#    if my_parser.keystone:
-#        try:
-#            my_parser.keystone.connect(mf_client, refresh=False)
-#            my_parser.keystone.discover_s3(my_parser.s3client)
-#            my_parser.remotes_add('/'+my_parser.s3client.prefix, my_parser.s3client)
-#
-#        except Exception as e:
-#            logging.error(str(e))
-#            pass
 
 # interactive or input iterator (scripted)
     if my_parser.interactive:
