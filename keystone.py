@@ -57,10 +57,18 @@ class keystone:
 # TODO - could potentially be a list of accessible endpoints
         if s3endpoint:
 # TODO - can we discover the s3 url?
-            s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], s3endpoint[0])
+#            s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], s3endpoint[0])
+            s3client.host = 'https://nimbus.pawsey.org.au:8080'
+            s3client.access = s3endpoint[1]
+            s3client.secret = s3endpoint[2]
+            s3client.prefix = s3endpoint[0]
         else:
 # nothing found - clear the deck (ie ec2 credentials deleted)
-            s3client.connect(None, None, None, None)
+#            s3client.connect(None, None, None, None)
+            s3client.host = None
+            s3client.access = None
+            s3client.secret = None
+            s3client.prefix = None
 
 #------------------------------------------------------------
     def whoami(self):
@@ -87,9 +95,31 @@ class keystone:
         elem = xml_reply.find(".//user")
         user = elem.attrib['user']
         self.logger.debug("accessing mediaflux wallet for user [%s]" % user)
-        xml_reply = mfclient.aterm_run("secure.wallet.get :key ldap")
-        elem = xml_reply.find(".//value")
-        self.get_auth_token(user, elem.text)
+# attempt use secure wallet for SSO
+        wallet_recreate = False
+        xml_reply = mfclient.aterm_run("secure.wallet.can.be.used")
+        elem = xml_reply.find(".//can")
+        if "true" in elem.text:
+            self.logger.info("wallet is accessible")
+            try:
+                xml_reply = mfclient.aterm_run("secure.wallet.get :key ldap")
+                elem = xml_reply.find(".//value")
+                self.get_auth_token(user, elem.text)
+                self.logger.info("success")
+                return
+            except Exception as e:
+                self.logger.debug(str(e))
+        else:
+            wallet_recreate = True
+
+# failed due to no key or no useable wallet
+        print("Keystone authentication for user [%s] required.")
+        password = getpass.getpass("Password: ")
+        if wallet_recreate is True:
+            mfclient.aterm_run("secure.wallet.recreate :password %s" % password)
+# TODO - encrypt so it's not plain text 
+        mfclient.aterm_run("secure.wallet.set :key ldap :value %s" % password)
+        self.get_auth_token(user, password)
 
 #------------------------------------------------------------
     def get_credentials(self):

@@ -19,16 +19,17 @@ except:
     ok=False
 
 class s3client:
-    def __init__(self):
+    def __init__(self, host=None, access=None, secret=None):
         self.ok = ok
-        self.host = None
-        self.access = None
-        self.secret = None
+# TODO - more reworking to replace these things with a generic "endpoint" dict
+        self.type = "s3"
+        self.host = host
+        self.access = access
+        self.secret = secret
 # TODO - rename to mount or something - prefix is confusing with the aws definition of prefix
         self.prefix = None
         self.cwd = None
         self.s3 = None
-        self.type = "s3"
         self.status = "not connected"
         self.logger = logging.getLogger('s3client')
 # CURRENT
@@ -37,22 +38,28 @@ class s3client:
 #------------------------------------------------------------
 # prefix - the keystone project assoc with access/secret ... and trigger for s3client pathways
 # VFS style ... TODO - allow for multiple mounts ... eg AWS
-    def connect(self, host, access, secret, prefix):
-        self.logger.info('endpoint=%s using acess=%s and visible on path=%s' % (host, access, prefix))
-        self.host = host
-        self.access = access
-        self.secret = secret
-        self.prefix = prefix
-        if ok:
+#    def connect(self, host, access, secret, prefix):
+    def connect(self):
+        self.logger.info('endpoint=%s using acess=%s and visible on path=%s' % (self.host, self.access, self.prefix))
+        try:
             self.s3 = boto3.client('s3', endpoint_url=self.host, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
+            self.status = "connected: as access=%s" % self.access
+        except Exception as e:
+            self.status = "not connected: %s" % str(e)
 
 #------------------------------------------------------------
+    def endpoint(self):
+        return { 'type':self.type, 'host':self.host, 'access':self.access, 'secret':self.secret, 'prefix':self.prefix }
+
+#------------------------------------------------------------
+# deprec -> status
     def whoami(self):
         print("=== %s ===" % self.host)
         if self.prefix is not None:
             print("    %s : access = %r" % (self.prefix, self.access))
 
 #------------------------------------------------------------
+# deprec -> pshell controlled via mount
     def is_mine(self, path):
 
         mypath = pathlib.PurePosixPath(path)
@@ -85,135 +92,91 @@ class s3client:
 
 #------------------------------------------------------------
 # convert fullpath to bucket, key pair
-    def path_split(self, path):
-
-        self.logger.info("path=[%s]" % path)
-        fullpath = self.absolute_remote_filepath(path)
-        self.logger.info("fullpath=[%s]" % fullpath)
+    def path_split(self, fullpath):
+        self.logger.info("[%s]" % fullpath)
 
 # convert fullpath to [bucket][object]
         mypath = pathlib.PurePosixPath(fullpath)
-        bucket = None
-        key = None
-        try:
-            if mypath.parts[1] != self.prefix:
-                raise Exception("Bad remote path: [%s]" % fullpath)
+        bucket = None 
+        key = ""
+        count = len(mypath.parts)
+        if count > 2:
             bucket = mypath.parts[2]
+            head = "%s%s/%s" % (mypath.parts[0], mypath.parts[1], bucket)
 
-# HACK - trigger an exception if object reference doesn't exist, otherwise below will generate . instead of None
-            key = mypath.parts[3]
-            key = mypath.relative_to("/%s/%s" % (self.prefix, bucket))
-
-        except Exception as e:
-            self.logger.debug(str(e))
+# remainder is the object, which will need to have "/" at the end for prefix matching
+# FIXME - this may have consequences if it's a reference to an object and not a prefix
+# currently though, since any trailing / characters will be stripped, it's difficult to fix
+            key = fullpath[1+len(head):]
+            if len(key) > 2:
+                key = key + "/"
 
         self.logger.info("bucket=[%r] key=[%r]" % (bucket, key))
 
         return bucket, key
 
 #------------------------------------------------------------
-    def absolute_remote_filepath(self, path):
-
-        self.logger.debug('in: %s' % path)
-
-        mypath = path.strip()
-        if mypath[0] != '/':
-            mypath = posixpath.join(self.cwd, mypath)
-        mypath = posixpath.normpath(mypath)
-
-        self.logger.debug('out: %s' % mypath)
-
-        return mypath
+# TODO - deprecate this in clients??? (ie all done in pshell and we expect fullpath's always)
+#    def absolute_remote_filepath(self, path):
+#
+#        self.logger.debug('in: %s' % path)
+#
+#        mypath = path.strip()
+#        if mypath[0] != '/':
+#            mypath = posixpath.join(self.cwd, mypath)
+#        mypath = posixpath.normpath(mypath)
+#
+#        self.logger.debug('out: %s' % mypath)
+#
+#        return mypath
 
 #------------------------------------------------------------
-    def cd(self, path):
+    def cd(self, fullpath):
 
-        self.logger.debug("path = [%s]" % path)
+        self.logger.debug("[%s]" % fullpath)
 
-        fullpath = self.absolute_remote_filepath(path)
+        mypath = pathlib.PurePosixPath(fullpath)
+        count = len(mypath.parts)
+        stop = min(3, len(mypath.parts)) 
 
-        bucket, key = self.path_split(fullpath)
-
-        self.logger.debug("bucket = [%r]" % bucket)
-
-# discard key ie enforce flat structure
-        if bucket is not None:
-            self.cwd = posixpath.join("/" + self.prefix, bucket)
-        else:
-            self.cwd = fullpath
+        self.cwd = "/"
+        for i in range(0,stop):
+            self.cwd = posixpath.join(self.cwd, mypath.parts[i])
 
         self.logger.debug("cwd = [%s]" % self.cwd)
 
         return self.cwd
 
 #------------------------------------------------------------
-# TODO - maybe have *kwargs -> prefix etc -> which could permit more advanced aws style listings
+    def ls_iter(self, path):
 
-#------------------------------------------------------------
-# deprec - difficult and complicated to turn the flat object structure into a traditional filesystem tree
-# but if you want to do it, this is a partial implementation
-    def ls(self, path):
-
-        if ok is False:
-            raise Exception("Could not find the boto3 library.")
+#        if ok is False:
+#            raise Exception("Could not find the boto3 library.")
 
         bucket,key = self.path_split(path)
-
         self.logger.info("bucket=[%r] key=[%r]" % (bucket, key))
 
         if bucket is not None:
-# FIXME - apparently list_objects() is deprec, should use V2 ...
-# TODO - apparently there is a paginator too ...
-# https://stackoverflow.com/questions/54314563/how-to-get-more-than-1000-objects-from-s3-by-using-list-objects-v2
+            paginator = self.s3.get_paginator('list_objects_v2')
+            pages = paginator.paginate(Bucket=bucket, Delimiter='/', Prefix=key)
+            for page in pages:
+                if 'CommonPrefixes' in page:
+                    for item in page['CommonPrefixes']:
+                        yield "[prefix] %s" % item['Prefix']
 
-            if key is not None:
-                self.logger.info("listing objects in bucket [%s] with prefix [%s/]" % (str(bucket), str(key)))
-                reply = self.s3.list_objects_v2(Bucket=str(bucket), Delimiter='/', Prefix=str(key)+'/', MaxKeys=10)
-            else:
-                self.logger.info("listing objects in bucket [%s]" % str(bucket))
-                reply = self.s3.list_objects_v2(Bucket=str(bucket), Delimiter='/', MaxKeys=10)
-
-# DEBUG
-#            print(reply)
-
-# TODO - yield these ... and in pshell - hook to pagination
-
-            if 'CommonPrefixes' in reply:
-                for item in reply['CommonPrefixes']:
-                    print("[prefix] %s" % item['Prefix'])
-
-            if 'Contents' in reply:
-                for item in reply['Contents']:
-# NB: if the key of stuff in Contents ends in '/' then it's a prefix placeholder of some kind???
-                    if item['Key'].endswith('/') is False:
-                        print("%d B | %s" % (item['Size'], item['Key']))
-
-# TODO - pagination
-# testing directory = /magenta-storage/mybucket/mediaflux_store_598_4/data
-
-            try:
-                is_truncated = reply['IsTruncated']
-                if is_truncated:
-                    print(" Truncated = %r - TODO - pagination" % is_truncated)
-
-# TODO - parse for continuation token ...
-#            self.logger.info("Continue = %r" % reply['ContinuationToken'])
-
-            except Exception as e:
-                self.logger.info(str(e))
-
-
-#            paginator = self.s3.get_paginator('list_objects_v2')
-#            pages = paginator.paginate(Bucket=bucket)
-#            for page in pages:
-#                for item in page['Contents']:
-#                    print("%d B | %s" % (item['Size'], item['Key']))
+                if 'Contents' in page:
+                    for item in page['Contents']:
+                        if item['Key'].endswith('/') is False:
+                            yield "%d B | %s" % (item['Size'], item['Key'])
 
         else:
             response = self.s3.list_buckets()
             for item in response['Buckets']:
-                print("[Bucket] %s" % item['Name'])
+                yield "[Bucket] %s" % item['Name']
 
+#------------------------------------------------------------
+    def info(self, path):
+        raise Exception("s3client.info() not implemented yet")
 
 #------------------------------------------------------------
     def get(self, path):

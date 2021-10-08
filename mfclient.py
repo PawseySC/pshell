@@ -186,6 +186,11 @@ class mf_client:
         self.logger.info("PYTHON=%s" % version[:i])
         self.logger.info("OpenSSL=%s", ssl.OPENSSL_VERSION)
 
+#    @classmethod
+#    def endpoint(cls, endpoint):
+#        print("mfclient init endpoint")
+#        return cls(...)
+
 
 #------------------------------------------------------------
 # deprec?
@@ -239,6 +244,22 @@ class mf_client:
                 break
         self.status = "Not connected"
         return False
+
+#------------------------------------------------------------
+    def endpoint(self):
+        """
+        Return configuration as endpoint description
+        """
+
+        endpoint = { 'type':self.type, 'protocol':self.protocol, 'server':self.server, 'port':self.port, 'domain':self.domain }
+        endpoint['encrypt'] = self.encrypted_data
+        endpoint['session'] = self.session
+        endpoint['token'] = self.token
+
+# FIXME - how?
+        endpoint['name'] = 'pawsey'
+
+        return endpoint
 
 #------------------------------------------------------------
 #    def config_init(self, config_filepath=None, config_section=None):

@@ -33,7 +33,6 @@ except:
 # NEW
 import keystone
 import s3client
-# NEW
 import getopt
 import shlex
 import pathlib
@@ -176,17 +175,24 @@ class parser(cmd.Cmd):
             self.config.write(f)
 
 # ---
-    def remotes_config_save(self, mount):
-        module = self.remotes[mount]
-        logging.info("mount = [%s] module = [%r]" % (mount, module))
-        endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
-        if module.type == 'mfclient':
-            endpoints[mount]['session'] = module.session
-            endpoints[mount]['token'] = module.token
-        else:
-            logging.info("TODO - refresh on remote credentials for [%s]" % module.type)
+# TODO = if no mount -> refresh all
+    def remotes_config_save(self):
 
-        self.config[self.config_name] = {'endpoints':json.dumps(endpoints) }
+        endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
+
+# TODO - only if refresh=True
+        for mount, endpoint in endpoints.items():
+            client = self.remotes_get(mount)
+
+            logging.info("updating mount=[%s] using client=[%r]" % (mount, client))
+
+# refresh the config endpoint via the client
+            if client is not None:
+                endpoints[mount] = client.endpoint()
+
+#        self.config[self.config_name] = {'endpoints':json.dumps(endpoints) }
+        self.config[self.config_name]['endpoints'] = json.dumps(endpoints)
+
         self.config_save()
 
 # ---
@@ -196,9 +202,14 @@ class parser(cmd.Cmd):
         self.remotes[mount] = module
 
 # init cwd
-        self.cwd = module.cd(mount)
         if module.connect() is True:
-            self.remotes_config_save(mount)
+            self.cwd = module.cd(mount)
+
+# add to config and save
+        endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
+        endpoints[mount] = module.endpoint()
+        self.config.set(self.config_name, 'endpoints', json.dumps(endpoints))
+        self.remotes_config_save()
 
 # ---
     def remotes_mount_get(self, path):
@@ -346,23 +357,50 @@ class parser(cmd.Cmd):
 # TODO map to ls https://nimbus etc
 #https://stackoverflow.com/questions/44751574/uploading-to-amazon-s3-via-curl-route/44751929
 # list ec2 credentials (per project or for all if no project specified)
+
+        if self.keystone is None:
+            raise Exception("No keystone url supplied.")
+
+        if 'discover' in line:
+            logging.info("Attempting discovery via: [%s]" % self.keystone)
+# find a mediaflux client
+# use as SSO for keystone auth
+# do discovery
+
+            mfclient = None
+            for mount, client in self.remotes.items():
+                if client.type == 'mfclient':
+                    logging.info("Attempting SSO via: [%r]" % client)
+                    mfclient = client
+            try:
+                self.keystone.connect(mfclient, refresh=True)
+                s3_client = s3client.s3client()
+                self.keystone.discover_s3(s3_client)
+# CURRENT - update config and save
+                self.remotes_add('/'+s3_client.prefix, s3_client)
+            except Exception as e:
+                logging.info(str(e))
+                print("Discovery failed")
+            return
+
         if 'list' in line:
             print(" === ec2 ===")
             self.keystone.credentials_print(line)
+            return
+
         if 'create' in line:
             if nargs > 1:
                 self.keystone.credentials_create(args[1])
-                self.keystone.discover_s3(self.s3client)
-                self.remotes_add('/'+self.s3client.prefix, self.s3client)
             else:
                 raise Exception("Error: missing project reference")
+            return
+
         if 'delete' in line:
             if nargs > 1:
                 self.keystone.credentials_delete(args[1])
-                self.keystone.discover_s3(self.s3client)
-                self.remotes_add('/'+self.s3client.prefix, self.s3client)
             else:
                 raise Exception("Error: missing access reference")
+            return
 
 
 # --- helper
@@ -457,11 +495,8 @@ class parser(cmd.Cmd):
         fullpath = self.absolute_remote_filepath(line)
 
         remote = self.remotes_get(fullpath)
-        try:
-            remote_list = remote.ls_iter(fullpath)
-        except Exception as e:
-            logging.debug(str(e))
-            return
+
+        remote_list = remote.ls_iter(fullpath)
 
         count = 0
         for line in remote_list:
@@ -1187,7 +1222,7 @@ class parser(cmd.Cmd):
 
 # NEW
             mount = self.remotes_mount_get(self.cwd)
-            self.remotes_config_save(mount)
+            self.remotes_config_save()
 
 
 #            endpoint = json.loads(self.config.get(self.config_name, 'endpoint'))
@@ -1218,6 +1253,11 @@ class parser(cmd.Cmd):
 #                logging.error(str(e))
 #                pass
 
+
+# this can only be done with an authenticated mfclient
+#            my_parser.keystone.connect(mf_client, refresh=False)
+#            my_parser.keystone.discover_s3(my_parser.s3client)
+#            my_parser.remotes_add('/'+my_parser.s3client.prefix, my_parser.s3client)
 
 
 # --
@@ -1651,8 +1691,6 @@ def main():
 #        if config.has_option(args.current, 'token'):
 #            token = config.get(args.current, 'token')
 #
-#    if args.keystone is not None:
-#        config.set(args.current, 'keystone', args.keystone)
 
 
 # extract terminal size for auto pagination
@@ -1689,6 +1727,16 @@ def main():
 #    my_parser.need_auth = need_auth
     my_parser.need_auth = True
 
+
+
+# add discovery url
+    if args.keystone is not None:
+        my_parser.config.set(args.current, 'keystone', args.keystone)
+
+    if my_parser.config.has_option(args.current, 'keystone'):
+        my_parser.keystone = keystone.keystone(my_parser.config.get(args.current, 'keystone'))
+
+
 # add endpoints
     try:
         for mount in endpoints:
@@ -1705,26 +1753,25 @@ def main():
                 my_parser.remotes_add(mount, mf_client)
 
             elif endpoint['type'] == 's3':
-                loging.info("TODO - config S3 endpoint")
+                client = s3client.s3client(host=endpoint['host'], access=endpoint['access'], secret=endpoint['secret'])
+                my_parser.remotes_add(mount, client)
+
 
     except Exception as e:
         logging.error(str(e))
 
 
-# CURRENT - this will break everything until we fully implement new remotes lookup
 
-#    my_parser.mf_client = mf_client
+#        config[args.current] = {'keystone':args.keystone}
+#        config.set(args.current, 'keystone', args.keystone)
 
 
 
-# NEW
-#    my_parser.s3client = s3client.s3client()
-#    if config.has_option(args.current, 'keystone'):
-#        my_parser.keystone = keystone.keystone(config.get(args.current, 'keystone'))
 
-# even NEWER
-#    my_parser.remotes_add('/projects', mf_client)
-
+# this can only be done with an authenticated mfclient
+#            my_parser.keystone.connect(mf_client, refresh=False)
+#            my_parser.keystone.discover_s3(my_parser.s3client)
+#            my_parser.remotes_add('/'+my_parser.s3client.prefix, my_parser.s3client)
 
 
 
@@ -1738,7 +1785,6 @@ def main():
 #    else:
 #       my_parser.transfer_processes = 4
     my_parser.transfer_processes = 2
-
 
 
 # NEW - restart script
@@ -1768,15 +1814,15 @@ def main():
         my_parser.interactive = False
 
 # NEW
-    if my_parser.keystone:
-        try:
-            my_parser.keystone.connect(mf_client, refresh=False)
-            my_parser.keystone.discover_s3(my_parser.s3client)
-            my_parser.remotes_add('/'+my_parser.s3client.prefix, my_parser.s3client)
-
-        except Exception as e:
-            logging.error(str(e))
-            pass
+#    if my_parser.keystone:
+#        try:
+#            my_parser.keystone.connect(mf_client, refresh=False)
+#            my_parser.keystone.discover_s3(my_parser.s3client)
+#            my_parser.remotes_add('/'+my_parser.s3client.prefix, my_parser.s3client)
+#
+#        except Exception as e:
+#            logging.error(str(e))
+#            pass
 
 # interactive or input iterator (scripted)
     if my_parser.interactive:
