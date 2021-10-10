@@ -151,6 +151,20 @@ class mfclient_bugs(unittest.TestCase):
         reply = self.mf_client.aterm_run(line, post=False)
         self.assertEqual(reply, '<request><service name="service.execute" session=""><args><service name="asset.set"><id>123</id><name>#filename#</name></service></args></service></request>')
 
+
+
+# new features
+class mfclient_features(unittest.TestCase):
+    def setUp(self):
+        global mf_client
+        self.mf_client = mf_client
+
+# by default lexer silently drops any text starting with # (comment)
+    def test_get_iter(self):
+        reply = self.mf_client.get_iter("/projects/Data Team/")
+        print(reply)
+
+
 ######
 # main
 ######
@@ -169,6 +183,7 @@ if __name__ == '__main__':
 
 
 # classes to test
+#    test_class_list = [mfclient_features]
     test_class_list = [mfclient_syntax]
 #    test_class_list = [mfclient_bugs]
 

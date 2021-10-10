@@ -52,7 +52,7 @@ def put_jump(mfclient, data):
         return (int(asset_id), data[0], data[1])
     except Exception as e:
 # FIXME - loggers don't work in separate process
-        mfclient.logger.debug("put_jump(%s): %s" % (data[1], str(e)))
+        mfclient.logging.debug("put_jump(%s): %s" % (data[1], str(e)))
 
 # report failure
     return (-1, data[0], data[1])
@@ -74,7 +74,7 @@ def get_jump(mfclient, data):
         return (0, data[0], data[1])
     except Exception as e:
 # FIXME - loggers don't work in separate process
-        mfclient.logger.error("get_jump(): %s" % str(e))
+        mfclient.logging.error("get_jump(): %s" % str(e))
 
 # report failure
     return (-1, data[0], data[1])
@@ -132,9 +132,9 @@ class mf_client:
 # NB: there can be some subtle bugs in python library handling if these are "" vs None
         self.session = ""
         self.token = ""
-        self.logger = logging.getLogger('mfclient')
+        self.logging = logging.getLogger('mfclient')
 # TODO - set log level based on debug
-#        self.logger.setLevel(logging.DEBUG)
+#        self.logging.setLevel(logging.DEBUG)
 #        self.config_filepath = None
 #        self.config_section = None
 
@@ -176,15 +176,15 @@ class mf_client:
             self.data_put = "%s:%s" % (server, 80)
 
 # more info
-        self.logger.info("PLATFORM=%s" % platform.system())
-        self.logger.info("MFCLIENT=%s" % build)
-        self.logger.info("POST=%s" % self.post_url)
-        self.logger.info("GET=%s" % self.data_get)
-        self.logger.info("PUT=%s" % self.data_put)
+        self.logging.info("PLATFORM=%s" % platform.system())
+        self.logging.info("MFCLIENT=%s" % build)
+        self.logging.info("POST=%s" % self.post_url)
+        self.logging.info("GET=%s" % self.data_get)
+        self.logging.info("PUT=%s" % self.data_put)
         version = sys.version
         i = version.find("\n")
-        self.logger.info("PYTHON=%s" % version[:i])
-        self.logger.info("OpenSSL=%s", ssl.OPENSSL_VERSION)
+        self.logging.info("PYTHON=%s" % version[:i])
+        self.logging.info("OpenSSL=%s", ssl.OPENSSL_VERSION)
 
 #    @classmethod
 #    def endpoint(cls, endpoint):
@@ -202,7 +202,7 @@ class mf_client:
              A BOOLEAN value depending on the current authentication status of the Mediaflux connection
         """
 
-        self.logger.info(" >>>> HELLO <<<<")
+        self.logging.info(" >>>> HELLO <<<<")
 
         if self.server is None:
             return True
@@ -213,7 +213,7 @@ class mf_client:
 
         except Exception as e:
 # NB: max licence error can occur here
-            self.logger.debug(str(e))
+            self.logging.debug(str(e))
 
         return False
 
@@ -233,14 +233,14 @@ class mf_client:
                         self.status += " as user=%s" % elem.text
                     return True
             except Exception as e:
-                self.logger.info("session invalid")
+                self.logging.info("session invalid")
 # session was invalid, try to get a new session via a token and retry
             try:
                 if self.token is not None:
                     self.login(token=self.token)
-                    self.logger.info("token ok")
+                    self.logging.info("token ok")
             except Exception as e:
-                self.logger.info("token invalid")
+                self.logging.info("token invalid")
                 break
         self.status = "Not connected"
         return False
@@ -266,7 +266,7 @@ class mf_client:
 #        """
 #        Setup config file and section to update with session/token info
 #        """
-#        self.logger.info("config filepath=[%s], config_section=[%s]" % (config_filepath, config_section))
+#        self.logging.info("config filepath=[%s], config_section=[%s]" % (config_filepath, config_section))
 #        self.config_filepath = config_filepath
 #        self.config_section = config_section
 
@@ -280,11 +280,11 @@ class mf_client:
 #            config.read(self.config_filepath)
 #
 #            if refresh_token is True:
-#                self.logger.info("Updating token")
+#                self.logging.info("Updating token")
 #                config.set(self.config_section, 'token', self.token)
 #
 #            if refresh_session is True:
-#                self.logger.info("Updating session")
+#                self.logging.info("Updating session")
 #                config.set(self.config_section, 'session', self.session)
 #
 #            with open(self.config_filepath, 'w') as f:
@@ -334,7 +334,7 @@ class mf_client:
         if elem is not None:
             elem = tree.find(".//message")
             error_message = self._xml_succint_error(elem.text)
-            self.logger.debug("_post() raise: [%s]" % error_message)
+            self.logging.debug("_post() raise: [%s]" % error_message)
             raise Exception(error_message)
 
         return tree
@@ -374,14 +374,14 @@ class mf_client:
 
 # different connection object for HTTPS vs HTTP
         if self.encrypted_data is True:
-            self.logger.debug("Using https for data: [%s]" % self.data_put)
+            self.logging.debug("Using https for data: [%s]" % self.data_put)
             conn = http.client.HTTPSConnection(self.data_put, timeout=upload_timeout)
         else:
-            self.logger.debug("Using http for data: [%s]" % self.data_put)
+            self.logging.debug("Using http for data: [%s]" % self.data_put)
             conn = http.client.HTTPConnection(self.data_put, timeout=upload_timeout)
 
 # kickoff
-        self.logger.debug("[pid=%d] File send starting: %s" % (pid, filepath))
+        self.logging.debug("[pid=%d] File send starting: %s" % (pid, filepath))
         conn.putrequest('POST', '/__mflux_svc__')
 # headers
         conn.putheader('Connection', 'keep-alive')
@@ -415,7 +415,7 @@ class mf_client:
 # terminating line (len(boundary) + 8)
         chunk = "\r\n--%s--\r\n" % boundary
         conn.send(chunk.encode())
-        self.logger.debug("[pid=%d] File send completed, waiting for server..." % pid)
+        self.logging.debug("[pid=%d] File send completed, waiting for server..." % pid)
 
 # get ACK from server (asset ID) else error (raise exception)
         resp = conn.getresponse()
@@ -509,7 +509,7 @@ class mf_client:
 # if element contains : (eg csiro:seismic) then we need to inject the xmlns stuff
                     if ":" in token[1:]:
                         item_list = token[1:].split(":")
-                        self.logger.debug("XML associate namespace [%s] with element [%s]" % (item_list[0], token[1:]))
+                        self.logging.debug("XML associate namespace [%s] with element [%s]" % (item_list[0], token[1:]))
                         child.set("xmlns:%s" % item_list[0], item_list[0])
                 elif token[0] == '<':
                     stack.append(xml_node)
@@ -563,7 +563,7 @@ class mf_client:
                     token = lexer.get_token()
 
         except Exception as e:
-            self.logger.error(str(e))
+            self.logging.error(str(e))
             raise SyntaxError
 
 # do any deletions to the tree after processing 
@@ -618,7 +618,7 @@ class mf_client:
 #        xml_hidden = self._xml_cloak(xml_text) 
 # PYTHON3 - bytes v strings
         xml_hidden = self._xml_cloak(xml_text.decode()).encode() 
-        self.logger.debug("XML out: %s" % xml_hidden)
+        self.logging.debug("XML out: %s" % xml_hidden)
 
 # testing hook
         if post is not True:
@@ -633,7 +633,7 @@ class mf_client:
                     elem = reply.find(".//id")
                     job = elem.text
                     while True:
-                        self.logger.debug("background job [%s] poll..." % job)
+                        self.logging.debug("background job [%s] poll..." % job)
                         xml_poll = self.aterm_run("service.background.describe :id %s" % job)
                         elem = xml_poll.find(".//task/state")
                         item = xml_poll.find(".//task/exec-time")
@@ -648,7 +648,7 @@ class mf_client:
                             print("\r%s    " % text)
                             break
 # NB: it is an exception (error) to get results BEFORE completion
-                    self.logger.debug("background job [%s] complete, getting results" % job)
+                    self.logging.debug("background job [%s] complete, getting results" % job)
                     xml_poll = self.aterm_run("service.background.results.get :id %s" % job)
 # NB: mediaflux seems to not return any output if run in background (eg asset.get :id xxxx &)
 # this seems like a bug?
@@ -658,7 +658,7 @@ class mf_client:
 # CURRENT - process reply for any output
 # NB - can only cope with 1 output
                     if data_out_name is not None:
-                        self.logger.debug("aterm_run(): output filename [%s]" % data_out_name)
+                        self.logging.debug("aterm_run(): output filename [%s]" % data_out_name)
                         elem_output = reply.find(".//outputs")
                         if elem_output is not None:
                             elem_id = elem_output.find(".//id")
@@ -685,25 +685,25 @@ class mf_client:
                                     with bytes_recv.get_lock():
                                         bytes_recv.value += len(data)
                         else:
-                            self.logger.debug("missing output data in XML server response")
+                            self.logging.debug("missing output data in XML server response")
 # successful
                     return reply
 
             except Exception as e:
                 message = str(e)
-                self.logger.debug(message)
+                self.logging.debug(message)
                 if "session is not valid" in message:
 # restart the session if token exists
 #                    if self.token is not None:
                     if len(self.token) > 0:
-                        self.logger.debug("attempting login with token")
+                        self.logging.debug("attempting login with token")
                         # FIXME - need to put this in a separate exception handling ...
                         self.login(token=self.token)
 
 # PYTHON3 - due to the strings vs bytes change (ie xml_text is bytes rather than string) 
 #                        xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
                         xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text.decode()).encode()
-                        self.logger.debug("session restored, retrying command")
+                        self.logging.debug("session restored, retrying command")
 #                        self.config_save(refresh_session=True)
                         continue
                 break
@@ -777,7 +777,7 @@ class mf_client:
         """
 # security check
         if self.protocol != "https":
-            self.logger.debug("Permitting unencrypted login; I hope you know what you're doing.")
+            self.logging.debug("Permitting unencrypted login; I hope you know what you're doing.")
 
 # NEW - priority order and auto lookup of token or session in appropriate config file section
 # NB: failed login calls raise an exception in aterm_run post XML handling
@@ -815,7 +815,7 @@ class mf_client:
         enforce absolute remote namespace path
         """
 
-        self.logger.debug("cwd = [%s] input = [%s]" % (self.cwd, line))
+        self.logging.debug("cwd = [%s] input = [%s]" % (self.cwd, line))
 
         if line.startswith('"') and line.endswith('"'):
             line = line[1:-1]
@@ -833,7 +833,7 @@ class mf_client:
         Command line completion for folders
         """
 
-        self.logger.debug("cn seek: partial_ns=[%s] start=[%d]" % (partial_ns, start))
+        self.logging.debug("cn seek: partial_ns=[%s] start=[%d]" % (partial_ns, start))
 
 # extract any partial namespace to use as pattern match
         match = re.match(r".*/", partial_ns)
@@ -855,7 +855,7 @@ class mf_client:
 
 # construct an absolute namespace (required for any remote lookups)
         target_ns = self.absolute_namespace(partial_ns[:offset])
-        self.logger.debug("cn seek: target_ns: [%s] : prefix=[%r] : pattern=[%r] : start=%r : xlat=%r" % (target_ns, prefix, pattern, start, xlat_offset))
+        self.logging.debug("cn seek: target_ns: [%s] : prefix=[%r] : pattern=[%r] : start=%r : xlat=%r" % (target_ns, prefix, pattern, start, xlat_offset))
 
 # generate listing in target namespace for completion matches
         result = self.aterm_run('asset.namespace.list :namespace "%s"' % target_ns)
@@ -874,7 +874,7 @@ class mf_client:
                 if item is not None:
                     ns_list.append(item)
 
-        self.logger.debug("cn found: %r" % ns_list)
+        self.logging.debug("cn found: %r" % ns_list)
 
         return ns_list
 
@@ -888,7 +888,7 @@ class mf_client:
         Command line completion for files
         """
 
-        self.logger.debug("ca seek: partial_asset=[%s] start=[%d]" % (partial_asset_path, start))
+        self.logging.debug("ca seek: partial_asset=[%s] start=[%d]" % (partial_asset_path, start))
 # construct an absolute namespace (required for any remote lookups)
         candidate_ns = self.absolute_namespace(partial_asset_path)
 
@@ -911,7 +911,7 @@ class mf_client:
                 return None
 
         target_ns = self.escape_single_quotes(target_ns)
-        self.logger.debug("ca seek: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix))
+        self.logging.debug("ca seek: target_ns: [%s] : pattern = %r : prefix = %r" % (target_ns, pattern, prefix))
 
         if pattern is not None:
             result = self.aterm_run("asset.query :where \"namespace='%s' and name ='%s*'\" :action get-values :xpath -ename name name" % (target_ns, pattern))
@@ -929,7 +929,7 @@ class mf_client:
                 else:
                     asset_list.append(posixpath.join(prefix, elem.text))
 
-        self.logger.debug("ca found: %r" % asset_list)
+        self.logging.debug("ca found: %r" % asset_list)
 
         return asset_list
 
@@ -940,7 +940,7 @@ class mf_client:
         try:
             nbytes = int(nbytes)
         except Exception as e:
-            self.logger.debug("Bad input integer [%r]" % nbytes)
+            self.logging.debug("Bad input integer [%r]" % nbytes)
             nbytes = 0
 
         if nbytes:
@@ -982,7 +982,7 @@ class mf_client:
         """
         remove a file
         """
-        self.logger.info("[%s]" % fullpath)
+        self.logging.info("[%s]" % fullpath)
         self.aterm_run('asset.destroy :id "path=%s"' % fullpath)
 
 #------------------------------------------------------------
@@ -990,7 +990,7 @@ class mf_client:
         """
         information on a named file
         """
-        self.logger.info("[%s]" % fullpath)
+        self.logging.info("[%s]" % fullpath)
         output_list = []
         result = self.aterm_run('asset.get :id "path=%s"' % fullpath)
         elem = result.find(".//asset")
@@ -1020,13 +1020,18 @@ class mf_client:
         """
         generator for namespace/asset listing
         """
-        self.logger.info("[%s]" % namespace)
+        self.logging.info("[%s]" % namespace)
+
 # iterate over namespaces
         if self.namespace_exists(namespace):
             reply = self.aterm_run('asset.namespace.list :namespace "%s"' % namespace)
             ns_list = reply.findall('.//namespace/namespace')
             for ns in ns_list:
                 yield "[folder] %s" % ns.text
+# TODO - use this pattern for non-namespaces
+#        else:
+#        base_query = self.get_query(fullpath_pattern)
+
 # iterateo over assets 
         result = self.aterm_run("asset.query :where \"namespace='%s'\" :as iterator :action get-values :xpath -ename id id :xpath -ename name name :xpath -ename size content/size" % namespace)
         elem = result.find(".//iterator")
@@ -1038,7 +1043,7 @@ class mf_client:
             elem = result.find(".//iterated")
             if elem is not None:
                 complete = elem.attrib['complete'].lower()
-            self.logger.debug("asset query iterator chunk [%s] - complete[%s]" % (iterator, complete))
+            self.logging.debug("asset query iterator chunk [%s] - complete[%s]" % (iterator, complete))
 # parse the asset results
             for elem in result.findall(".//asset"):
                 asset_id = '?'
@@ -1066,7 +1071,67 @@ class mf_client:
         return current & 0xFFFFFFFF
 
 #------------------------------------------------------------
-#    def get(self, asset_id, filepath, overwrite=False):
+    def get_query(self, fullpath_pattern):
+        self.logging.info("[%s]" % fullpath_pattern)
+
+# TODO - do we need to do escaping etc?
+        if self.namespace_exists(fullpath_pattern):
+            base_query = "namespace>='%s'" % fullpath_pattern
+        else:
+            pattern = posixpath.basename(fullpath_pattern)
+            namespace = posixpath.dirname(fullpath_pattern)
+            base_query = "namespace='%s' and name='%s'" % (namespace, pattern)
+        self.logging.info("[%s]" % fullpath_pattern)
+        return(base_query)
+
+#------------------------------------------------------------
+# TODO - ls_iter should use similar pattern ...
+    def get_iter(self, fullpath_pattern):
+        """
+        iterator for get candidates based on pattern
+        first 2 items = filecount, bytecount (NB: if known)
+        subsequent = candidates for get()
+        """
+
+        base_query = self.get_query(fullpath_pattern)
+
+# count download results and get total size
+        try:
+            reply = self.aterm_run('asset.query :where "%s" :count true :action sum :xpath content/size' % base_query)
+            elem = reply.find(".//value")
+            total_bytes = elem.text
+            total_count = elem.attrib['nbe']
+            yield total_count
+            yield total_bytes
+        except Exception as e:
+            self.logging.debug(str(e))
+            yield 0
+            yield 0
+            return
+
+# NEW - just return results ... get() primitive will do the recall ...
+#        result = self.aterm_run('asset.query :where "%s and content online" :as iterator :action get-path' % base_query)
+        result = self.aterm_run('asset.query :where "%s" :as iterator :action get-path' % base_query)
+        elem = result.find(".//iterator")
+        iterator = elem.text
+# effectively the recall batch size
+        iterate_size = 100
+        iterate = True
+        count = 0
+        while iterate:
+            logging.debug("Online iterator chunk")
+# get file list for this sub-set
+            result = self.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
+            for elem in result.findall(".//path"):
+                count += 1
+                yield elem.text
+# iter completed?
+            elem = result.find(".//iterated")
+            if elem is not None:
+                if 'true' in elem.attrib['completed']:
+                    iterate = False
+
+#------------------------------------------------------------
     def get(self, remote_filepath, overwrite=False):
         """
         Download a remote file to the current working directory
@@ -1081,10 +1146,10 @@ class mf_client:
         global bytes_recv
 
         local_filepath = os.path.join(os.getcwd(), posixpath.basename(remote_filepath))
-        self.logger.info("Downloading remote [%s] to local [%s]" % (remote_filepath, local_filepath))
+        self.logging.info("Downloading remote [%s] to local [%s]" % (remote_filepath, local_filepath))
 
         if os.path.isfile(local_filepath) and not overwrite:
-            self.logger.debug("Local file of that name already exists, skipping.")
+            self.logging.debug("Local file of that name already exists, skipping.")
             with bytes_recv.get_lock():
                 bytes_recv.value += os.path.getsize(local_filepath)
             return
@@ -1093,6 +1158,9 @@ class mf_client:
         if "Windows" in platform.system():
             local_filepath = local_filepath.replace("\\", "\\\\")
 
+# online recall - backgrounded
+        reply = self.aterm_run('asset.content.migrate :id "path=%s" :destination "online" &' % remote_filepath)
+# download after recall completes
         reply = self.aterm_run('asset.get :id "path=%s" :out %s' % (remote_filepath, local_filepath))
 
 #------------------------------------------------------------
@@ -1142,7 +1210,7 @@ class mf_client:
         result = self.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
         xml_id = result.find(".//id")
         if xml_id is None:
-            self.logger.debug("No remote file found: [%s]" % remotepath)
+            self.logging.debug("No remote file found: [%s]" % remotepath)
 # NB: must create intermediate directories if they don't exist (mediaflux won't do it by default)
             reply = self.aterm_run('asset.create :namespace -create "true" %s :name %s' % (namespace, filename))
             xml_id = reply.find(".//id")
@@ -1156,17 +1224,17 @@ class mf_client:
 # if sizes match (checksum compare is excrutiatingly slow) don't overwrite
             local_size = int(os.path.getsize(filepath))
             if remote_size == local_size:
-                self.logger.debug("Match; skipping [%s] -> [%s]" % (filepath, remotepath))
+                self.logging.debug("Match; skipping [%s] -> [%s]" % (filepath, remotepath))
                 overwrite = False
                 with bytes_sent.get_lock():
                     bytes_sent.value += remote_size
             else:
-                self.logger.debug("Mismatch; local=%r -> remote=%r" % (local_size, remote_size))
+                self.logging.debug("Mismatch; local=%r -> remote=%r" % (local_size, remote_size))
 
         asset_id = int(xml_id.text)
         # NB: create=true to generate intermediate directories (if needed)
         if overwrite is True:
-            self.logger.debug("Uploading asset=%d: [%s] -> [%s]" % (asset_id, filepath, remotepath))
+            self.logging.debug("Uploading asset=%d: [%s] -> [%s]" % (asset_id, filepath, remotepath))
             xml_string = '<request><service name="service.execute" session="%s"><args><service name="asset.set">' % self.session
             xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
             asset_id = self._post_multipart_buffered(xml_string, filepath)
@@ -1191,15 +1259,15 @@ class mf_client:
 # if not supplied - count (potentially a lot slower)
         if total_bytes is None:
             total_bytes = 0
-            self.logger.debug("Total upload bytes not supplied, counting...")
+            self.logging.debug("Total upload bytes not supplied, counting...")
             for namespace, filepath in list_namespace_filepath:
                 try:
                     total_bytes += os.path.getsize(filepath)
                 except:
-                    self.logger.debug("Can't read %s, skipping." % filepath)
+                    self.logging.debug("Can't read %s, skipping." % filepath)
 # shenanigans to enable mfclient method to be called from the global process pool (python can't serialize instance methods)
         put_alias = functools.partial(put_jump, self)
-        self.logger.debug("Total upload bytes: %d" % total_bytes)
+        self.logging.debug("Total upload bytes: %d" % total_bytes)
         return mf_manager(function=put_alias, arguments=list_namespace_filepath, processes=processes, total_bytes=total_bytes)
 
 #############################################################

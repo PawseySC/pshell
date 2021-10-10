@@ -110,16 +110,16 @@ class pshell_syntax(unittest.TestCase):
 
 
 ########################################
-# convenience wrapper for squishing bugs
+# wrapper for squishing bugs
 ########################################
 class pshell_bugs(unittest.TestCase):
     def setUp(self):
         global session, server, script, verbosity
-
         self.session = session
         self.server = server
         self.script = script
         self.verbosity = verbosity
+        self.python = "python3"
 
     def test_template(self):
         p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls /www"], stdout=PIPE, stderr=STDOUT)
@@ -128,6 +128,25 @@ class pshell_bugs(unittest.TestCase):
             if "index.html" in line:
                 flag = True
         self.assertTrue(flag)
+
+########################################
+# wrapper for new features 
+########################################
+class pshell_features(unittest.TestCase):
+    def setUp(self):
+        global session, server, script, verbosity
+        self.session = session
+        self.server = server
+        self.script = script
+        self.verbosity = "1"
+        self.python = "python3"
+
+    def test_get_iter(self):
+
+        command = 'get scripts/*.tcl'
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, command], stdout=PIPE, stderr=STDOUT)
+        for line in p.stdout:
+            print(line)
 
 
 
@@ -151,7 +170,8 @@ if __name__ == '__main__':
     verbosity = "0"
 
 # class suite to test
-    test_class_list = [pshell_syntax]
+    test_class_list = [pshell_features]
+#    test_class_list = [pshell_syntax]
 #    test_class_list = [pshell_bugs]
 
 

@@ -138,10 +138,17 @@ class parser(cmd.Cmd):
 
 # ---
     def default(self, line):
-        raise Exception("Unknown command passthrough not implemented")
+#        raise Exception("Unknown command passthrough not implemented")
 # unrecognized - assume it's an aterm command
 #        reply = self.mf_client.aterm_run(line)
 #        self.mf_client.xml_print(reply)
+
+        remote = self.remotes_get(self.cwd)
+        if remote is not None:
+            logging.debug("Fixme - assuming mflux")
+            reply = remote.aterm_run(line)
+            remote.xml_print(reply)
+
         return
 
 #------------------------------------------------------------
@@ -405,6 +412,7 @@ class parser(cmd.Cmd):
 
         return result
 
+# --- helper
 # display prompt and return pagination specific directives (next page, quit)
     def pagination_controller(self, prompt):
         result = None
@@ -478,115 +486,10 @@ class parser(cmd.Cmd):
                     else:
                         count = 0
 
-# --
-    def poll_total(self, base_query):
-        total = dict()
-
-# enforce these keys are present in the dictionary
-        total['online-files'] = 0
-        total['offline-files'] = 0
-
-        count_files = 0
-        count_bytes = 0
-
+# -- old
+#    def poll_total(self, base_query):
 # run in background as this can timeout on larger DMF folders
-        logging.debug("Polling online/offline statistics...") 
-        result = self.mf_client.aterm_run('asset.content.status.statistics :where "%s" &' % base_query)
-
-        for elem in result.iter("statistics"):
-            state = elem.attrib.get('state', elem.text)
-
-            if state == 'online+offline':
-                state = 'online'
-
-            for child in elem:
-                if child.tag == "total":
-                    count_files += int(child.text)
-                    total[state+"-files"] = int(child.text)
-                elif child.tag == "size":
-                    count_bytes += int(child.text)
-                    total[state+"-bytes"] = int(child.text)
-                else:
-                    total[state+"-"+child.tag] = int(child.text)
-
-# enforce these keys are present in the dictionary
-        total['total-files'] = count_files
-        total['total-bytes'] = count_bytes
-
-        return total
-
-
-# TODO - this can probably be completely replaced with the new "asset.preparation.request.create" 
-# prepare state - online + offline init
-# return list of (online) files to download
-    def get_online_set(self, base_query, base_namespace):
-
-        online = dict()
-        list_local_path = {}
-
-# TODO - pending feedback from Arcitecta to solve or fix the issue
-# hmmm backgrounding doesnt appear to for iterators ...
-# result seems the same background or not ... but MF gives an error when using the background one (no session for iterator => MF bug?)
-        logging.debug("Getting download iterator...")
-        result = self.mf_client.aterm_run('asset.query :where "%s and content online" :as iterator :action get-values :xpath -ename id id :xpath -ename namespace namespace :xpath -ename filename name' % base_query)
-
-        elem = result.find(".//iterator")
-        iterator = elem.text
-        iterate_size = 100
-
-        iterate = True
-        while iterate:
-            logging.debug("Online iterator chunk")
-# get file list for this sub-set
-            result = self.mf_client.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
-
-            for elem in result.iter("asset"):
-                asset_id = None
-                filename = None
-                path = None
-                for child in elem:
-                    if child.tag == "id":
-                        asset_id = child.text
-                    if child.tag == "filename":
-                        filename = child.text
-                    if child.tag == "namespace":
-                        namespace = child.text
-# remote = *nix , local = windows or *nix
-# the relative path should be computed from the starting namespace
-                        remote_relpath = posixpath.relpath(path=namespace, start=base_namespace)
-                        relpath_list = remote_relpath.split("/")
-                        local_relpath = os.sep.join(relpath_list)
-                        path = os.path.join(os.getcwd(), local_relpath)
-                        logging.debug("local=%s : remote=%s" % (local_relpath, remote_relpath))
-
-# add valid download entry
-                if asset_id is not None and filename is not None:
-                    if path is None:
-                        filepath = os.path.join(os.getcwd(), filename)
-                    else:
-                        filepath = os.path.join(path, filename)
-                        list_local_path[path] = 1
-
-                    online[asset_id] = filepath
-
-# check for completion - to avoid triggering a mediaflux exception on invalid iterator
-            for elem in result.iter("iterated"):
-                state = elem.get('complete')
-                if "true" in state:
-                    logging.debug("Asset iteration completed")
-                    iterate = False
-
-# TODO - *** split out this from get_online_set() -> call ONCE on ALL files at the start, rather than polling
-# create any required local dirs (NB: may get exception if they exist - hence the catch)
-        for local_path in list_local_path:
-            try:
-                logging.debug("Creating local folder: %s" % local_path)
-                os.makedirs(local_path)
-            except Exception as e:
-# TODO - this is too noisy currently as we're doing this more than we should, but unavoidable until the split out above *** is done
-                pass
-
-        return online
+#        result = self.mf_client.aterm_run('asset.content.status.statistics :where "%s" &' % base_query)
 
 # --
     def print_over(self, text):
@@ -654,7 +557,7 @@ class parser(cmd.Cmd):
         except Exception as e:
             logging.warning("Metadata population failed: %s" % str(e))
 
-# ---
+#------------------------------------------------------------
     def help_import(self):
         print("\nUpload files or folders with associated metadata")
         print("For every file <filename.ext> another file called <filename.ext.meta> should contain metadata in INI file format\n")
@@ -665,7 +568,7 @@ class parser(cmd.Cmd):
         self.do_put(line, meta=True)
         return
 
-# --
+#------------------------------------------------------------
     def help_get(self):
         print("\nDownload remote files to the current local folder\n")
         print("Usage: get <remote files or folders>\n")
@@ -673,154 +576,31 @@ class parser(cmd.Cmd):
     def do_get(self, line):
 
         line = self.absolute_remote_filepath(line)
+
         remote = self.remotes_get(line)
         if remote is not None:
-            remote.get(line)
-        return
+            results = remote.get_iter(line)
+            total_count = next(results)
+            total_bytes = next(results)
+            print("expect to get %d files" % int(total_count))
+            print("expect to get %d bytes" % int(total_bytes))
 
+# TODO - wrap this up in multiproc pool
+            for item in results:
+                logging.info("issuing remote get on [%s]" % item)
+                remote.get(item)
 
-# sanitise as asset.query is special
-        double_escaped = self.escape_single_quotes(line)
-# collapsed namespace
-        namespace = posixpath.normpath(posixpath.dirname(double_escaped))
-# possible download on asset/pattern
-        basename = posixpath.basename(double_escaped)
-# possible download on namespace
-        candidate = posixpath.join(namespace, basename)
-
-        logging.debug("do_get(): namespace=[%s] , asset_query=[%s] , candidate_namespace=[%s]" % (namespace, basename, candidate))
-
-# this requires different escaping to an asset.query
-        if self.mf_client.namespace_exists(line):
-            base_query = "namespace>='%s'" % candidate
-            base_namespace = posixpath.normpath(posixpath.join(line, ".."))
-        else:
-            base_query = "namespace='%s' and name='%s'" % (namespace, basename)
-            base_namespace = posixpath.normpath(namespace)
-
-# base_namespace shouldn't have escaping as it's used in direct path compares (not sent to mediaflux)
-# base_query should have escaping as it is passed through mediaflux (asset.query etc)
-# PYTHON3 - had to comment this out ...
-#        base_namespace = base_namespace.decode('string_escape')
-
-# get content statistics and init for transfer polling loop
-        stats = self.poll_total(base_query)
-        logging.debug(str(stats))
-        if stats['total-bytes'] == 0:
-            print("No data to download")
-            return
-
-        current = dict()
-        done = dict()
-        total_recv = 0
-        start_time = time.time()
-        elapsed_mins = 0
-
-# we only expect to be able to download files where the content is in a known state
-        bad_files = 0
-        known_states = ["online-files", "online-bytes", "offline-files", "offline-bytes", "migrating-files", "migrating-bytes", "total-files", "total-bytes"]
-        for key in list(stats.keys()):
-            if key not in known_states:
-                logging.warning("Content %s=%s" % (key, stats[key]))
-                if "-files" in key:
-                    bad_files += stats[key]
-        todo = stats['total-files'] - bad_files
-
-# start kick-off report for user
-        user_msg = "Total files=%d" % stats['total-files']
-        if bad_files > 0:
-            user_msg += ", ignored files=%d" % bad_files
-
-# feedback on files we're still waiting for
-        unavailable_files = todo - stats['online-files']
-        if unavailable_files > 0:
-            user_msg += ", migrating files=%d, please be patient ...  " % unavailable_files
-# migration can take a while (backgrounded) so print feedback first
-            print(user_msg)
-# recall all offline files
-            xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" > &' % base_query
-            self.mf_client.aterm_run(xml_command)
-        else:
-            user_msg += ", transferring ...  "
-            self.print_over(user_msg)
-
-# overall transfer loop
-# TODO - time expired breakout?
-        while todo > 0:
-            try:
-# wait (if required) and start transfers as soon as possible
-                manager = None
-                while manager is None:
-                    online = self.get_online_set(base_query, base_namespace=base_namespace)
-# FIXME - python 2.6 causes compile error on this -> which means the runtime print "you need version > 2.7" isn't displayed
-#                     current = {k:v for k,v in online.iteritems() if k not in done}
-# CURRENT - this seems to resolve the issue
-                    current = dict([(k, v) for (k, v) in online.items() if k not in done])
-
-# is there something to transfer?
-                    if len(current) == 0:
-                        stats = self.poll_total(base_query)
-                        current_pc = int(100.0 * total_recv / stats['total-bytes'])
-                        msg = ""
-                        if stats.get('offline-bytes') is not None:
-                            msg += " offline=" + self.human_size(stats['offline-bytes'])
-                        if stats.get('migrating-bytes') is not None:
-                            msg += " migrating=" + self.human_size(stats['migrating-bytes'])
-# TODO - even small migrations take a while ... make this something like 1,5,10,15 mins? (ie back-off)
-                        for i in range(0, 4):
-                            elapsed = time.time() - start_time
-                            elapsed_mins = int(elapsed/60.0)
-                            self.print_over("Progress=%d%%,%s, elapsed=%d mins ...  " % (current_pc, msg, elapsed_mins))
-                            time.sleep(60)
-                    else:
-# CURRENT - test bad session handling
-#                        self.mf_client.session = "abc"
-                        manager = self.mf_client.get_managed(iter(current.items()), total_bytes=stats['total-bytes'], processes=self.transfer_processes)
-
-# network transfer polling
-                while manager is not None:
-                    current_recv = total_recv + manager.bytes_recv()
-                    current_pc = int(100.0 * current_recv / stats['total-bytes'])
-                    self.print_over("Progress=%d%%, rate=%.1f MB/s  " % (current_pc, manager.byte_recv_rate()))
-# update statistics after managed pool completes
-                    if manager.is_done():
-                        done.update(current)
-                        todo = stats['total-files'] - bad_files - len(done)
-                        total_recv += manager.bytes_recv()
-                        break
-                    time.sleep(2)
-
-            except KeyboardInterrupt:
-                logging.warning("interrupted by user")
-                return
-
-            except Exception as e:
-                logging.error(str(e))
-                return
-
-            finally:
-                if manager is not None:
-                    manager.cleanup()
-
-# final report
-        fail = 0
-        for status, remote_ns, local_filepath in manager.summary:
-            if status < 0:
-                fail += 1
-        if fail != 0:
-            raise Exception("\nFailed to download %d file(s)." % fail)
-        else:
-            elapsed = time.time() - start_time
-            average = stats['total-bytes'] / elapsed
-            average = average / 1000000.0
-            print("\nCompleted at %.1f MB/s" % average)
-
+# mock=True ... testing???
+# deprec
+#            xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" > &' % base_query
 # NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
-# --
+
+#------------------------------------------------------------
     def help_put(self):
         print("\nUpload local files or folders to the current folder on the remote server\n")
         print("Usage: put <file or folder>\n")
 
+# --
     def do_put(self, line, meta=False):
 
 # build upload list pairs
@@ -867,6 +647,7 @@ class parser(cmd.Cmd):
 
 
 
+#------------------------------------------------------------
 # -- wrapper for monitoring an upload
     def managed_put(self, upload_list, meta=False):
         manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
@@ -923,8 +704,7 @@ class parser(cmd.Cmd):
             print("\nCompleted at %.1f MB/s" % rate)
 
 
-# NEW
-
+#------------------------------------------------------------
     def do_copy(self, line):
         logging.info("in: %s" % line)
 
@@ -1003,6 +783,10 @@ class parser(cmd.Cmd):
 # build query corresponding to input
         fullpath = self.absolute_remote_filepath(line)
         remote = self.remotes_get(fullpath)
+
+# TODO - use the same pattern as ls_iter / ls 
+# ie 1st call returns match count ... then iter over matches
+
         if self.ask("Delete files (y/n) "):
             remote.rm(fullpath)
 
@@ -1457,14 +1241,13 @@ def main():
 
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
-    p.add_argument("-c", dest='current', default='pawsey', help="the config name in $HOME/.mf_config to connect to")
+    p.add_argument("-c", dest='current', default='data.pawsey.org.au', help="the config name in $HOME/.mf_config to connect to")
     p.add_argument("-i", dest='script', help="input script file containing pshell commands")
     p.add_argument("-o", dest='output', default=None, help="output any failed commands to a script")
     p.add_argument("-v", dest='verbose', default=None, help="set verbosity level (0,1,2)")
     p.add_argument("-u", dest='url', default=None, help="Remote endpoint")
-    p.add_argument("-d", dest='domain', default='ivec', help="login authentication domain")
+    p.add_argument("-d", dest='domain', default=None, help="login authentication domain")
     p.add_argument("-s", dest='session', default=None, help="session")
-    p.add_argument("-t", dest='token', default=None, help="token")
     p.add_argument("-m", dest='mount', default='/projects', help="mount point for remote")
     p.add_argument("--keystone", dest='keystone', default=None, help="A URL to the REST interface for Keystone (Openstack)")
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
@@ -1506,27 +1289,32 @@ def main():
 # attempt to use the current section in the config for connection info
     try:
         add_endpoint = True
-        if config.has_section(args.current) is True:
-            logging.info("Using section: [%s] in config" % args.current)
-            endpoints = json.loads(config.get(args.current, 'endpoints'))
-        else:
+        endpoints = None 
 
-            if args.url is None:
-                args.url = 'https://data.pawsey.org.au:443'
+        if args.url is None:
+# existing config and no input URL
+            if config.has_section(args.current) is True:
+                logging.info("No input URL, reading endpoints from existing config [%s]" % args.current)
+                endpoints = json.loads(config.get(args.current, 'endpoints'))
             else:
-                args.current = 'custom'
-            
-            logging.info("Overriding with url: [%s]" % args.url)
+# 1st time default
+                logging.info("Initialising default config")
+                args.url = 'https://data.pawsey.org.au:443'
+                args.domain = 'ivec'
+                args.mount = '/projects'
 
-# WTF - not extracting the port
+        if endpoints is None:
+# if URL supplied or 1st time setup
+            logging.info("Creating endpoint from url: [%s]" % args.url)
+
+# WTF - urlparse not extracting the port
             aaa = urllib.parse.urlparse(args.url)
 
 # HACK - workaround for urlparse not extracting port, despite the doco indicating it should
             p = '(?:http.*://)?(?P<host>[^:/ ]+).?(?P<port>[0-9]*).*'
             m = re.search(p,args.url)
             port = m.group('port')
-
-            logging.info(str(aaa))
+            args.current = aaa.hostname
 
 # FIXME - historically, have to assume it's mflux but now could be s3 
 # FIXME - could adopt a scheme where we use "mflux://data.pawsey.org.au:443" and "s3://etc" ... and assume the proto from the port
@@ -1537,12 +1325,18 @@ def main():
             else:
                 endpoint['encrypt'] = True
 
+# CLI overrides
+            if args.session is not None:
+                endpoint['session'] = args.session
+
 # no such config section - add and save
 
             logging.info("Saving section: [%s] in config" % args.current)
 
             endpoints = { args.mount:endpoint }
+
             config[args.current] = {'endpoints':json.dumps(endpoints)}
+
             with open(config_filepath, 'w') as f:
                 config.write(f)
 
