@@ -45,6 +45,23 @@ delegate_default = 7
 delegate_min = 1
 delegate_max = 365
 
+
+#------------------------------------------------------------
+# picklable get()
+def jump_get(remote, remote_fullpath):
+
+    logging.info("[%s]" % remote_fullpath)
+    try:
+        size = remote.get(remote_fullpath)
+        logging.info("Local file size (bytes) = %r" % size)
+
+    except Exception as e:
+        logging.debug(str(e))
+
+# TODO - get -> returns # bytes when done? -> use for progress
+
+#------------------------------------------------------------
+
 # NB: we want errors from server on failure so we can produce a non 0 exit code, if required
 class parser(cmd.Cmd):
 
@@ -575,6 +592,9 @@ class parser(cmd.Cmd):
 
     def do_get(self, line):
 
+        # NEW
+        import concurrent.futures
+
         line = self.absolute_remote_filepath(line)
 
         remote = self.remotes_get(line)
@@ -585,10 +605,16 @@ class parser(cmd.Cmd):
             print("expect to get %d files" % int(total_count))
             print("expect to get %d bytes" % int(total_bytes))
 
-# TODO - wrap this up in multiproc pool
-            for item in results:
-                logging.info("issuing remote get on [%s]" % item)
-                remote.get(item)
+# CURRENT - threadpool
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                for item in results:
+                    executor.submit(jump_get, remote, item)
+
+#            for item in results:
+#                logging.info("issuing remote get on [%s]" % item)
+#                remote.get(item)
+
+
 
 # mock=True ... testing???
 # deprec

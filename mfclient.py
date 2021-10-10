@@ -1085,7 +1085,6 @@ class mf_client:
         return(base_query)
 
 #------------------------------------------------------------
-# TODO - ls_iter should use similar pattern ...
     def get_iter(self, fullpath_pattern):
         """
         iterator for get candidates based on pattern
@@ -1150,18 +1149,18 @@ class mf_client:
 
         if os.path.isfile(local_filepath) and not overwrite:
             self.logging.debug("Local file of that name already exists, skipping.")
-            with bytes_recv.get_lock():
-                bytes_recv.value += os.path.getsize(local_filepath)
-            return
-
+        else:
 # Windows path names and the posix lexer in aterm_run() are not good friends
-        if "Windows" in platform.system():
-            local_filepath = local_filepath.replace("\\", "\\\\")
+            if "Windows" in platform.system():
+                local_filepath = local_filepath.replace("\\", "\\\\")
 
 # online recall - backgrounded
-        reply = self.aterm_run('asset.content.migrate :id "path=%s" :destination "online" &' % remote_filepath)
+            reply = self.aterm_run('asset.content.migrate :id "path=%s" :destination "online" &' % remote_filepath)
 # download after recall completes
-        reply = self.aterm_run('asset.get :id "path=%s" :out %s' % (remote_filepath, local_filepath))
+            reply = self.aterm_run('asset.get :id "path=%s" :out %s' % (remote_filepath, local_filepath))
+
+# done
+        return os.path.getsize(local_filepath)
 
 #------------------------------------------------------------
     def get_managed(self, list_asset_filepath, total_bytes, processes=4):
