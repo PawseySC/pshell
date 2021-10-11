@@ -179,11 +179,6 @@ class s3client:
         self.s3.upload_file(local_filepath, bucket, os.path.basename(local_filepath))
 
 #------------------------------------------------------------
-    def managed_put(self, upload_list):
-        for item in upload_list:
-            self.put(item[0], item[1])
-
-#------------------------------------------------------------
     def rm(self, filepath):
         bucket,key = self.path_split(filepath)
 

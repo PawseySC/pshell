@@ -22,75 +22,15 @@ import http.client
 import logging
 import datetime
 import platform
-import functools
 import mimetypes
 import posixpath
-import multiprocessing
-import xml.etree.ElementTree as ET
 import configparser
+import xml.etree.ElementTree as ET
 
-# Globals - multiprocess IO monitoring is hard
-manage_lock = multiprocessing.Lock()
-bytes_sent = multiprocessing.Value('d', 0, lock=True)
-bytes_recv = multiprocessing.Value('d', 0, lock=True)
+# globals
 build= "20210923131216"
 
 #------------------------------------------------------------
-def put_jump(mfclient, data):
-    """
-    Global multiprocessing function for concurrent uploading
-
-    Args:
-        data: ARRAY of 2 STRINGS which are the arguments for the put() method: (remote namespace, local filepath)
-
-    Returns:
-        triplet of STRINGS (asset_ID/status, 2 input arguments) which will be concatenated on the mf_manager's summary list
-    """
-
-    try:
-        asset_id = mfclient.put(data[0], data[1])
-        return (int(asset_id), data[0], data[1])
-    except Exception as e:
-# FIXME - loggers don't work in separate process
-        mfclient.logging.debug("put_jump(%s): %s" % (data[1], str(e)))
-
-# report failure
-    return (-1, data[0], data[1])
-
-#------------------------------------------------------------
-def get_jump(mfclient, data):
-    """
-    Global (multiprocessing) function for concurrent downloading
-
-    Args:
-        data: ARRAY of 2 STRINGS which are the arguments for the get() method: (asset_ID, local filepath)
-
-    Returns:
-        A triplet of STRINGS (status, 2 input arguments) which will be concatenated on the mf_manager's summary list
-    """
-
-    try:
-        mfclient.get(data[0], data[1])
-        return (0, data[0], data[1])
-    except Exception as e:
-# FIXME - loggers don't work in separate process
-        mfclient.logging.error("get_jump(): %s" % str(e))
-
-# report failure
-    return (-1, data[0], data[1])
-
-#------------------------------------------------------------
-def init_jump(recv, sent):
-    """
-    Global (multiprocessing) initialiser for byte transfer counts
-    """
-    global bytes_sent
-    global bytes_recv
-# initialize the globals in this process with the main process globals O.O
-    bytes_sent = sent
-    bytes_recv = recv
-
-#########################################################
 class mf_client:
     """
     Base Mediaflux authentication and communication client
@@ -133,11 +73,6 @@ class mf_client:
         self.session = ""
         self.token = ""
         self.logging = logging.getLogger('mfclient')
-# TODO - set log level based on debug
-#        self.logging.setLevel(logging.DEBUG)
-#        self.config_filepath = None
-#        self.config_section = None
-
         global build
 
 # can override to test fast http data transfers (with https logins)
@@ -262,35 +197,6 @@ class mf_client:
         return endpoint
 
 #------------------------------------------------------------
-#    def config_init(self, config_filepath=None, config_section=None):
-#        """
-#        Setup config file and section to update with session/token info
-#        """
-#        self.logging.info("config filepath=[%s], config_section=[%s]" % (config_filepath, config_section))
-#        self.config_filepath = config_filepath
-#        self.config_section = config_section
-
-#------------------------------------------------------------
-#    def config_save(self, refresh_token=False, refresh_session=False):
-#        """
-#        Update session/token info in config file
-#        """
-#        if self.config_filepath:
-#            config = configparser.ConfigParser()
-#            config.read(self.config_filepath)
-#
-#            if refresh_token is True:
-#                self.logging.info("Updating token")
-#                config.set(self.config_section, 'token', self.token)
-#
-#            if refresh_session is True:
-#                self.logging.info("Updating session")
-#                config.set(self.config_section, 'session', self.session)
-#
-#            with open(self.config_filepath, 'w') as f:
-#                config.write(f)
-
-#------------------------------------------------------------
     @staticmethod
     def _xml_succint_error(xml):
         """
@@ -345,8 +251,6 @@ class mf_client:
         Primitive for doing buffered upload on a single file. Used by the put() method
         Sends a multipart POST to the server; consisting of the initial XML, followed by a streamed, buffered read of the file contents
         """
-        global bytes_sent
-
 # mediaflux seems to have random periods of unresponsiveness - particularly around final ACK of transfer
 # retries don't seem to work at all, but increasing the timeout seems to help cover the problem 
         upload_timeout = 1800
@@ -408,9 +312,6 @@ class mf_client:
                     conn.send(chunk)
                 except Exception as e:
                     raise Exception("Network send error: %s" % str(e))
-# record progress
-                with bytes_sent.get_lock():
-                    bytes_sent.value += len(chunk)
 
 # terminating line (len(boundary) + 8)
         chunk = "\r\n--%s--\r\n" % boundary
@@ -683,9 +584,6 @@ class mf_client:
                                         output.write(data)
                                     except Exception as e:
                                         raise Exception("File write error: %s" % str(e))
-# record progress
-                                    with bytes_recv.get_lock():
-                                        bytes_recv.value += len(data)
                         else:
                             self.logging.debug("missing output data in XML server response")
 # successful
@@ -1144,7 +1042,6 @@ class mf_client:
         Raises:
             An error on failure
         """
-        global bytes_recv
 
         local_filepath = os.path.join(os.getcwd(), posixpath.basename(remote_filepath))
         self.logging.info("Downloading remote [%s] to local [%s]" % (remote_filepath, local_filepath))
@@ -1165,25 +1062,6 @@ class mf_client:
         return os.path.getsize(local_filepath)
 
 #------------------------------------------------------------
-    def get_managed(self, list_asset_filepath, total_bytes, processes=4):
-        """
-        Managed multiprocessing download of a list of assets from the Mediaflux server. Uses get() as the file transfer primitive
-
-        Args:
-            list_asset_filepath: a LIST of pairs representing the asset ID and local filepath destination
-                    total_bytes: the total bytes to download
-                      processes: the number of processes the multiprocessing manager should use
-
-        Returns:
-            A queryable mf_manager object
-        """
-
-# shenanigans to enable mfclient method to be called from the global process pool (python can't serialize instance methods)
-        get_alias = functools.partial(get_jump, self)
-
-        return mf_manager(function=get_alias, arguments=list_asset_filepath, processes=processes, total_bytes=total_bytes)
-
-#------------------------------------------------------------
     def put(self, namespace, filepath, overwrite=True):
         """
         Creates a new asset on the Mediaflux server and uploads from a local filepath to supply its content
@@ -1199,7 +1077,6 @@ class mf_client:
         Raises:
             An error message if unsuccessful
         """
-        global bytes_sent
 
 # construct destination argument
         filename = os.path.basename(filepath)
@@ -1227,8 +1104,6 @@ class mf_client:
             if remote_size == local_size:
                 self.logging.debug("Match; skipping [%s] -> [%s]" % (filepath, remotepath))
                 overwrite = False
-                with bytes_sent.get_lock():
-                    bytes_sent.value += remote_size
             else:
                 self.logging.debug("Mismatch; local=%r -> remote=%r" % (local_size, remote_size))
 
@@ -1242,133 +1117,3 @@ class mf_client:
 
         return asset_id
 
-#------------------------------------------------------------
-    def put_managed(self, list_namespace_filepath, total_bytes=None, processes=4):
-        """
-        Managed multiprocessing upload of a list of files to the Mediaflux server. Uses put() as the file transfer primitive
-
-        Args:
-            list_namespace_filepath: a LIST of STRING pairs representing the remote namespace destination and the local filepath source
-                        total_bytes: the total bytes to upload
-                          processes: the number of processes the multiprocessing manager should use
-
-        Returns:
-            A queryable mf_manager object
-        """
-
-# CURRENT - require total_bytes to be pre-computed
-# if not supplied - count (potentially a lot slower)
-        if total_bytes is None:
-            total_bytes = 0
-            self.logging.debug("Total upload bytes not supplied, counting...")
-            for namespace, filepath in list_namespace_filepath:
-                try:
-                    total_bytes += os.path.getsize(filepath)
-                except:
-                    self.logging.debug("Can't read %s, skipping." % filepath)
-# shenanigans to enable mfclient method to be called from the global process pool (python can't serialize instance methods)
-        put_alias = functools.partial(put_jump, self)
-        self.logging.debug("Total upload bytes: %d" % total_bytes)
-        return mf_manager(function=put_alias, arguments=list_namespace_filepath, processes=processes, total_bytes=total_bytes)
-
-#############################################################
-class mf_manager:
-    """
-    Multiprocessing file transfer management object.
-    """
-
-# a list which is appended to as individual transfers are completed
-    summary = None
-    task = None
-    pool = None
-
-    def __init__(self, function, arguments, processes=1, total_bytes=0):
-        """
-        Args:
-               function: the primitive transfer METHOD put() or get() to invoke in transferring a single file
-              arguments: a LIST of STRING pairs to be supplied to the transfer function primitive
-              processes: INTEGER number of processes to spawn to deal with the input list
-            total_bytes: INTEGER size of the transfer, for progress reporting
-
-        Returns:
-            manager object which can be queried for progress (see methods below) and final status
-        """
-        global bytes_sent
-        global bytes_recv
-        global manage_lock
-
-# fail if there is already a managed transfer (there can only be one!)
-        if not manage_lock.acquire(block=False):
-            raise TypeError
-
-# init monitoring
-        self.start_time = time.time()
-        self.bytes_total = total_bytes
-        self.summary = []
-        bytes_sent.value = 0
-        bytes_recv.value = 0
-
-# ref:http://stackoverflow.com/questions/11312525/catch-ctrlc-sigint-and-exit-multiprocesses-gracefully-in-python
-# force control-C to be ignored by process pool
-        handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
-# NB: urllib2 and httplib are not thread safe -> use process pool instead of threads
-# shared mem globals aren't preserved with a Windows fork() - need an explicit init
-        self.pool = multiprocessing.Pool(processes, init_jump, (bytes_recv, bytes_sent))
-
-# restore control-C
-        signal.signal(signal.SIGINT, handler)
-        self.task = self.pool.map_async(function, arguments, callback=self.summary.extend)
-        self.pool.close()
-
-# cleanup - normal or interrupted
-    def cleanup(self):
-        """
-        Invoke to properly terminate the process pool (eg if user cancels via control-C)
-        """
-        self.pool.terminate()
-        self.pool.join()
-        manage_lock.release()
-
-    def byte_sent_rate(self):
-        """
-        Returns the upload transfer rate
-        """
-        elapsed = time.time() - self.start_time
-        try:
-            rate = bytes_sent.value / elapsed
-            rate /= 1000000.0
-        except:
-            rate = 0.0
-        return rate
-
-    def byte_recv_rate(self):
-        """
-        Returns the download transfer rate
-        """
-        elapsed = time.time() - self.start_time
-        try:
-            rate = bytes_recv.value / elapsed
-            rate /= 1000000.0
-        except:
-            rate = 0.0
-        return rate
-
-    @staticmethod
-    def bytes_sent():
-        """
-        Returns the total bytes sent for the current process
-        """
-        return bytes_sent.value
-
-    @staticmethod
-    def bytes_recv():
-        """
-        Returns the total bytes recieved for the current process
-        """
-        return bytes_recv.value
-
-    def is_done(self):
-        """
-        BOOLEAN test for transfer completion
-        """
-        return self.task.ready()
