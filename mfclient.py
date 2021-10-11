@@ -637,15 +637,17 @@ class mf_client:
                         xml_poll = self.aterm_run("service.background.describe :id %s" % job)
                         elem = xml_poll.find(".//task/state")
                         item = xml_poll.find(".//task/exec-time")
+
+# TODO - cleanup - this printing interferes with display of other jobs (eg background downloads)
 #                        text = elem.text + " [ " + item.text + " " + item.attrib['unit'] + "(s) ]"
                         text = elem.text + " id=" + job + " [ " + item.text + " " + item.attrib['unit'] + "(s) ]"
                         if "executing" in elem.text:
-                            sys.stdout.write("\r"+text)
-                            sys.stdout.flush()
+#                            sys.stdout.write("\r"+text)
+#                            sys.stdout.flush()
                             time.sleep(5)
                             continue
                         else:
-                            print("\r%s    " % text)
+#                            print("\r%s    " % text)
                             break
 # NB: it is an exception (error) to get results BEFORE completion
                     self.logging.debug("background job [%s] complete, getting results" % job)
@@ -1128,7 +1130,7 @@ class mf_client:
             elem = result.find(".//iterated")
             if elem is not None:
                 if 'true' in elem.attrib['completed']:
-                    iterate = False
+                    return
 
 #------------------------------------------------------------
     def get(self, remote_filepath, overwrite=False):

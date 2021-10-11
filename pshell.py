@@ -22,7 +22,6 @@ import itertools
 import posixpath
 import configparser
 import xml.etree.ElementTree as ET
-import multiprocessing
 import mfclient
 # no readline on windows
 try:
@@ -36,6 +35,11 @@ import s3client
 import getopt
 import shlex
 import pathlib
+import concurrent.futures
+import threading
+
+# deprec
+import multiprocessing
 
 
 # standard lib python command line client for mediaflux
@@ -54,33 +58,32 @@ def jump_get(remote, remote_fullpath):
     try:
         size = remote.get(remote_fullpath)
         logging.info("Local file size (bytes) = %r" % size)
-
     except Exception as e:
         logging.debug(str(e))
-
-# TODO - get -> returns # bytes when done? -> use for progress
+        size = 0
+    return size
 
 #------------------------------------------------------------
-
-# NB: we want errors from server on failure so we can produce a non 0 exit code, if required
 class parser(cmd.Cmd):
-
     config = None
     config_name = None
     config_filepath = None
-
-# CURRENT - turn into list of remotes 
-#    mf_client = None
     keystone = None
-#    s3client = None
-# NEW
     remotes = {}
-
     cwd = '/projects'
     interactive = True
-    transfer_processes = 1
+    transfer_processes = 3
     terminal_height = 20
     script_output = None
+
+
+# TODO - class? or just a dict?
+    get_executor = None
+    get_count = 0
+    get_bytes = 0
+    total_count = 0
+    total_bytes = 0
+
 
 # --- initial setup of prompt
     def preloop(self):
@@ -95,13 +98,8 @@ class parser(cmd.Cmd):
         self.prompt = "%s:%s>" % (self.config_name, self.cwd)
         return cmd.Cmd.postcmd(self, stop, line)
 
-# NB: if the return result is ambigious (>1 option) it'll require 2 presses to get the list
-# turn off DEBUG -> gets in the way of commandline completion
-# NB: index offsets are 1 greater than the command under completion
-
-
-# TODO - rename asset->file namespace->folder ... generic
-
+# TODO - rename asset->file/object, namespace->folder
+# TODO - s3 implementation ... ugh
 # ---
     def complete_get(self, text, line, start_index, end_index):
         remote = self.remotes_get(line)
@@ -236,7 +234,6 @@ class parser(cmd.Cmd):
 
 
 
-
 # --- helper
     def requires_auth(self, line):
         local_commands = ["login", "help", "lls", "lcd", "lpwd", "debug", "version", "exit", "quit"]
@@ -263,7 +260,6 @@ class parser(cmd.Cmd):
         else:
             f = "0"
             rank = 0
-
         return "%6s %-2s" % (f, suffixes[rank])
 
 # --- helper
@@ -274,7 +270,6 @@ class parser(cmd.Cmd):
             else:
                 value = float(nseconds) / 60.0
                 text = "%.1f mins" % value
-
         return text
 
 # --- helper
@@ -293,28 +288,12 @@ class parser(cmd.Cmd):
 
 # --- helper: convert a relative/absolute mediaflux namespace/asset reference to minimal (non-quoted) absolute form
     def absolute_remote_filepath(self, line):
-
         if line.startswith('"') and line.endswith('"'):
             line = line[1:-1]
-
         if not posixpath.isabs(line):
             line = posixpath.join(self.cwd, line)
-
         fullpath = posixpath.normpath(line)
-
         return fullpath
-
-# --- helper: strip any flags as well as get the path
-    def split_flags_filepath(self, line):
-
-        flags = ""
-        if line.startswith('-'):
-            match = re.match(r"\S*", line) 
-            if match is not None:
-                flags = match.group(0)
-                line = line[match.end(0)+1:]
-#        print "flags=[%s] line=[%s]" % (flags, line)
-        return flags, self.absolute_remote_filepath(line)
 
 # --- version tracking 
     def help_version(self):
@@ -473,13 +452,13 @@ class parser(cmd.Cmd):
 
         return result
 
-# ---
+#------------------------------------------------------------
     def help_ls(self):
         print("\nList files stored on the remote server.")
         print("Navigation in paginated output can be achieved by entering a page number, [enter] for next page or q to quit.\n")
         print("Usage: ls <file pattern or folder name>\n")
 
-# --- ls with no dependency on www.list
+# --- 
     def do_ls(self, line):
 
         fullpath = self.absolute_remote_filepath(line)
@@ -508,6 +487,7 @@ class parser(cmd.Cmd):
 # run in background as this can timeout on larger DMF folders
 #        result = self.mf_client.aterm_run('asset.content.status.statistics :where "%s" &' % base_query)
 
+# --- helper
 # --
     def print_over(self, text):
         sys.stdout.write("\r"+text)
@@ -590,31 +570,51 @@ class parser(cmd.Cmd):
         print("\nDownload remote files to the current local folder\n")
         print("Usage: get <remote files or folders>\n")
 
+# --
+    def cb_get(self, future):
+        bytes_recv = int(future.result())
+        with threading.Lock():
+            self.get_count += 1
+            self.get_bytes += bytes_recv
+# progress update report
+        self.print_over("get progress: [%r/%r] files and [%r/%r] bytes" % (self.get_count, self.total_count, self.get_bytes, self.total_bytes))
+
+# --
     def do_get(self, line):
-
-        # NEW
-        import concurrent.futures
-
+# turn input line into a matching file iterator
         line = self.absolute_remote_filepath(line)
-
         remote = self.remotes_get(line)
         if remote is not None:
             results = remote.get_iter(line)
-            total_count = next(results)
-            total_bytes = next(results)
-            print("expect to get %d files" % int(total_count))
-            print("expect to get %d bytes" % int(total_bytes))
-
-# CURRENT - threadpool
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            self.total_count = int(next(results))
+            self.total_bytes = int(next(results))
+            self.get_count = 0
+            self.get_bytes = 0
+            start_time = time.time()
+            self.print_over("Setting up for %d files..." % self.total_count)
+            try:
+                count = 0
                 for item in results:
-                    executor.submit(jump_get, remote, item)
+                    future = self.get_executor.submit(jump_get, remote, item)
+                    future.add_done_callback(self.cb_get)
+                    count += 1
+            except Exception as e:
+# FIXME - throws exception "completed" when done - but no problem occurred ... 
+                pass
 
-#            for item in results:
-#                logging.info("issuing remote get on [%s]" % item)
-#                remote.get(item)
+# TODO - control-C -> terminate threads ...
+#self.get_executor.shutdown(wait=True, cancel_futures=True)
 
+# wait for executor to complete
+            while self.get_count < self.total_count:
+                time.sleep(2)
 
+# all done ... drop back to command prompt
+# TODO - could do a completed at x MB/s
+            elapsed = time.time() - start_time
+            rate = float(self.total_bytes) / float(elapsed)
+            rate = rate / 1000000.0
+            self.print_over("Completed get for %d files with total size %s at: %.1f MB/s   \n" % (self.get_count, self.human_size(self.get_bytes), rate))
 
 # mock=True ... testing???
 # deprec
@@ -626,109 +626,56 @@ class parser(cmd.Cmd):
         print("\nUpload local files or folders to the current folder on the remote server\n")
         print("Usage: put <file or folder>\n")
 
-# --
-    def do_put(self, line, meta=False):
 
-# build upload list pairs
-        upload_list = []
+# --
+# TODO - same as for get()
+    def cb_put(self, future):
+
+        bytes_sent = int(future.result())
+
+        logging.info("bytes = %d" % bytes_sent)
+
+
+# --
+    def put_iter(self, line):
         if os.path.isdir(line):
-            self.print_over("Walking directory tree...")
+            logging.info("Walking directory tree...")
             line = os.path.abspath(line)
             parent = os.path.normpath(os.path.join(line, ".."))
             for root, directory_list, name_list in os.walk(line):
                 local_relpath = os.path.relpath(path=root, start=parent)
                 relpath_list = local_relpath.split(os.sep)
                 remote_relpath = "/".join(relpath_list)
-                remote = posixpath.join(self.cwd, remote_relpath)
-
-                if meta is False:
-                    upload_list.extend([(remote, os.path.normpath(os.path.join(os.getcwd(), root, name))) for name in name_list])
-                else:
-                    for name in name_list:
-                        if name.lower().endswith('.meta'):
-                            pass
-                        else:
-                            upload_list.append((remote, os.path.normpath(os.path.join(os.getcwd(), root, name))))
+                remote_fullpath = posixpath.join(self.cwd, remote_relpath)
+                for name in name_list:
+                    fullpath = os.path.normpath(os.path.join(os.getcwd(), root, name))
+                    yield remote_fullpath, fullpath
         else:
-            self.print_over("Building file list... ")
+            logging.info("Building file list... ")
             for name in glob.glob(line):
                 local_fullpath = os.path.abspath(name)
                 if os.path.isfile(local_fullpath):
-                    if meta is True:
-                        if name.lower().endswith('.meta'):
-                            pass
-                    upload_list.append((self.cwd, local_fullpath))
+                    yield self.cwd, local_fullpath
 
-# built, now upload
-# TODO - wrapper for async upload ... worth looking at twisted for all of this???
-# NEW
+# --
+    def do_put(self, line, meta=False):
 
-        remote = self.remotes_get(line)
+        logging.info("[%s]" % line)
+        remote = self.remotes_get(self.cwd)
+
         try:
-            remote.managed_put(upload_list)
-#        remote.managed_put(upload_list, meta)
-            return
-        except Exception as e:
-            logging.info(str(e))
-
-
-
-#------------------------------------------------------------
-# -- wrapper for monitoring an upload
-    def managed_put(self, upload_list, meta=False):
-        manager = self.mf_client.put_managed(upload_list, processes=self.transfer_processes)
-        logging.debug("Starting transfer...")
-        self.print_over("Total files=%d" % len(upload_list))
-        start_time = time.time()
-        try:
-            while True:
-                if manager.bytes_total > 0:
-                    progress = 100.0 * manager.bytes_sent() / float(manager.bytes_total)
-                else:
-                    progress = 0.0
-
-                self.print_over("Progress: %3.0f%% at %.1f MB/s   " % (progress, manager.byte_sent_rate()))
-
-                if manager.is_done():
-                    break
-# TODO - could use some of this time to populate metadata for successful uploads (if any)
-                time.sleep(2)
-
-        except KeyboardInterrupt:
-            logging.warning("interrupted by user")
-            return
+            results = self.put_iter(line)
+            for remote_fullpath, local_fullpath in results:
+                logging.info("put remote=[%s] local=[%s]" % (remote_fullpath, local_fullpath))
+                remote.put(remote_fullpath, local_fullpath)
 
         except Exception as e:
-            logging.error(str(e))
-            return
+            logging.debug(str(e))
 
-        finally:
-            if manager is not None:
-                manager.cleanup()
 
-# TODO - pop some of the metadata imports in the upload cycle if it helps the efficiency (measure!)
-# TODO - or include it directly in the assset.set XML ...
-        fail = 0
-        for asset_id, remote_ns, local_filepath in manager.summary:
-            if asset_id < 0:
-                fail += 1
-# NEW - create restart file for failed uploads
-                if self.script_output is not None:
-                    with open(self.script_output, "a") as f:
-                        f.write("cd %s\nput %s\n" % (remote_ns, local_filepath))
-            else:
-                if meta is True:
-                    metadata_filename = local_filepath + ".meta"
-                    self.import_metadata(asset_id, metadata_filename)
-# final report
-        if fail != 0:
-            raise Exception("\nFailed to upload %d file(s)." % fail)
-        else:
-            elapsed = time.time() - start_time
-            rate = manager.bytes_sent() / elapsed
-            rate = rate / 1000000.0
-            print("\nCompleted at %.1f MB/s" % rate)
+        print("put done ...")
 
+        return
 
 #------------------------------------------------------------
     def do_copy(self, line):
@@ -1388,6 +1335,12 @@ def main():
     my_parser.config_name = args.current
     my_parser.config_filepath = config_filepath
 
+
+# NEW 
+    my_parser.get_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+# TODO - put_executor ... or generic ... ?
+
+
 # add discovery url
     if args.keystone is not None:
         my_parser.config.set(args.current, 'keystone', args.keystone)
@@ -1417,18 +1370,8 @@ def main():
     except Exception as e:
         logging.error(str(e))
 
-
 # just in case the terminal height calculation returns a very low value
     my_parser.terminal_height = max(size[0], my_parser.terminal_height)
-# HACK - auto adjust process count based on network capability 
-# the main issue is low capability drives being overstressed by too many random requests
-# FIXME - ideally we'd sample rw io for disk and net to compute the sweet spot
-#    if mf_client.encrypted_data:
-#       my_parser.transfer_processes = 2
-#    else:
-#       my_parser.transfer_processes = 4
-    my_parser.transfer_processes = 2
-
 
 # restart script
     if args.output is not None:

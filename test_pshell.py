@@ -141,9 +141,15 @@ class pshell_features(unittest.TestCase):
         self.verbosity = "1"
         self.python = "python3"
 
-    def test_get_iter(self):
+#    def test_put_iter(self):
+#        command = 'put *.zip'
+#        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, command], stdout=PIPE, stderr=STDOUT)
+#        for line in p.stdout:
+#            print(line)
 
-        command = 'get scripts/*.tcl'
+
+    def test_get_iter(self):
+        command = 'get *.zip'
         p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, command], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
             print(line)
