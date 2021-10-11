@@ -38,9 +38,6 @@ import pathlib
 import concurrent.futures
 import threading
 
-# deprec
-import multiprocessing
-
 
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
@@ -53,13 +50,22 @@ delegate_max = 365
 #------------------------------------------------------------
 # picklable get()
 def jump_get(remote, remote_fullpath):
-
-    logging.info("[%s]" % remote_fullpath)
     try:
         size = remote.get(remote_fullpath)
         logging.info("Local file size (bytes) = %r" % size)
     except Exception as e:
-        logging.debug(str(e))
+        logging.error(str(e))
+        size = 0
+    return size
+
+#------------------------------------------------------------
+# picklable put()
+def jump_put(remote, remote_fullpath, local_fullpath):
+    try:
+        asset_id = remote.put(remote_fullpath, local_fullpath)
+        size = os.path.getsize(local_fullpath)
+    except Exception as e:
+        logging.error(str(e))
         size = 0
     return size
 
@@ -83,6 +89,8 @@ class parser(cmd.Cmd):
     get_bytes = 0
     total_count = 0
     total_bytes = 0
+    put_count = 0
+    put_bytes = 0
 
 
 # --- initial setup of prompt
@@ -605,35 +613,31 @@ class parser(cmd.Cmd):
 # TODO - control-C -> terminate threads ...
 #self.get_executor.shutdown(wait=True, cancel_futures=True)
 
-# wait for executor to complete
+# wait until completed (cb_get does progress updates)
             while self.get_count < self.total_count:
-                time.sleep(2)
+                time.sleep(3)
 
-# all done ... drop back to command prompt
-# TODO - could do a completed at x MB/s
+# print summary and return
             elapsed = time.time() - start_time
             rate = float(self.total_bytes) / float(elapsed)
             rate = rate / 1000000.0
             self.print_over("Completed get for %d files with total size %s at: %.1f MB/s   \n" % (self.get_count, self.human_size(self.get_bytes), rate))
-
-# mock=True ... testing???
-# deprec
-#            xml_command = 'asset.query :where "%s and content offline" :action pipe :service -name asset.content.migrate < :destination "online" > &' % base_query
-# NB: for windows - total_recv will be 0 as we can't track (the no fork() shared memory variables BS)
 
 #------------------------------------------------------------
     def help_put(self):
         print("\nUpload local files or folders to the current folder on the remote server\n")
         print("Usage: put <file or folder>\n")
 
-
 # --
 # TODO - same as for get()
     def cb_put(self, future):
 
         bytes_sent = int(future.result())
-
-        logging.info("bytes = %d" % bytes_sent)
+        with threading.Lock():
+            self.put_count += 1
+            self.put_bytes += bytes_sent
+# progress update report
+        self.print_over("put progress: [%r] files and [%r] bytes" % (self.put_count, self.put_bytes))
 
 
 # --
@@ -654,8 +658,8 @@ class parser(cmd.Cmd):
             logging.info("Building file list... ")
             for name in glob.glob(line):
                 local_fullpath = os.path.abspath(name)
-                if os.path.isfile(local_fullpath):
-                    yield self.cwd, local_fullpath
+#                if os.path.isfile(local_fullpath):
+                yield self.cwd, local_fullpath
 
 # --
     def do_put(self, line, meta=False):
@@ -664,18 +668,32 @@ class parser(cmd.Cmd):
         remote = self.remotes_get(self.cwd)
 
         try:
+            self.put_count = 0
+            self.put_bytes = 0
+            total_count = 0
+            start_time = time.time()
+
             results = self.put_iter(line)
+
             for remote_fullpath, local_fullpath in results:
                 logging.info("put remote=[%s] local=[%s]" % (remote_fullpath, local_fullpath))
-                remote.put(remote_fullpath, local_fullpath)
+                future = self.get_executor.submit(jump_put, remote, remote_fullpath, local_fullpath)
+                future.add_done_callback(self.cb_put)
+                total_count += 1
 
         except Exception as e:
-            logging.debug(str(e))
+            logging.error(str(e))
+            pass
 
+# wait until completed (cb_put does progress updates)
+        while self.put_count < total_count:
+            time.sleep(3)
 
-        print("put done ...")
-
-        return
+# print summary and return
+        elapsed = time.time() - start_time
+        rate = float(self.put_bytes) / float(elapsed)
+        rate = rate / 1000000.0
+        self.print_over("Completed put for %d files with total size %s at: %.1f MB/s   \n" % (self.put_count, self.human_size(self.put_bytes), rate))
 
 #------------------------------------------------------------
     def do_copy(self, line):
@@ -753,39 +771,16 @@ class parser(cmd.Cmd):
         print("Usage: rm <file or pattern>\n")
 
     def do_rm(self, line):
-# build query corresponding to input
         fullpath = self.absolute_remote_filepath(line)
         remote = self.remotes_get(fullpath)
+        if remote.rm(fullpath, prompt=self.ask) is False:
+            print("Delete aborted")
 
-# TODO - use the same pattern as ls_iter / ls 
-# ie 1st call returns match count ... then iter over matches
-
-        if self.ask("Delete files (y/n) "):
-            remote.rm(fullpath)
-
-#        namespace = posixpath.dirname(fullpath)
-#        pattern = posixpath.basename(fullpath)
-#        base_query = "namespace='%s' and name='%s'" % (self.escape_single_quotes(namespace), self.escape_single_quotes(pattern))
-
-# prepare - count matches
-#        result = self.mf_client.aterm_run('asset.query :where "%s" :action count' % base_query)
-# confirm remove
-#        elem = result.find(".//value")
-#        count = int(elem.text)
-#        if count == 0:
-#            print("No match")
-#        else:
-#            if self.ask("Remove %d files: (y/n) " % count):
-#                self.mf_client.aterm_run('asset.query :where "%s" :action pipe :service -name asset.destroy' % base_query)
-#            else:
-#                print("Aborted")
-
-# -- rmdir
+#------------------------------------------------------------
     def help_rmdir(self):
         print("\nRemove a remote folder\n")
         print("Usage: rmdir <folder>\n")
 
-# -- rmdir
     def do_rmdir(self, line):
         ns_target = self.absolute_remote_filepath(line)
         remote = self.remotes_get(ns_target)

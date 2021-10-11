@@ -323,7 +323,6 @@ class mf_client:
         reply = resp.read()
         conn.close()
         tree = ET.fromstring(reply)
-
         message = "response did not contain an asset ID."
         for elem in tree.iter():
             if elem.tag == 'id':
@@ -870,20 +869,32 @@ class mf_client:
 
 #------------------------------------------------------------
     def cd(self, namespace):
-
         if self.namespace_exists(namespace):
             self.cwd = namespace
             return namespace
-
         raise Exception("So such folder")
 
 #------------------------------------------------------------
-    def rm(self, fullpath):
+    def rm(self, fullpath, prompt=None):
         """
-        remove a file
+        remove a file pattern
         """
-        self.logging.info("[%s]" % fullpath)
-        self.aterm_run('asset.destroy :id "path=%s"' % fullpath)
+        query = self.get_query(fullpath)
+        if 'and name' not in query:
+            raise Exception("Use rmdir for folders")
+
+        reply = self.aterm_run('asset.query :where "%s" :action count' % query)
+        elem = reply.find(".//value")
+        count = int(elem.text)
+        if count == 0:
+            raise Exception("Nothing to delete")
+
+        if prompt is not None:
+            if prompt("Delete %d files (y/n): " % count) is False:
+                return False
+        self.logging.info("Destroy confirmed.")
+        self.aterm_run('asset.query :where "%s" :action pipe :service -name asset.destroy' % query)
+        return True
 
 #------------------------------------------------------------
     def info(self, fullpath):
@@ -973,9 +984,10 @@ class mf_client:
 #------------------------------------------------------------
     def get_query(self, fullpath_pattern):
         self.logging.info("[%s]" % fullpath_pattern)
-
 # TODO - do we need to do escaping etc?
         if self.namespace_exists(fullpath_pattern):
+# FIXME - this is suitable for a glob style get on everything matching ... 
+# FIXME - can we make more generic for other calls?
             base_query = "namespace>='%s'" % fullpath_pattern
         else:
             pattern = posixpath.basename(fullpath_pattern)
