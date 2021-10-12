@@ -8,101 +8,30 @@ import xml.etree.ElementTree as ET
 from subprocess import Popen, PIPE, STDOUT
 
 #######################
-# pshell commands tests
+# pshell local commands 
 #######################
-class pshell_syntax(unittest.TestCase):
+class pshell_local(unittest.TestCase):
     def setUp(self):
-        global session, server, script, verbosity
-        self.session = session
-        self.server = server
+        global script, verbosity, config
         self.script = script
         self.verbosity = verbosity
         self.python = "python3"
+# CURRENT - override if we want to point at a server in config
+        self.config = config
 
 # --
-    def test_cd(self):
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "cd /www"], stdout=PIPE, stderr=STDOUT)
-        flag = False
-        for line in p.stdout:
-            if "Remote: /www" in line.decode():
-                flag = True
-        self.assertTrue(flag)
-# --
-    def test_ls(self):
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls /www"], stdout=PIPE, stderr=STDOUT)
-        flag = False
-        for line in p.stdout:
-            if "index.html" in line.decode():
-                flag = True
-        self.assertTrue(flag)
-# -- 
-    def test_mkdir_rmdir(self):
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "mkdir /test && cd /test && pwd"], stdout=PIPE, stderr=STDOUT)
-        flag = False
-        for line in p.stdout:
-            self.assertNotIn("Folder already exists", line.decode())
-            if "Remote: /test" in line.decode():
-                flag = True
-        self.assertTrue(flag)
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "rmdir /test"], stdout=PIPE, stderr=STDOUT)
-        for line in p.stdout:
-            self.assertNotIn("Could not find remote folder", line.decode())
+    def test_lcd(self):
         flag=False
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "cd /test"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "lpwd"], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
-            if "Could not find remote folder" in line.decode():
-                flag=True
-        self.assertTrue(flag)
-# -- 
-    def test_put(self):
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "put test_pshell.py"], stdout=PIPE, stderr=STDOUT)
-        flag = False
-        for line in p.stdout:
-            print(line)
-            if "Completed" in line.decode():
+            if 'Local' in line.decode():
                 flag = True
         self.assertTrue(flag)
-        flag = False
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls"], stdout=PIPE, stderr=STDOUT)
-        for line in p.stdout:
-            if "test_pshell.py" in line.decode():
-                flag = True
-        self.assertTrue(flag)
-        Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "rm test_pshell.py"], stdout=PIPE, stderr=STDOUT)
-# -- 
-    def test_get(self):
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "lls"], stdout=PIPE, stderr=STDOUT)
-        for line in p.stdout:
-            self.assertNotIn("index.html", line.decode())
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "get /www/index.html"], stdout=PIPE, stderr=STDOUT)
-        flag = False
-        for line in p.stdout:
-            if "Completed at" in line.decode():
-                flag = True
-        self.assertTrue(flag)
-        os.remove("index.html")
-# -- 
-    def test_rm(self):
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "asset.create :namespace / :name test.txt"], stdout=PIPE, stderr=STDOUT)
-        flag=False
-        for line in p.stdout:
-            if "id=" in line.decode():
-                flag=True
 
-        self.assertTrue(flag)
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "rm /test.txt"], stdout=PIPE, stderr=STDOUT)
-# -- 
-    def test_file(self):
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "file /www/index.html"], stdout=PIPE, stderr=STDOUT)
-        flag = False
-        for line in p.stdout:
-            if "size" in line.decode():
-                flag = True
-        self.assertTrue(flag)
 # --
     def test_lls(self):
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "lls"], stdout=PIPE, stderr=STDOUT)
         flag = False
+        p = Popen([self.python, self.script, "-v", self.verbosity, "lls"], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
             if "test_pshell.py" in line.decode():
                 flag = True
@@ -114,45 +43,35 @@ class pshell_syntax(unittest.TestCase):
 ########################################
 class pshell_bugs(unittest.TestCase):
     def setUp(self):
-        global session, server, script, verbosity
-        self.session = session
-        self.server = server
+        global script, verbosity, config
         self.script = script
         self.verbosity = verbosity
         self.python = "python3"
+# CURRENT - override if we want to point at a server in config
+        self.config = config
 
-    def test_template(self):
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, "ls /www"], stdout=PIPE, stderr=STDOUT)
-        flag = False
-        for line in p.stdout:
-            if "index.html" in line:
-                flag = True
-        self.assertTrue(flag)
 
 ########################################
 # wrapper for new features 
 ########################################
 class pshell_features(unittest.TestCase):
     def setUp(self):
-        global session, server, script, verbosity
-        self.session = session
-        self.server = server
+        global script, verbosity, config
         self.script = script
         self.verbosity = "1"
         self.python = "python3"
-
-#    def test_put_iter(self):
-#        command = 'put *.zip'
-#        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, command], stdout=PIPE, stderr=STDOUT)
-#        for line in p.stdout:
-#            print(line)
+# CURRENT - override if we want to point at a server in config
+        self.config = config
 
 
-    def test_get_iter(self):
-        command = 'get *.zip'
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-u", self.server, "-s", self.session, command], stdout=PIPE, stderr=STDOUT)
-        for line in p.stdout:
-            print(line)
+    def test_ls(self):
+        if self.config is not None:
+            p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "ls"], stdout=PIPE, stderr=STDOUT)
+            flag = False
+            for line in p.stdout:
+                print(line)
+        else:
+            print("No remote - skipping")
 
 
 
@@ -168,28 +87,26 @@ if __name__ == '__main__':
     print("Running tests for: pshell")
     print("----------------------------------------------------------------------\n")
 
-# establish a session for live tests (intended for fresh install running in a local container)
-    session = None
-    server = "http://0.0.0.0:80"
 # NB: don't use pshell as we can't run bundle_pshell in the container
     script = "pshell.py"
     verbosity = "0"
 
+# local (offline) testing only
+#    config = None
+#   config = 0.0.0.0
+
+# remote testing (eg features)
+    config = "data.pawsey.org.au"
+
 # class suite to test
-    test_class_list = [pshell_features]
-#    test_class_list = [pshell_syntax]
+#    test_class_list = [pshell_features]
+    test_class_list = [pshell_local]
 #    test_class_list = [pshell_bugs]
 
-
 # setup the session
-    p = Popen(["python3", script, "-v", verbosity, "-u", server, "system.logon :domain system :user manager :password change_me"], stdout=PIPE)
-    for line in p.stdout:
-        if "session=" in line.decode():
-            result = line.split()
-            session = result[0][9:-1]
-    if session is None:
-        print("Failed to establish mediaflux session with: %s" % server)
-        exit(-1)
+# TODO - just use config ...
+    if config is not None:
+        print("TODO - run pshell and login if required ...")
 
 # build suite
     suite_list = []
