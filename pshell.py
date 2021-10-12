@@ -76,7 +76,7 @@ class parser(cmd.Cmd):
     config_filepath = None
     keystone = None
     remotes = {}
-    cwd = '/projects'
+    cwd = '/'
     interactive = True
     transfer_processes = 3
     terminal_height = 20
@@ -163,15 +163,12 @@ class parser(cmd.Cmd):
     def default(self, line):
 #        raise Exception("Unknown command passthrough not implemented")
 # unrecognized - assume it's an aterm command
-#        reply = self.mf_client.aterm_run(line)
-#        self.mf_client.xml_print(reply)
-
         remote = self.remotes_get(self.cwd)
+        logging.info("default passthru cwd=[%s] -> remote=[%r]" % (self.cwd, remote))
         if remote is not None:
             logging.debug("Fixme - assuming mflux")
             reply = remote.aterm_run(line)
             remote.xml_print(reply)
-
         return
 
 #------------------------------------------------------------
@@ -214,22 +211,14 @@ class parser(cmd.Cmd):
         self.remotes_config_save()
 
 # ---
-    def remotes_mount_get(self, path):
-        fullpath = self.absolute_remote_filepath(path)
-        mypath = pathlib.PurePosixPath(fullpath)
-        try:
-            mount = "%s%s" % (mypath.parts[0], mypath.parts[1])
-            return mount
-        except Exception as e:
-            logging.debug(str(e))
-
-        return None
-
-# ---
+# convert a relative or absolute path reference into an appropriate remote client
     def remotes_get(self, path):
-        mount = self.remotes_mount_get(path)
-        if mount in self.remotes:
-            return self.remotes[mount]
+        fullpath = self.absolute_remote_filepath(path)
+        for mount in self.remotes:
+# FIXME - should look for best match ... eg we have a remote on '/' and another on '/projects'
+            if fullpath.startswith(mount) is True:
+                logging.debug("matched [%s] with [%s] = %r" % (fullpath, mount, self.remotes[mount]))
+                return self.remotes[mount]
         return None
 
 # ---
@@ -744,7 +733,7 @@ class parser(cmd.Cmd):
             self.cwd = remote.cd(candidate)
             return
         except Exception as e:
-            print("No such remote folder, for valid folders type: remotes list")
+            print("No such remote folder, to show valid folders run: remotes list")
 
 #------------------------------------------------------------
     def help_pwd(self):
@@ -884,8 +873,11 @@ class parser(cmd.Cmd):
             user = input("Username: ")
             password = getpass.getpass("Password: ")
             remote.login(user, password)
+
 # NEW
-            mount = self.remotes_mount_get(self.cwd)
+#            mount = self.remotes_mount_get(self.cwd)
+            mount = self.cwd
+
             self.remotes_config_save()
 
 
@@ -1216,7 +1208,7 @@ def main():
     p.add_argument("-u", dest='url', default=None, help="Remote endpoint")
     p.add_argument("-d", dest='domain', default=None, help="login authentication domain")
     p.add_argument("-s", dest='session', default=None, help="session")
-    p.add_argument("-m", dest='mount', default='/projects', help="mount point for remote")
+    p.add_argument("-m", dest='mount', default='/', help="mount point for remote")
     p.add_argument("--keystone", dest='keystone', default=None, help="A URL to the REST interface for Keystone (Openstack)")
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
@@ -1287,15 +1279,14 @@ def main():
 # FIXME - historically, have to assume it's mflux but now could be s3 
 # FIXME - could adopt a scheme where we use "mflux://data.pawsey.org.au:443" and "s3://etc" ... and assume the proto from the port
             endpoint = {'name':args.current, 'type':'mfclient', 'protocol':aaa.scheme, 'server':aaa.hostname, 'port':port, 'domain':args.domain }
+# FIXME - session="" needs to be strongly enforced or can get some wierd bugs
+            endpoint['session'] = ""
+            endpoint['token'] = ""
 
-            if port == 80:
-                endpoint['encrypt'] = False
-            else:
-                endpoint['encrypt'] = True
-
-# CLI overrides
-            if args.session is not None:
-                endpoint['session'] = args.session
+#            if port == 80:
+#                endpoint['encrypt'] = False
+#            else:
+#                endpoint['encrypt'] = True
 
 # no such config section - add and save
 
@@ -1351,11 +1342,21 @@ def main():
             if endpoint['type'] == 'mfclient':
                 mf_client = mfclient.mf_client(protocol=endpoint['protocol'], server=endpoint['server'], port=endpoint['port'], domain=endpoint['domain'])
 
+# CLI overrides
+                if args.session is not None:
+                    endpoint['session'] = args.session
+                if args.domain is not None:
+                    endpoint['domain'] = args.domain
+
+# TODO - remotes to accept endpoint as initialiser
                 if 'session' in endpoint:
                     mf_client.session = endpoint['session']
                 if 'token' in endpoint:
                     mf_client.token = endpoint['token']
+                if 'domain' in endpoint:
+                    mf_client.domain = endpoint['domain']
 
+# connect
                 my_parser.remotes_add(mount, mf_client)
 
             elif endpoint['type'] == 's3':

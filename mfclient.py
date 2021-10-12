@@ -88,27 +88,31 @@ class mf_client:
 # XML pretty print hack
         self.indent = 0
 
+# deprec?
 # check server connection - unless in offline testing mode
-        if server is not None:
-            s = socket.socket()
-            s.settimeout(7)
-            s.connect((self.server, self.port))
-            s.close()
+#        if server is not None:
+#            s = socket.socket()
+#            s.settimeout(7)
+#            s.connect((self.server, self.port))
+#            s.close()
 # check for unecrypted connection (faster data transfers)
-            try:
-                response = urllib.request.urlopen("http://%s" % server, timeout=2)
-                if response.code == 200:
-                    self.encrypted_data = False
-            except Exception as e:
-                pass
+#            try:
+#                response = urllib.request.urlopen("http://%s" % server, timeout=2)
+#                if response.code == 200:
+#                    self.encrypted_data = False
+#            except Exception as e:
+#                pass
 
 # build data URLs
-        if self.encrypted_data:
-            self.data_get = "https://%s/mflux/content.mfjp" % server
-            self.data_put = "%s:%s" % (server, 443)
-        else:
-            self.data_get = "http://%s/mflux/content.mfjp" % server
-            self.data_put = "%s:%s" % (server, 80)
+        self.data_get = "%s://%s/mflux/content.mfjp" % (protocol, server)
+        self.data_put = "%s:%s" % (server, port)
+
+#        if self.encrypted_data:
+#            self.data_get = "https://%s/mflux/content.mfjp" % server
+#            self.data_put = "%s:%s" % (server, 443)
+#        else:
+#            self.data_get = "http://%s/mflux/content.mfjp" % server
+#            self.data_put = "%s:%s" % (server, 80)
 
 # more info
         self.logging.info("PLATFORM=%s" % platform.system())
@@ -126,9 +130,8 @@ class mf_client:
 #        print("mfclient init endpoint")
 #        return cls(...)
 
-
 #------------------------------------------------------------
-# deprec?
+# deprec? -> replaced with client.status message
     def authenticated(self):
         """
         Check client authentication state
@@ -136,9 +139,6 @@ class mf_client:
         Returns:
              A BOOLEAN value depending on the current authentication status of the Mediaflux connection
         """
-
-        self.logging.info(" >>>> HELLO <<<<")
-
         if self.server is None:
             return True
         try:
@@ -160,7 +160,7 @@ class mf_client:
         for i in range(0,1):
 # convert session into a connection description
             try:
-                if self.session is not None:
+                if self.session != "":
                     reply = self.aterm_run("system.session.self.describe")
                     self.status = "connected:"
                     elem = reply.find(".//user")
@@ -168,14 +168,14 @@ class mf_client:
                         self.status += " as user=%s" % elem.text
                     return True
             except Exception as e:
-                self.logging.info("session invalid")
+                self.logging.error("session invalid: %s" % str(e))
 # session was invalid, try to get a new session via a token and retry
             try:
-                if self.token is not None:
+                if self.token != "":
                     self.login(token=self.token)
                     self.logging.info("token ok")
             except Exception as e:
-                self.logging.info("token invalid")
+                self.logging.error("token invalid: %s" % str(e))
                 break
         self.status = "Not connected"
         return False
@@ -220,23 +220,24 @@ class mf_client:
         return xml[:max_size]
 
 #------------------------------------------------------------
-    def _post(self, xml_string, out_filepath=None):
+    def _post(self, xml_bytes, out_filepath=None):
         """
         Primitive for sending an XML message to the Mediaflux server
         """
 
-# no server - pass result back for offline testing
-        if self.server is None:
-            raise Exception(xml_string)
-
 # NB: timeout exception if server is unreachable
-        request = urllib.request.Request(self.post_url, data=xml_string, headers={'Content-Type': 'text/xml'})
-        response = urllib.request.urlopen(request, timeout=self.timeout)
-        xml = response.read()
-        tree = ET.fromstring(xml)
+        elem=None
+        try:
+            request = urllib.request.Request(self.post_url, data=xml_bytes, headers={'Content-Type': 'text/xml'})
+            response = urllib.request.urlopen(request, timeout=self.timeout)
+            xml = response.read()
+            tree = ET.fromstring(xml.decode())
+            elem = tree.find(".//reply/error")
+        except Exception as e:
+            self.logging.error(str(e))
+            return None
 
 # if error - attempt to extract a useful message
-        elem = tree.find(".//reply/error")
         if elem is not None:
             elem = tree.find(".//message")
             error_message = self._xml_succint_error(elem.text)
@@ -354,7 +355,6 @@ class mf_client:
         text1 = re.sub(r'session=[^>]*', 'session="..."', text)
         text2 = re.sub(r'<password>.*?</password>', '<password>xxxxxxx</password>', text1)
         text3 = re.sub(r'<token>.*?</token>', '<token>xxxxxxx</token>', text2)
-# NEW - TODO - other forms?
         text4 = re.sub(r'<service name="secure.wallet.set">.*?</service>', '<service name="secure.wallet.set">xxxxxxx</service>', text3)
         return text4
 
@@ -534,7 +534,10 @@ class mf_client:
                     job = elem.text
                     while True:
                         self.logging.debug("background job [%s] poll..." % job)
+# CURRENT - an issue with calling self in some edge cases?
+# TODO - switch to plain _post ... ?
                         xml_poll = self.aterm_run("service.background.describe :id %s" % job)
+
                         elem = xml_poll.find(".//task/state")
                         item = xml_poll.find(".//task/exec-time")
 
@@ -560,7 +563,7 @@ class mf_client:
 # CURRENT - process reply for any output
 # NB - can only cope with 1 output
                     if data_out_name is not None:
-                        self.logging.debug("aterm_run(): output filename [%s]" % data_out_name)
+                        self.logging.debug("output filename [%s]" % data_out_name)
                         elem_output = reply.find(".//outputs")
                         if elem_output is not None:
                             elem_id = elem_output.find(".//id")
@@ -590,7 +593,7 @@ class mf_client:
 
             except Exception as e:
                 message = str(e)
-                self.logging.debug(message)
+                self.logging.error(message)
                 if "session is not valid" in message:
 # restart the session if token exists
 #                    if self.token is not None:
@@ -647,6 +650,7 @@ class mf_client:
         if elem is None:
             elem = xml_tree
         if elem is not None:
+            # TODO - replace with ET.tostring() ?
             for child in list(elem):
                 print(self._xml_recurse(child).strip('\n'))
         else:
@@ -927,24 +931,23 @@ class mf_client:
             print(line)
 
 #------------------------------------------------------------
-    def ls_iter(self, namespace):
+    def ls_iter(self, pattern):
         """
         generator for namespace/asset listing
         """
-        self.logging.info("[%s]" % namespace)
+        self.logging.info("[%s]" % pattern)
 
-# iterate over namespaces
-        if self.namespace_exists(namespace):
-            reply = self.aterm_run('asset.namespace.list :namespace "%s"' % namespace)
+# yield folders first (only if pattern is a folder)
+# NB: mediaflux quirk - can't pattern match against namespaces (only assets/files)
+        if self.namespace_exists(pattern):
+            reply = self.aterm_run('asset.namespace.list :namespace %s' % pattern)
             ns_list = reply.findall('.//namespace/namespace')
             for ns in ns_list:
                 yield "[folder] %s" % ns.text
-# TODO - use this pattern for non-namespaces
-#        else:
-#        base_query = self.get_query(fullpath_pattern)
 
-# iterateo over assets 
-        result = self.aterm_run("asset.query :where \"namespace='%s'\" :as iterator :action get-values :xpath -ename id id :xpath -ename name name :xpath -ename size content/size" % namespace)
+# yield all matching assets 
+        query = self.get_query(pattern)
+        result = self.aterm_run('asset.query :where "%s" :as iterator :action get-values :xpath -ename id id :xpath -ename name name :xpath -ename size content/size' % query)
         elem = result.find(".//iterator")
         iterator = elem.text
         iterate_size = 100
@@ -982,19 +985,19 @@ class mf_client:
         return current & 0xFFFFFFFF
 
 #------------------------------------------------------------
-    def get_query(self, fullpath_pattern):
-        self.logging.info("[%s]" % fullpath_pattern)
-# TODO - do we need to do escaping etc?
+    def get_query(self, fullpath_pattern, recurse=False):
+        if recurse is True:
+            operator='>='
+        else:
+            operator='='
+
         if self.namespace_exists(fullpath_pattern):
-# FIXME - this is suitable for a glob style get on everything matching ... 
-# FIXME - can we make more generic for other calls?
-            base_query = "namespace>='%s'" % fullpath_pattern
+            query = "namespace%s'%s'" % (operator, fullpath_pattern)
         else:
             pattern = posixpath.basename(fullpath_pattern)
             namespace = posixpath.dirname(fullpath_pattern)
-            base_query = "namespace='%s' and name='%s'" % (namespace, pattern)
-        self.logging.info("[%s]" % fullpath_pattern)
-        return(base_query)
+            query = "namespace%s'%s' and name='%s'" % (operator, namespace, pattern)
+        return(query)
 
 #------------------------------------------------------------
     def get_iter(self, fullpath_pattern):
