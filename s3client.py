@@ -31,16 +31,16 @@ class s3client:
         self.cwd = None
         self.s3 = None
         self.status = "not connected"
-        self.logger = logging.getLogger('s3client')
+        self.logging = logging.getLogger('s3client')
 # CURRENT
-#        self.logger.setLevel(logging.DEBUG)
+#        self.logging.setLevel(logging.DEBUG)
 
 #------------------------------------------------------------
 # prefix - the keystone project assoc with access/secret ... and trigger for s3client pathways
 # VFS style ... TODO - allow for multiple mounts ... eg AWS
 #    def connect(self, host, access, secret, prefix):
     def connect(self):
-        self.logger.info('endpoint=%s using acess=%s' % (self.host, self.access))
+        self.logging.info('endpoint=%s using acess=%s' % (self.host, self.access))
         try:
             self.s3 = boto3.client('s3', endpoint_url=self.host, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
             self.status = "connected: as access=%s" % self.access
@@ -54,7 +54,7 @@ class s3client:
 #------------------------------------------------------------
 # split a key into prefix + filter
     def key_split(self, key):
-        self.logger.info("key=[%s]" % key)
+        self.logging.info("key=[%s]" % key)
 
         mykey = str(key)
 
@@ -66,14 +66,14 @@ class s3client:
             prefix = mykey[:c]
             pattern = mykey[c+1:]
 
-        self.logger.info("prefix=[%r] pattern=[%r]" % (prefix, pattern))
+        self.logging.info("prefix=[%r] pattern=[%r]" % (prefix, pattern))
 
         return prefix, pattern
 
 #------------------------------------------------------------
 # convert fullpath to bucket, key pair
     def path_split(self, fullpath):
-        self.logger.info("[%s]" % fullpath)
+        self.logging.info("[%s]" % fullpath)
 
 # convert fullpath to [bucket][object]
         mypath = pathlib.PurePosixPath(fullpath)
@@ -91,7 +91,7 @@ class s3client:
             if len(key) > 2:
                 key = key + "/"
 
-        self.logger.info("bucket=[%r] key=[%r]" % (bucket, key))
+        self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
 
         return bucket, key
 
@@ -99,21 +99,21 @@ class s3client:
 # TODO - deprecate this in clients??? (ie all done in pshell and we expect fullpath's always)
 #    def absolute_remote_filepath(self, path):
 #
-#        self.logger.debug('in: %s' % path)
+#        self.logging.debug('in: %s' % path)
 #
 #        mypath = path.strip()
 #        if mypath[0] != '/':
 #            mypath = posixpath.join(self.cwd, mypath)
 #        mypath = posixpath.normpath(mypath)
 #
-#        self.logger.debug('out: %s' % mypath)
+#        self.logging.debug('out: %s' % mypath)
 #
 #        return mypath
 
 #------------------------------------------------------------
     def cd(self, fullpath):
 
-        self.logger.debug("[%s]" % fullpath)
+        self.logging.debug("[%s]" % fullpath)
 
         mypath = pathlib.PurePosixPath(fullpath)
         count = len(mypath.parts)
@@ -123,7 +123,7 @@ class s3client:
         for i in range(0,stop):
             self.cwd = posixpath.join(self.cwd, mypath.parts[i])
 
-        self.logger.debug("cwd = [%s]" % self.cwd)
+        self.logging.debug("cwd = [%s]" % self.cwd)
 
         return self.cwd
 
@@ -134,7 +134,7 @@ class s3client:
 #            raise Exception("Could not find the boto3 library.")
 
         bucket,key = self.path_split(path)
-        self.logger.info("bucket=[%r] key=[%r]" % (bucket, key))
+        self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
 
         if bucket is not None:
             paginator = self.s3.get_paginator('list_objects_v2')
@@ -162,19 +162,19 @@ class s3client:
     def get(self, path):
 
         bucket,key = self.path_split(path)
-        self.logger.info('remote bucket=[%r] key=[%r]' % (bucket, key))
+        self.logging.info('remote bucket=[%r] key=[%r]' % (bucket, key))
 
         local_filepath = os.path.join(os.getcwd(), posixpath.basename(key))
-        self.logger.info('downloading to [%s]' % local_filepath)
+        self.logging.info('downloading to [%s]' % local_filepath)
 
         self.s3.download_file(str(bucket), str(key), local_filepath)
 
 #------------------------------------------------------------
     def put(self, remote_path, local_filepath):
 
-        self.logger.info('uploading [%s]' % local_filepath)
+        self.logging.info('uploading [%s]' % local_filepath)
         bucket,key = self.path_split(remote_path)
-        self.logger.info('remote bucket=[%r] key=[%r]' % (bucket, key))
+        self.logging.info('remote bucket=[%r] key=[%r]' % (bucket, key))
 
         self.s3.upload_file(local_filepath, bucket, os.path.basename(local_filepath))
 

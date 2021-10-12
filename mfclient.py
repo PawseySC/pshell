@@ -75,44 +75,33 @@ class mf_client:
         self.logging = logging.getLogger('mfclient')
         global build
 
-# can override to test fast http data transfers (with https logins)
-        if protocol == 'https':
-            self.encrypted_data = True
-        else:
-            self.encrypted_data = False
-# service call URL
-        self.post_url = "%s://%s/__mflux_svc__" % (protocol, server)
 # download/upload buffers
         self.get_buffer = 8192
         self.put_buffer = 8192
 # XML pretty print hack
         self.indent = 0
 
-# deprec?
-# check server connection - unless in offline testing mode
-#        if server is not None:
-#            s = socket.socket()
-#            s.settimeout(7)
-#            s.connect((self.server, self.port))
-#            s.close()
-# check for unecrypted connection (faster data transfers)
-#            try:
-#                response = urllib.request.urlopen("http://%s" % server, timeout=2)
-#                if response.code == 200:
-#                    self.encrypted_data = False
-#            except Exception as e:
-#                pass
-
 # build data URLs
+        self.post_url = "%s://%s/__mflux_svc__" % (protocol, server)
         self.data_get = "%s://%s/mflux/content.mfjp" % (protocol, server)
         self.data_put = "%s:%s" % (server, port)
+# can override to test fast http data transfers (with https logins)
+        if protocol == 'https':
+            self.encrypted_data = True
+        else:
+            self.encrypted_data = False
 
-#        if self.encrypted_data:
-#            self.data_get = "https://%s/mflux/content.mfjp" % server
-#            self.data_put = "%s:%s" % (server, 443)
-#        else:
-#            self.data_get = "http://%s/mflux/content.mfjp" % server
-#            self.data_put = "%s:%s" % (server, 80)
+# check for unecrypted connection (faster data transfers)
+# FIXME - would love to ditch this, but the speed difference is huge
+        try:
+            response = urllib.request.urlopen("http://%s" % server, timeout=2)
+            if response.code == 200:
+                self.encrypted_data = False
+                # override (only does anything if we're encrypting posts)
+                self.data_get = "http://%s/mflux/content.mfjp" % server
+                self.data_put = "%s:%s" % (server, 80)
+        except Exception as e:
+            pass
 
 # more info
         self.logging.info("PLATFORM=%s" % platform.system())
