@@ -70,7 +70,7 @@ class parser(cmd.Cmd):
     config_filepath = None
     keystone = None
     remotes = {}
-    cwd = '/'
+    cwd = '/projects'
     interactive = True
     terminal_height = 20
     script_output = None
