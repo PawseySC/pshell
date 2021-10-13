@@ -365,7 +365,6 @@ class mf_client:
         try:
 #            while token:
             while token is not None:
-                print(token)
                 if token[0] == ':':
                     child = ET.SubElement(xml_node, '%s' % token[1:])
 # if element contains : (eg csiro:seismic) then we need to inject the xmlns stuff
@@ -583,7 +582,7 @@ class mf_client:
         """
         Default passthrough method
         """
-        self.logging.info(text)
+        self.logging.debug(text)
         reply = self.aterm_run(text)
         self.xml_print(reply)
 

@@ -54,7 +54,7 @@ if __name__ == '__main__':
 # acquire a dummy client instance
     try:
 
-        s3_client = s3client.s3client()
+        s3_client = s3client.s3_client()
 
         print("\n----------------------------------------------------------------------")
         print("Running offline tests for: s3client module")
