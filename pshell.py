@@ -49,9 +49,9 @@ delegate_max = 365
 
 #------------------------------------------------------------
 # picklable get()
-def jump_get(remote, remote_fullpath):
+def jump_get(remote, remote_fullpath, local_fullpath):
     try:
-        size = remote.get(remote_fullpath)
+        size = remote.get(remote_fullpath, local_filepath=local_fullpath)
         logging.info("Local file size (bytes) = %r" % size)
     except Exception as e:
         logging.error(str(e))
@@ -591,11 +591,16 @@ class parser(cmd.Cmd):
             self.print_over("Setting up for %d files..." % self.total_count)
             try:
                 count = 0
-                for item in results:
-                    future = self.get_executor.submit(jump_get, remote, item)
+                for remote_fullpath in results:
+                    remote_relpath = posixpath.relpath(path=remote_fullpath, start=self.cwd)
+                    local_filepath = os.path.join(os.getcwd(), remote_relpath)
+                    future = self.get_executor.submit(jump_get, remote, remote_fullpath, local_filepath)
                     future.add_done_callback(self.cb_get)
                     count += 1
+
             except Exception as e:
+                logging.info("[%s] count = %d" % (str(e), count))
+
 # FIXME - throws exception "completed" when done - but no problem occurred ... 
                 pass
 
@@ -603,6 +608,7 @@ class parser(cmd.Cmd):
 #self.get_executor.shutdown(wait=True, cancel_futures=True)
 
 # wait until completed (cb_get does progress updates)
+            logging.info("Waiting for thread executor...")
             while self.get_count < self.total_count:
                 time.sleep(3)
 
@@ -618,7 +624,6 @@ class parser(cmd.Cmd):
         print("Usage: put <file or folder>\n")
 
 # --
-# TODO - same as for get()
     def cb_put(self, future):
 
         bytes_sent = int(future.result())
@@ -627,7 +632,6 @@ class parser(cmd.Cmd):
             self.put_bytes += bytes_sent
 # progress update report
         self.print_over("put progress: [%r] files and [%r] bytes" % (self.put_count, self.put_bytes))
-
 
 # --
     def put_iter(self, line):

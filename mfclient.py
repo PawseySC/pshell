@@ -938,15 +938,15 @@ class mf_client:
         query = self.get_query(pattern)
         result = self.aterm_run('asset.query :where "%s" :as iterator :action get-values :xpath -ename id id :xpath -ename name name :xpath -ename size content/size' % query)
         elem = result.find(".//iterator")
-        iterator = elem.text
+        iterator = int(elem.text)
         iterate_size = 100
         complete = "false"
         while complete != "true":
-            result = self.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
+            result = self.aterm_run("asset.query.iterate :id %d :size %d" % (iterator, iterate_size))
             elem = result.find(".//iterated")
             if elem is not None:
                 complete = elem.attrib['complete'].lower()
-            self.logging.debug("asset query iterator chunk [%s] - complete[%s]" % (iterator, complete))
+            self.logging.debug("asset query iterator chunk [%d] - complete[%s]" % (iterator, complete))
 # parse the asset results
             for elem in result.findall(".//asset"):
                 asset_id = '?'
@@ -975,17 +975,17 @@ class mf_client:
 
 #------------------------------------------------------------
     def get_query(self, fullpath_pattern, recurse=False):
-        if recurse is True:
-            operator='>='
-        else:
-            operator='='
 
         if self.namespace_exists(fullpath_pattern):
-            query = "namespace%s'%s'" % (operator, fullpath_pattern)
+            if recurse is True:
+                query = "namespace>='%s'" % fullpath_pattern
+            else:
+                query = "namespace='%s'" % fullpath_pattern
         else:
             pattern = posixpath.basename(fullpath_pattern)
             namespace = posixpath.dirname(fullpath_pattern)
-            query = "namespace%s'%s' and name='%s'" % (operator, namespace, pattern)
+            query = "namespace='%s' and name='%s'" % (namespace, pattern)
+
         return(query)
 
 #------------------------------------------------------------
@@ -996,14 +996,16 @@ class mf_client:
         subsequent = candidates for get()
         """
 
-        base_query = self.get_query(fullpath_pattern)
+        query = self.get_query(fullpath_pattern, recurse=True)
+        self.logging.info("[%s] -> [%s]" % (fullpath_pattern, query))
 
 # count download results and get total size
         try:
-            reply = self.aterm_run('asset.query :where "%s" :count true :action sum :xpath content/size' % base_query)
+            reply = self.aterm_run('asset.query :where "%s" :count true :action sum :xpath content/size' % query)
             elem = reply.find(".//value")
-            total_bytes = elem.text
-            total_count = elem.attrib['nbe']
+# must return valid ints (NB: mflux will return empty space rather than 0 if no query match)
+            total_bytes = int(elem.text)
+            total_count = int(elem.attrib['nbe'])
             yield total_count
             yield total_bytes
         except Exception as e:
@@ -1013,8 +1015,8 @@ class mf_client:
             return
 
 # NEW - just return results ... get() primitive will do the recall ...
-#        result = self.aterm_run('asset.query :where "%s and content online" :as iterator :action get-path' % base_query)
-        result = self.aterm_run('asset.query :where "%s" :as iterator :action get-path' % base_query)
+#        result = self.aterm_run('asset.query :where "%s and content online" :as iterator :action get-path' % query)
+        result = self.aterm_run('asset.query :where "%s" :as iterator :action get-path' % query)
         elem = result.find(".//iterator")
         iterator = elem.text
 # effectively the recall batch size
@@ -1035,7 +1037,7 @@ class mf_client:
                     return
 
 #------------------------------------------------------------
-    def get(self, remote_filepath, overwrite=False):
+    def get(self, remote_filepath, local_filepath=None, overwrite=False):
         """
         Download a remote file to the current working directory
 
@@ -1047,7 +1049,8 @@ class mf_client:
             An error on failure
         """
 
-        local_filepath = os.path.join(os.getcwd(), posixpath.basename(remote_filepath))
+        if local_filepath is None:
+            local_filepath = os.path.join(os.getcwd(), posixpath.basename(remote_filepath))
         self.logging.info("Downloading remote [%s] to local [%s]" % (remote_filepath, local_filepath))
 
         if os.path.isfile(local_filepath) and not overwrite:
@@ -1056,6 +1059,12 @@ class mf_client:
 # Windows path names and the posix lexer in aterm_run() are not good friends
             if "Windows" in platform.system():
                 local_filepath = local_filepath.replace("\\", "\\\\")
+
+# make any intermediate folders required ...
+            local_parent = os.path.dirname(local_filepath)
+            if os.path.exists(local_parent) is False:
+                self.logging.debug("Creating required local folder(s): [%s]" % local_parent)
+                os.makedirs(local_parent)
 
 # online recall - backgrounded
             reply = self.aterm_run('asset.content.migrate :id "path=%s" :destination "online" &' % remote_filepath)
