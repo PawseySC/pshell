@@ -78,13 +78,12 @@ class parser(cmd.Cmd):
     remotes = {}
     cwd = '/'
     interactive = True
-    transfer_processes = 3
     terminal_height = 20
     script_output = None
 
-
 # TODO - class? or just a dict?
-    get_executor = None
+    thread_executor = None
+    thread_max = 4
     get_count = 0
     get_bytes = 0
     total_count = 0
@@ -594,7 +593,7 @@ class parser(cmd.Cmd):
                 for remote_fullpath in results:
                     remote_relpath = posixpath.relpath(path=remote_fullpath, start=self.cwd)
                     local_filepath = os.path.join(os.getcwd(), remote_relpath)
-                    future = self.get_executor.submit(jump_get, remote, remote_fullpath, local_filepath)
+                    future = self.thread_executor.submit(jump_get, remote, remote_fullpath, local_filepath)
                     future.add_done_callback(self.cb_get)
                     count += 1
 
@@ -605,7 +604,7 @@ class parser(cmd.Cmd):
                 pass
 
 # TODO - control-C -> terminate threads ...
-#self.get_executor.shutdown(wait=True, cancel_futures=True)
+#self.thread_executor.shutdown(wait=True, cancel_futures=True)
 
 # wait until completed (cb_get does progress updates)
             logging.info("Waiting for thread executor...")
@@ -670,7 +669,7 @@ class parser(cmd.Cmd):
 
             for remote_fullpath, local_fullpath in results:
                 logging.info("put remote=[%s] local=[%s]" % (remote_fullpath, local_fullpath))
-                future = self.get_executor.submit(jump_put, remote, remote_fullpath, local_fullpath)
+                future = self.thread_executor.submit(jump_put, remote, remote_fullpath, local_fullpath)
                 future.add_done_callback(self.cb_put)
                 total_count += 1
 
@@ -848,10 +847,15 @@ class parser(cmd.Cmd):
     def do_processes(self, line):
         try:
             p = max(1, min(int(line), 16))
-            self.transfer_processes = p
-        except:
+            self.thread_max = p
+# shutdown executor and start up again ...
+            print("Restarting background processes...")
+            self.thread_executor.shutdown()
+            self.thread_executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_max)
+        except Exception as e:
+            logging.info(str(e))
             pass
-        print("Current number of processes: %r" % self.transfer_processes)
+        print("Current number of processes: %r" % self.thread_max)
 
 # -- connection commands
     def help_logout(self):
@@ -1327,8 +1331,8 @@ def main():
 
 
 # NEW 
-    my_parser.get_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
-# TODO - put_executor ... or generic ... ?
+# TODO - generic + link to # processes
+    my_parser.thread_executor = concurrent.futures.ThreadPoolExecutor(max_workers=my_parser.thread_max)
 
 
 # add discovery url

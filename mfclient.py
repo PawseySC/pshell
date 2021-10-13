@@ -101,6 +101,7 @@ class mf_client:
                 self.data_get = "http://%s/mflux/content.mfjp" % server
                 self.data_put = "%s:%s" % (server, 80)
         except Exception as e:
+            self.logging.debug(str(e))
             pass
 
 # more info
