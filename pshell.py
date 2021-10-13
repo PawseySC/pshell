@@ -189,13 +189,15 @@ class parser(cmd.Cmd):
     def remotes_add(self, mount='/remote', module=None):
         logging.info("mount = [%s], module = [%r]" % (mount, module))
         self.remotes[mount] = module
+
 # init cwd
         if module.connect() is True:
-            self.cwd = module.cd(mount)
+            self.cwd = mount
 
 # add to config and save
         endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
         endpoints[mount] = module.endpoint()
+
         self.config.set(self.config_name, 'endpoints', json.dumps(endpoints))
         self.remotes_config_save()
 
@@ -732,12 +734,15 @@ class parser(cmd.Cmd):
 
     def do_cd(self, line):
         candidate = self.absolute_remote_filepath(line)
-        remote = self.remotes_get(candidate)
-        try:
-            self.cwd = remote.cd(candidate)
-            return
-        except Exception as e:
-            print("No such remote folder, to show valid folders run: remotes list")
+        if candidate in self.remotes:
+            self.cwd = candidate
+        else:
+            try:
+                remote = self.remotes_get(candidate)
+                self.cwd = remote.cd(candidate)
+            except Exception as e:
+                logging.debug(str(e))
+                print("Could not access remote folder")
 
 #------------------------------------------------------------
     def help_pwd(self):
@@ -918,7 +923,6 @@ class parser(cmd.Cmd):
 
 # argument parse
         dt = delegate_default
-        destroy_session = False
         if line:
             if line == "off":
                 try:
@@ -927,21 +931,15 @@ class parser(cmd.Cmd):
 # figure out the current session
                     reply = remote.aterm_run("actor.self.describe")
                     if 'identity' in reply.find(".//actor").attrib['type']:
-                        destroy_session = True
-                except:
+                        remote.session = ""
+                except Exception as e:
 # probably a bad session (eg generated from an expired token)
-                    logging.debug("Failed to remove secure tokens from server")
-                    destroy_session = True
-# remove all auth info and update config
-                remote.token = ""
-                use_token = False
-
-# if current session is delegate based - destroy it too
-                if destroy_session:
+                    logging.debug("Token destroy failed: %s" % str(e))
                     remote.session = ""
 
-                self.config_save()
-
+# remove all auth info and update config
+                remote.token = ""
+                self.remotes_config_save()
                 print("Delegate credentials removed.")
                 return
             else:
@@ -953,35 +951,24 @@ class parser(cmd.Cmd):
         d = datetime.datetime.now() + datetime.timedelta(days=dt)
         expiry = d.strftime("%d-%b-%Y %H:%M:%S")
 
+        try:
 # query current authenticated identity
-        domain = None
-        user = None
-        name = None
-        result = remote.aterm_run("actor.self.describe")
-        elem = result.find(".//actor")
-        if elem is not None:
+            result = remote.aterm_run("actor.self.describe")
+            elem = result.find(".//actor")
             actor = elem.attrib['name']
-            if ":" in actor:
-                i = actor.find(":")
-                domain = actor[0:i]
-                user = actor[i+1:]
-        if user is None or domain is None:
-            raise Exception("Delegate identity %r is not allowed to delegate" % actor)
-
-# create secure token (delegate) and assign current authenticated identity to the token
-        logging.debug("Attempting to delegate for: domain=%s, user=%s, until=%r" % (domain, user, expiry))
-        result = remote.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16 :wallet true' % (expiry, actor, domain))
-        for elem in result.iter():
-            if elem.tag == 'token':
-                print("Delegate valid until: " + expiry)
-                remote.token = elem.text
-# NEW
-                endpoint = json.loads(self.config.get(self.config_name, 'endpoint'))
-                endpoint['token'] = remote.token
-                self.config[self.config_name] = {'endpoint':json.dumps(endpoint) }
-                self.config_save()
-                return
-        raise Exception("Delegate command successfull; but failed to find return token")
+            i = actor.find(":")
+            domain = actor[0:i]
+            user = actor[i+1:]
+            logging.debug("Attempting to delegate for: domain=%s, user=%s, until=%r" % (domain, user, expiry))
+# attempt to delegate as current identity
+            result = remote.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16 :wallet true' % (expiry, actor, domain))
+            elem = result.find(".//token")
+            remote.token = elem.text
+            self.remotes_config_save()
+            print("Delegate valid until: " + expiry)
+        except Exception as e:
+            logging.debug(str(e))
+            print("Delegate creation failed")
 
 #------------------------------------------------------------
     def help_publish(self):

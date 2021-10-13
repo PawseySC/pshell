@@ -117,28 +117,6 @@ class mf_client:
 #        return cls(...)
 
 #------------------------------------------------------------
-# deprec? -> replaced with client.status message
-    def authenticated(self):
-        """
-        Check client authentication state
-
-        Returns:
-             A BOOLEAN value depending on the current authentication status of the Mediaflux connection
-        """
-        if self.server is None:
-            return True
-        try:
-# CURRENT - I suspect this is not multiprocessing safe ...  resulting in the false "session expired" problem during downloads
-            self.aterm_run("system.session.self.describe")
-            return True
-
-        except Exception as e:
-# NB: max licence error can occur here
-            self.logging.debug(str(e))
-
-        return False
-
-#------------------------------------------------------------
     def connect(self):
         """
         Acquire a connection status description
@@ -147,11 +125,9 @@ class mf_client:
 # convert session into a connection description
             try:
                 if self.session != "":
-                    reply = self.aterm_run("system.session.self.describe")
-                    self.status = "connected:"
-                    elem = reply.find(".//user")
-                    if elem is not None:
-                        self.status += " as user=%s" % elem.text
+                    reply = self.aterm_run("actor.self.describe")
+                    elem = reply.find(".//actor")
+                    self.status = "connected: as %s=%s" % (elem.attrib['type'], elem.attrib['name'])
                     return True
             except Exception as e:
                 self.logging.error("session invalid: %s" % str(e))
