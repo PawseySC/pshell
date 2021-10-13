@@ -547,15 +547,15 @@ class parser(cmd.Cmd):
             logging.warning("Metadata population failed: %s" % str(e))
 
 #------------------------------------------------------------
-    def help_import(self):
-        print("\nUpload files or folders with associated metadata")
-        print("For every file <filename.ext> another file called <filename.ext.meta> should contain metadata in INI file format\n")
-        print("Usage: import <file or folder>\n")
+#    def help_import(self):
+#        print("\nUpload files or folders with associated metadata")
+#        print("For every file <filename.ext> another file called <filename.ext.meta> should contain metadata in INI file format\n")
+#        print("Usage: import <file or folder>\n")
 
 # ---
     def do_import(self, line):
-        self.do_put(line, meta=True)
-        return
+        raise Exception("Not implemented yet.")
+#        self.do_put(line, meta=True)
 
 #------------------------------------------------------------
     def help_get(self):
@@ -875,7 +875,6 @@ class parser(cmd.Cmd):
 
 # ---
     def do_login(self, line):
-
         remote = self.remotes_get(self.cwd)
         logging.info("remote type = [%s]" % remote.type)
         if remote.type == 'mfclient':
@@ -883,23 +882,7 @@ class parser(cmd.Cmd):
             user = input("Username: ")
             password = getpass.getpass("Password: ")
             remote.login(user, password)
-
-# NEW
-#            mount = self.remotes_mount_get(self.cwd)
-            mount = self.cwd
-
             self.remotes_config_save()
-
-
-# NEW - add to secure wallet for identity management
-#        xml_reply = self.mf_client.aterm_run("secure.wallet.can.be.used")
-#            self.mf_client.aterm_run("secure.wallet.recreate :password %s" % password)
-# TODO - encrypt so it's not plain text 
-#        self.mf_client.aterm_run("secure.wallet.set :key ldap :value %s" % password)
-# this can only be done with an authenticated mfclient
-#            my_parser.keystone.connect(mf_client, refresh=False)
-#            my_parser.keystone.discover_s3(my_parser.s3client)
-#            my_parser.remotes_add('/'+my_parser.s3client.prefix, my_parser.s3client)
 
 #------------------------------------------------------------
     def help_delegate(self):
