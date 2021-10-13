@@ -12,13 +12,16 @@ import pathlib
 # deprec in favour of pathlib?
 import posixpath
 
+# NEW
+from remote import client
+
 try:
     import boto3
     ok=True
 except:
     ok=False
 
-class s3client:
+class s3_client(client):
     def __init__(self, host=None, access=None, secret=None):
         self.ok = ok
 # TODO - more reworking to replace these things with a generic "endpoint" dict
@@ -96,21 +99,6 @@ class s3client:
         return bucket, key
 
 #------------------------------------------------------------
-# TODO - deprecate this in clients??? (ie all done in pshell and we expect fullpath's always)
-#    def absolute_remote_filepath(self, path):
-#
-#        self.logging.debug('in: %s' % path)
-#
-#        mypath = path.strip()
-#        if mypath[0] != '/':
-#            mypath = posixpath.join(self.cwd, mypath)
-#        mypath = posixpath.normpath(mypath)
-#
-#        self.logging.debug('out: %s' % mypath)
-#
-#        return mypath
-
-#------------------------------------------------------------
     def cd(self, fullpath):
 
         self.logging.debug("[%s]" % fullpath)
@@ -129,9 +117,6 @@ class s3client:
 
 #------------------------------------------------------------
     def ls_iter(self, path):
-
-#        if ok is False:
-#            raise Exception("Could not find the boto3 library.")
 
         bucket,key = self.path_split(path)
         self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
@@ -155,10 +140,6 @@ class s3client:
                 yield "[Bucket] %s" % item['Name']
 
 #------------------------------------------------------------
-    def info(self, path):
-        raise Exception("s3client.info() not implemented yet")
-
-#------------------------------------------------------------
     def get(self, path):
 
         bucket,key = self.path_split(path)
@@ -179,11 +160,12 @@ class s3client:
         self.s3.upload_file(local_filepath, bucket, os.path.basename(local_filepath))
 
 #------------------------------------------------------------
-    def rm(self, filepath):
+    def rm(self, filepath, prompt=None):
         bucket,key = self.path_split(filepath)
-
         if bucket is not None and key is not None:
-# TODO - are you sure (y/n)
+            if prompt is not None:
+                if prompt("Delete object (y/n)") is False:
+                    return
             self.s3.delete_object(Bucket=str(bucket), Key=str(key))
         else:
             raise Exception("No valid remote bucket, object in path [%s]" % filepath)
@@ -200,11 +182,12 @@ class s3client:
             raise Exception("No valid remote bucket in path [%s]" % path)
 
 #------------------------------------------------------------
-    def rmdir(self, path):
+    def rmdir(self, path, prompt=None):
         bucket,key = self.path_split(path)
 
         if bucket is not None and key is None:
-# TODO - are you sure (y/n)
+            if prompt("Delete bucket (y/n)") is False:
+                return
             self.s3.delete_bucket(Bucket=bucket)
         else:
             raise Exception("No valid remote bucket in path [%s]" % path)

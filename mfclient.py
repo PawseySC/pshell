@@ -365,6 +365,7 @@ class mf_client:
         try:
 #            while token:
             while token is not None:
+                print(token)
                 if token[0] == ':':
                     child = ET.SubElement(xml_node, '%s' % token[1:])
 # if element contains : (eg csiro:seismic) then we need to inject the xmlns stuff
@@ -390,29 +391,32 @@ class mf_client:
                             value = value[1:-1]
                         child.set(key, value)
                 else:
+
+                    if child is not None:
 # FIXME - some issues here with data strings with multiple spaces (ie we are doing a whitespace split & only adding one back)
-                    if child.text is not None:
-                        child.text += " " + token
-                    else:
-                        if token.startswith('"') and token.endswith('"'):
-                            child.text = token[1:-1]
+                        if child.text is not None:
+                            child.text += " " + token
                         else:
-                            child.text = token
+                            if token.startswith('"') and token.endswith('"'):
+                                child.text = token[1:-1]
+                            else:
+                                child.text = token
 
 # NEW - cope with special characters that may bork parsing
 # use everything (to EOL) after :password as the password
-                    if child.tag.lower() == "password":
+                        if child.tag.lower() == "password":
 # FIXME - ugly & assumes :password is the LAST element in the service call
-                        index = input_line.find(" :password")
-                        if index > 10:
-                            child.text = input_line[index+11:]
+                            index = input_line.find(" :password")
+                            if index > 10:
+                                child.text = input_line[index+11:]
 
 # special case - out element - needs to be removed (replaced with outputs-via and an outputs-expected attribute)
-                    if child.tag.lower() == "out":
-                        data_out_name = child.text
-                        data_out_min = 1
+                        if child.tag.lower() == "out":
+                            data_out_name = child.text
+                            data_out_min = 1
 # schedule for deletion but don't delete yet due to potentially multiple passthroughs 
-                        xml_unwanted = child
+                            xml_unwanted = child
+
 
 # don't treat quotes as special characters in password string
                 if "password" in token:
@@ -573,6 +577,15 @@ class mf_client:
 
 # couldn't post without an error - give up
         raise Exception(message)
+
+#------------------------------------------------------------
+    def command(self, text):
+        """
+        Default passthrough method
+        """
+        self.logging.info(text)
+        reply = self.aterm_run(text)
+        self.xml_print(reply)
 
 #------------------------------------------------------------
     def _xml_recurse(self, elem, text=""):

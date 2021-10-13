@@ -24,6 +24,7 @@ import threading
 import configparser
 import concurrent.futures
 import xml.etree.ElementTree as ET
+from remote import client
 import mfclient
 import keystone
 import s3client
@@ -153,19 +154,11 @@ class parser(cmd.Cmd):
 
 # ---
     def default(self, line):
-#        raise Exception("Unknown command passthrough not implemented")
-# unrecognized - assume it's an aterm command
         remote = self.remotes_get(self.cwd)
-        logging.info("default passthru cwd=[%s] -> remote=[%r]" % (self.cwd, remote))
-        if remote is not None:
-            logging.debug("Fixme - assuming mflux")
-            reply = remote.aterm_run(line)
-            remote.xml_print(reply)
-        return
+        remote.command(line)
 
 #------------------------------------------------------------
     def remotes_config_save(self):
-
         endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
 # TODO - only if refresh=True
         for mount, endpoint in endpoints.items():
@@ -190,22 +183,24 @@ class parser(cmd.Cmd):
             self.cwd = mount
             module.cd(mount)
 
-# add to config and save
+# add or update endpoint in config 
         endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
         endpoints[mount] = module.endpoint()
-
         self.config.set(self.config_name, 'endpoints', json.dumps(endpoints))
-        self.remotes_config_save()
+
+# FIXME - can't save here ... remote_add is called on startup ... so we don't want to save (and wipe) before we add ALL remotes
+#        self.remotes_config_save()
 
 #------------------------------------------------------------
     def remotes_get(self, path):
+        logging.info("path=[%s]" % path)
         fullpath = self.absolute_remote_filepath(path)
         for mount in self.remotes:
 # FIXME - should look for best match ... eg we have a remote on '/' and another on '/projects'
             if fullpath.startswith(mount) is True:
                 logging.debug("matched [%s] with [%s] = %r" % (fullpath, mount, self.remotes[mount]))
                 return self.remotes[mount]
-        return None
+        raise Exception("Could not find anything connected to [%s]" % path)
 
 #------------------------------------------------------------
     def requires_auth(self, line):
@@ -332,9 +327,12 @@ class parser(cmd.Cmd):
                     mfclient = client
             try:
                 self.keystone.connect(mfclient, refresh=True)
-                s3_client = s3client.s3client()
+                s3_client = s3client.s3_client()
                 self.keystone.discover_s3(s3_client)
                 self.remotes_add('/'+s3_client.prefix, s3_client)
+
+                self.remotes_config_save()
+
             except Exception as e:
                 logging.debug(str(e))
                 # probably no boto3 - may have still got credentials
@@ -876,7 +874,10 @@ class parser(cmd.Cmd):
 # ---
     def do_login(self, line):
         remote = self.remotes_get(self.cwd)
-        logging.info("remote type = [%s]" % remote.type)
+        logging.info("remote = [%r]" % remote)
+        if remote is None:
+            raise Exception("Please specify remote for login")
+
         if remote.type == 'mfclient':
             logging.info("Authentication domain [%s]" % remote.domain)
             user = input("Username: ")
@@ -1148,28 +1149,29 @@ def main():
             endpoint = endpoints[mount]
             logging.info("Connecting [%s] endpoint on [%s]" % (endpoint['type'], mount))
             if endpoint['type'] == 'mfclient':
-                mf_client = mfclient.mf_client(protocol=endpoint['protocol'], server=endpoint['server'], port=endpoint['port'], domain=endpoint['domain'])
-
+                myclient = mfclient.mf_client(protocol=endpoint['protocol'], server=endpoint['server'], port=endpoint['port'], domain=endpoint['domain'])
 # CLI overrides
                 if args.session is not None:
                     endpoint['session'] = args.session
                 if args.domain is not None:
                     endpoint['domain'] = args.domain
-
 # TODO - remotes to accept endpoint as initialiser
                 if 'session' in endpoint:
-                    mf_client.session = endpoint['session']
+                    myclient.session = endpoint['session']
                 if 'token' in endpoint:
-                    mf_client.token = endpoint['token']
+                    myclient.token = endpoint['token']
                 if 'domain' in endpoint:
-                    mf_client.domain = endpoint['domain']
-
-# connect
-                my_parser.remotes_add(mount, mf_client)
-
+                    myclient.domain = endpoint['domain']
             elif endpoint['type'] == 's3':
-                client = s3client.s3client(host=endpoint['host'], access=endpoint['access'], secret=endpoint['secret'])
-                my_parser.remotes_add(mount, client)
+                myclient = s3client.s3_client(host=endpoint['host'], access=endpoint['access'], secret=endpoint['secret'])
+            else:
+                myclient = client()
+
+# associate client with mount
+            my_parser.remotes_add(mount, myclient)
+
+# added all remotes without error - save to config
+        my_parser.remotes_config_save()
 
     except Exception as e:
         logging.error(str(e))
