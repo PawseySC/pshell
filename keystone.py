@@ -30,9 +30,9 @@ class keystone:
         """
 
         self.url = url
-        self.token = None
+        self.token = ""
         self.user = None
-        self.project_dict = None
+        self.project_dict = {}
         self.credential_list = None
         self.logger = logging.getLogger('keystone')
 # CURRENT
@@ -41,11 +41,11 @@ class keystone:
 #------------------------------------------------------------
 # connect to keystone and acquire user details via mflux sso
     def connect(self, mfclient, refresh=False):
-        self.logger.info("url=%r" % self.url)
-# TODO - more sophisticated checking here? eg token expired ...
-        if self.token == None or refresh == True:
+        self.logger.info("url=%r and refresh=%r" % (self.url, refresh))
+# refresh auth token
+        if refresh == True:
             self.sso_mfclient(mfclient)
-# always done
+# refresh info
         self.get_projects()
         self.get_credentials()
 
@@ -118,6 +118,9 @@ class keystone:
 #------------------------------------------------------------
     def get_credentials(self):
 # get user ec2 credentials 
+        self.logger.info("url=[%s] token=[%r]" % (self.url, self.token))
+#        if self.token is None:
+#            raise Exception("Not authenticated to keystone")
         ec2_url = "/v3/users/%s/credentials/OS-EC2" % self.user
         headers = {"X-Auth-Token": self.token, "Content-type": "application/json"}
         request = urllib.request.Request(self.url + ec2_url, headers=headers)
@@ -125,6 +128,7 @@ class keystone:
         reply = response.read()
         self.credential_list = json.loads(reply)['credentials']
         self.logger.debug("success")
+        return self.credential_list
 
 #------------------------------------------------------------
     def get_projects(self):
@@ -152,7 +156,7 @@ class keystone:
                     return (project_name, credential['access'], credential['secret'])
 
 #------------------------------------------------------------
-    def credentials_print(self, project):
+    def credentials_print(self):
         for project_name in self.project_dict:
             print("project = %s" % project_name)
             for credential in self.credential_list:
@@ -182,8 +186,9 @@ class keystone:
         response = urllib.request.urlopen(request)
         reply = response.read()
         credential = json.loads(reply)
-        print("Created access: %s" % credential['credential']['access'])
+        # re-populate
         self.get_credentials()
+        return credential['credential']['access']
 
 #------------------------------------------------------------
     def credentials_delete(self, access):
@@ -196,8 +201,7 @@ class keystone:
         response = urllib.request.urlopen(request)
 # expected response.status = 204 (empty content)
         if response.status == 204:
-            print("Success")
             self.get_credentials()
-        else:
-            print("Error")
+            return("Delete successful")
+        return("Delete failed")
 

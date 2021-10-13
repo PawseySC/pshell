@@ -5,11 +5,12 @@ RUN apk add python3
 RUN apk add py3-pip
 
 RUN pip3 install boto3
+RUN pip3 install pyflakes
 
 # won't work without a properly conifgured gcc ...
 #RUN pip3 install pyinstaller
-
 #RUN git clone https://bitbucket.org/datapawsey/mfclient.git
+
 copy mfclient.py /
 copy pshell.py /
 copy keystone.py /

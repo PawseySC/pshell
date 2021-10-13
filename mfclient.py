@@ -15,16 +15,12 @@ import zlib
 import shlex
 import random
 import string
-import socket
-import signal
 import urllib.request, urllib.error, urllib.parse
 import http.client
 import logging
-import datetime
 import platform
 import mimetypes
 import posixpath
-import configparser
 import xml.etree.ElementTree as ET
 
 # globals
@@ -383,7 +379,6 @@ class mf_client:
         stack = []
         data_out_min = 0
         data_out_name = None
-        flag_no_wrap = False
 
 # first token is the service call, the rest are child arguments
         service_call = lexer.get_token()
@@ -915,7 +910,9 @@ class mf_client:
         result = self.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % fullpath)
         elem = result.find(".//exists")
         if elem is not None:
-            output_list.append("published  : %s" % elem.text)
+            if 'true' in elem.text.lower():
+                public_url = '%s://%s/download/%s' % (self.protocol, self.server, urllib.parse.quote(fullpath[10:]))
+                output_list.append("published  : %s" % public_url)
 
         for line in output_list:
             print(line)
@@ -988,6 +985,35 @@ class mf_client:
             query = "namespace='%s' and name='%s'" % (namespace, pattern)
 
         return(query)
+
+#------------------------------------------------------------
+# TODO - more fine-grained access (eg downloadable with password)
+    def publish(self, fullpath_pattern):
+        """
+        For all assets that match the pattern, generate publicly downloadable URLs
+        """
+        try:
+            query = self.get_query(fullpath_pattern, recurse=True)
+            reply = self.aterm_run('asset.query :where "%s" :count true :action pipe :service -name asset.label.add < :label PUBLISHED >' % query, background=True)
+            elem = reply.find(".//count")
+            return(int(elem.text))
+        except Exception as e:
+            self.logging.debug(str(e))
+        return 0
+
+#------------------------------------------------------------
+    def unpublish(self, fullpath_pattern):
+        """
+        For all assets that match the pattern, remove and publicly downloadable URLs
+        """
+        try:
+            query = self.get_query(fullpath_pattern, recurse=True)
+            reply = self.aterm_run('asset.query :where "%s" :count true :action pipe :service -name asset.label.remove < :label PUBLISHED >' % query, background=True)
+            elem = reply.find(".//count")
+            return(int(elem.text))
+        except Exception as e:
+            self.logging.debug(str(e))
+        return 0
 
 #------------------------------------------------------------
     def get_iter(self, fullpath_pattern):

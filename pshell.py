@@ -12,32 +12,26 @@ import glob
 import math
 import time
 import json
+import shlex
 import urllib
 import getpass
 import logging
-import zipfile
 import argparse
 import datetime
 import itertools
 import posixpath
+import threading
 import configparser
+import concurrent.futures
 import xml.etree.ElementTree as ET
 import mfclient
+import keystone
+import s3client
 # no readline on windows
 try:
     import readline
 except:
     pass
-
-# NEW
-import keystone
-import s3client
-import getopt
-import shlex
-import pathlib
-import concurrent.futures
-import threading
-
 
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
@@ -45,7 +39,6 @@ build= "Latest"
 delegate_default = 7
 delegate_min = 1
 delegate_max = 365
-
 
 #------------------------------------------------------------
 # picklable get()
@@ -176,8 +169,7 @@ class parser(cmd.Cmd):
         with open(self.config_filepath, 'w') as f:
             self.config.write(f)
 
-# ---
-# TODO = if no mount -> refresh all
+#------------------------------------------------------------
     def remotes_config_save(self):
 
         endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
@@ -195,10 +187,8 @@ class parser(cmd.Cmd):
 
 # ---
     def remotes_add(self, mount='/remote', module=None):
-
         logging.info("mount = [%s], module = [%r]" % (mount, module))
         self.remotes[mount] = module
-
 # init cwd
         if module.connect() is True:
             self.cwd = module.cd(mount)
@@ -219,15 +209,6 @@ class parser(cmd.Cmd):
                 logging.debug("matched [%s] with [%s] = %r" % (fullpath, mount, self.remotes[mount]))
                 return self.remotes[mount]
         return None
-
-# ---
-    def do_remotes(self, line):
-#        if "list" in line:
-        for mount, client in self.remotes.items():
-            print("%-20s [%s]" % (mount, client.status))
-
-# TODO - if "add" in line ...
-
 
 
 # --- helper
@@ -291,7 +272,7 @@ class parser(cmd.Cmd):
         fullpath = posixpath.normpath(line)
         return fullpath
 
-# --- version tracking 
+#------------------------------------------------------------
     def help_version(self):
         print("\nReturn the current version build identifier\n")
         print("Usage: build\n")
@@ -300,7 +281,7 @@ class parser(cmd.Cmd):
         global build
         print(" VERSION: %s" % build)
 
-# --- file info
+#------------------------------------------------------------
     def help_file(self):
         print("\nReturn metadata information on a remote file\n")
         print("Usage: file <filename>\n")
@@ -311,8 +292,25 @@ class parser(cmd.Cmd):
             fullpath = self.absolute_remote_filepath(line)
             remote.info(fullpath)
 
+#------------------------------------------------------------
+    def help_remotes(self):
+        print("\nInformation about remote clients\n")
+        print("Usage: remotes <add>\n")
+
+# --- 
+    def do_remotes(self, line):
+        if 'add' in line:
+            print("TODO")
+        else:
+            for mount, client in self.remotes.items():
+                print("%-20s [%s]" % (mount, client.status))
+
+#------------------------------------------------------------
+    def help_ec2(self):
+        print("\nInformation about ec2 credentials from keystone \n")
+        print("Usage: ec2 <login/list/create/delete>\n")
+
 # ---
-# TODO - EC2 create/delete/list
     def do_ec2(self, line):
         args = line.split()
         nargs = len(args)
@@ -326,12 +324,12 @@ class parser(cmd.Cmd):
         if self.keystone is None:
             raise Exception("Missing keystone url.")
 
-        if 'discover' in line:
+        if 'login' in line:
             logging.info("Attempting discovery via: [%s]" % self.keystone)
 # find a mediaflux client
 # use as SSO for keystone auth
 # do discovery
-
+# TODO - if no SSO (or we remove) then do old fashioned login
             mfclient = None
             for mount, client in self.remotes.items():
                 if client.type == 'mfclient':
@@ -341,32 +339,35 @@ class parser(cmd.Cmd):
                 self.keystone.connect(mfclient, refresh=True)
                 s3_client = s3client.s3client()
                 self.keystone.discover_s3(s3_client)
-# CURRENT - update config and save
                 self.remotes_add('/'+s3_client.prefix, s3_client)
             except Exception as e:
-                logging.info(str(e))
-                print("Discovery failed")
+                logging.debug(str(e))
+                # probably no boto3 - may have still got credentials
+                print("Discovery incomplete")
             return
 
         if 'list' in line:
-            self.keystone.credentials_print(line)
+            self.keystone.credentials_print()
             return
 
         if 'create' in line:
             if nargs > 1:
-                self.keystone.credentials_create(args[1])
+                access = self.keystone.credentials_create(args[1])
+                print("Created access: %s" % access)
             else:
                 raise Exception("Error: missing project reference")
             return
 
         if 'delete' in line:
             if nargs > 1:
-                self.keystone.credentials_delete(args[1])
+                result = self.keystone.credentials_delete(args[1])
+                print(result)
             else:
                 raise Exception("Error: missing access reference")
             return
 
 
+#------------------------------------------------------------
 # --- helper
 # immediately return any key pressed as a character
     def wait_key(self):
@@ -781,8 +782,8 @@ class parser(cmd.Cmd):
         else:
             print("Aborted")
 
+#------------------------------------------------------------
 # -- local commands
-
 # --
     def help_lpwd(self):
         print("\nDisplay local folder\n")
@@ -838,12 +839,13 @@ class parser(cmd.Cmd):
 #         reply = self.mf_client.aterm_run("secure.shell.execute :command ls :host magnus.pawsey.org.au :private-key < :name sean :key \"%s\" >" % pkey)
 #         self.mf_client.xml_print(reply)
 
-# ---
+#------------------------------------------------------------
     def help_processes(self):
         print("\nSet the number of concurrent processes to use when transferring files.")
         print("If no number is supplied, reports the current value.")
         print("Usage: processes <number>\n")
 
+# ---
     def do_processes(self, line):
         try:
             p = max(1, min(int(line), 16))
@@ -857,21 +859,23 @@ class parser(cmd.Cmd):
             pass
         print("Current number of processes: %r" % self.thread_max)
 
-# -- connection commands
+#------------------------------------------------------------
     def help_logout(self):
         print("\nTerminate the current session to the server\n")
         print("Usage: logout\n")
 
+# ---
     def do_logout(self, line):
         remote = self.remotes_get(self.cwd)
         if remote is not None:
             remote.logout()
 
-# ---
+#------------------------------------------------------------
     def help_login(self):
         print("\nInitiate login to the current remote server\n")
         print("Usage: login\n")
 
+# ---
     def do_login(self, line):
 
         remote = self.remotes_get(self.cwd)
@@ -899,19 +903,18 @@ class parser(cmd.Cmd):
 #            my_parser.keystone.discover_s3(my_parser.s3client)
 #            my_parser.remotes_add('/'+my_parser.s3client.prefix, my_parser.s3client)
 
-
-# --
+#------------------------------------------------------------
     def help_delegate(self):
         print("\nCreate a credential, stored in your local home folder, for automatic authentication to the remote server.")
         print("An optional argument can be supplied to set the lifetime, or off to destroy all your delegated credentials.\n")
         print("Usage: delegate <days/off>\n")
 
+# ---
     def do_delegate(self, line):
 
         remote = self.remotes_get(self.cwd)
         if remote.type != 'mfclient':
             return
-
 
 # argument parse
         dt = delegate_default
@@ -980,198 +983,31 @@ class parser(cmd.Cmd):
                 return
         raise Exception("Delegate command successfull; but failed to find return token")
 
-
-# -- helper: recursively get complete list of remote files under a given namespace
-    def get_remote_set(self, remote_namespace):
-        remote_files = set()
-        prefix = len(remote_namespace)
-        result = self.mf_client.aterm_run("asset.query :where \"namespace>='%s'\" :as iterator :action get-path" % remote_namespace)
-        elem = result.find(".//iterator")
-        iterator = elem.text
-        iterate_size = 100
-        iterate = True
-        while iterate:
-# get file list for this sub-set
-            result = self.mf_client.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
-            for elem in result.iter("path"):
-                relpath = elem.text[prefix+1:]
-                remote_files.add(relpath)
-# check for completion - to avoid triggering a mediaflux exception on invalid iterator
-            for elem in result.iter("iterated"):
-                state = elem.get('complete')
-                if "true" in state:
-                    iterate = False
-
-        return remote_files
-
-# --- compare
-    def help_compare(self):
-        print("\nCompares a local and a remote folder and reports any differences")
-        print("The local and remote folders must have the same name and appear in the current local and remote working directories")
-        print("Usage: compare <folder>\n")
-
-# --- compare
-# NB: checksum compare is prohibitively expensive in general, so default to file size based comparison
-    def do_compare(self, line, checksum=False, filesize=True):
-        remote_fullpath = self.absolute_remote_filepath(line)
-
-# check remote
-        if self.mf_client.namespace_exists(remote_fullpath) is False:
-            print("Could not find remote folder: %s" % remote_fullpath)
-            return
-
-# no folder specified - compare local and remote working directories 
-        if remote_fullpath == self.cwd:
-            local_fullpath = os.getcwd()
-        else:
-            remote_basename = posixpath.basename(remote_fullpath)
-            local_fullpath = os.path.join(os.getcwd(), remote_basename)
-# check local
-        if os.path.exists(local_fullpath) is False:
-            print("Could not find local folder: %s" % local_fullpath)
-            return
-
-# build remote set
-        remote_files = set()
-        print("Building remote file set under [%s] ..." % remote_fullpath)
-        remote_files = self.get_remote_set(remote_fullpath)
-
-# build local set
-        local_files = set()
-        print("Building local file set under [%s] ..." % local_fullpath)
-        try:
-            for (dirpath, dirnames, filenames) in os.walk(local_fullpath):
-                for filename in filenames:
-                    full_path = os.path.join(dirpath, filename)
-                    relpath = os.path.relpath(full_path, local_fullpath)
-                    local_files.add(relpath)
-        except Exception as e:
-            logging.error(str(e))
-
-# starting summary
-        print("Total remote files = %d" % len(remote_files))
-        print("Total local files = %d" % len(local_files))
-
-# remote only count
-        count_pull = 0
-        print("=== Remote server only ===")
-        for item in remote_files - local_files:
-            count_pull += 1
-            print(("%s" % item))
-# report 
-        count_push = 0
-        print("=== Local filesystem only ===")
-        for item in local_files - remote_files:
-            print(("%s" % item))
-            count_push += 1
-
-# for common files, report if there are differences
-        print("=== Differing files ===")
-        count_common = 0
-        count_mismatch = 0
-        for item in local_files & remote_files:
-            remote_filepath = posixpath.join(remote_fullpath, item)
-            remote_namespace = posixpath.dirname(remote_filepath)
-            local_filepath = os.path.join(local_fullpath, item)
-# checksum compare
-            if checksum is True:
-                local_crc32 = self.mf_client.get_local_checksum(local_filepath)
-                remote_crc32 = None
-                try:
-                    result = self.mf_client.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename crc32 content/csum' % remote_filepath)
-                    elem = result.find(".//crc32")
-                    remote_crc32 = int(elem.text, 16)
-                except Exception as e:
-                    logging.error("do_compare(): %s" % str(e))
-# always report (warning) mismatched files
-                if local_crc32 == remote_crc32:
-                    count_common += 1
-                else:
-                    print(("s: local crc32=%r, remote crc32=%r" % (item, local_crc32, remote_crc32)))
-                    count_mismatch += 1
-# filesize compare 
-            elif filesize is True:
-                local_size = os.path.getsize(local_filepath)
-                remote_size = 0
-                try:
-                    result = self.mf_client.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename size content/size' % remote_filepath)
-                    elem = result.find(".//size")
-                    remote_size = int(elem.text)
-                except Exception as e:
-                    logging.error("do_compare(): %s" % str(e))
-# always report (warning) mismatched files
-                if local_size == remote_size:
-                    count_common += 1
-                else:
-                    print(("%s: local size=%d, remote size=%d" % (item, local_size, remote_size)))
-                    count_mismatch += 1
-# existence compare
-            else:
-                count_common += 1
-
-# concluding summary
-        print("=== Complete ===")
-        print("Files found only on local filesystem = %d" % count_push)
-        print("Files found only on remote server = %d" % count_pull)
-        print("Identical files = %d" % count_common)
-        if checksum is True or filesize is True:
-            print("Differing files = %d" % count_mismatch)
-
-# -- generic operation that returns an unknown number of results from the server, so chunking must be used
-    def mf_iter(self, iter_command, iter_callback, iter_size):
-# NB: we expect cmd to have ":as iterator" in it
-        result = self.mf_client.aterm_run(iter_command)
-        elem = result.find(".//iterator")
-        iter_id = elem.text
-        while True:
-            logging.debug("Online iterator chunk")
-            result = self.mf_client.aterm_run("asset.query.iterate :id %s :size %d" % (iter_id, iter_size))
-#  action the callback for this iteration
-            iter_callback(result)
-# if current iteration is flagged as completed -> we're done
-            elem = result.find(".//iterated")
-            state = elem.get('complete')
-            if "true" in state:
-                logging.debug("iteration completed")
-                break
-
-# -- callback for do_publish url printing 
-    def print_published_urls(self, result):
-        for elem in result.iter("path"):
-            public_url = '%s://%s/download/%s' % (self.mf_client.protocol, self.mf_client.server, urllib.parse.quote(elem.text[10:]))
-            print(public_url)
-
-# --
+#------------------------------------------------------------
     def help_publish(self):
-        print("\nReturn a public, downloadable URL for a file or files\nRequires public sharing to be enabled by the project administrator\n")
-        print("Usage: publish <file(s)>\n")
+        print("\nCreate public URLs for specified file(s)\nRequires public sharing to be enabled by the project administrator\n")
+        print("Usage: publish <file(s) or folder>\n")
 
-# TODO - publish/unpublish only work on assets ... rework to handle namespaces?
 # --
     def do_publish(self, line):
         fullpath = self.absolute_remote_filepath(line)
-        pattern = posixpath.basename(fullpath)
-        namespace = posixpath.dirname(fullpath)
-# publish everything that matches
-        self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :action pipe :service -name asset.label.add < :label PUBLISHED >' % (namespace, pattern), background=True)
-# iterate to display downloadable URLs
-        iter_cmd = 'asset.query :where "namespace=\'%s\' and name=\'%s\'" :as iterator :action get-path' % (namespace, pattern)
-        self.mf_iter(iter_cmd, self.print_published_urls, 10)
+        remote = self.remotes_get(fullpath)
+        count = remote.publish(fullpath)
+        print("Published %d files" % count)
 
-# --
+#------------------------------------------------------------
     def help_unpublish(self):
         print("\nRemove public access for a file or files\n")
-        print("Usage: unpublish <file(s)>\n")
+        print("Usage: unpublish <file(s) or folder>\n")
 
 # --
     def do_unpublish(self, line):
         fullpath = self.absolute_remote_filepath(line)
-        pattern = posixpath.basename(fullpath)
-        namespace = posixpath.dirname(fullpath)
-# un-publish everything that matches
-        self.mf_client.aterm_run('asset.query :where "namespace=\'%s\' and name=\'%s\'" :action pipe :service -name asset.label.remove < :label PUBLISHED >' % (namespace, pattern), background=True)
+        remote = self.remotes_get(fullpath)
+        count = remote.unpublish(fullpath)
+        print("Unpublished %d files" % count)
 
-# --
+#------------------------------------------------------------
     def help_quit(self):
         print("\nExit without terminating the session\n")
     def do_quit(self, line):
@@ -1183,7 +1019,7 @@ class parser(cmd.Cmd):
     def do_exit(self, line):
         exit(0)
 
-# --
+#------------------------------------------------------------
     def loop_interactively(self):
         while True:
             try:
@@ -1204,6 +1040,7 @@ class parser(cmd.Cmd):
                     return
                 print(str(e))
 
+#------------------------------------------------------------
 def main():
     global build
 
