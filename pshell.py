@@ -164,16 +164,9 @@ class parser(cmd.Cmd):
         return
 
 #------------------------------------------------------------
-    def config_save(self):
-        logging.info("saving config to file = %s" % self.config_filepath)
-        with open(self.config_filepath, 'w') as f:
-            self.config.write(f)
-
-#------------------------------------------------------------
     def remotes_config_save(self):
 
         endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
-
 # TODO - only if refresh=True
         for mount, endpoint in endpoints.items():
             client = self.remotes_get(mount)
@@ -181,18 +174,21 @@ class parser(cmd.Cmd):
 # refresh the config endpoint via the client
             if client is not None:
                 endpoints[mount] = client.endpoint()
-
         self.config[self.config_name]['endpoints'] = json.dumps(endpoints)
-        self.config_save()
+# commit
+        logging.info("saving config to file = %s" % self.config_filepath)
+        with open(self.config_filepath, 'w') as f:
+            self.config.write(f)
 
-# ---
+#------------------------------------------------------------
     def remotes_add(self, mount='/remote', module=None):
         logging.info("mount = [%s], module = [%r]" % (mount, module))
         self.remotes[mount] = module
 
-# init cwd
+# init cwd for parser and remote
         if module.connect() is True:
             self.cwd = mount
+            module.cd(mount)
 
 # add to config and save
         endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
@@ -201,8 +197,7 @@ class parser(cmd.Cmd):
         self.config.set(self.config_name, 'endpoints', json.dumps(endpoints))
         self.remotes_config_save()
 
-# ---
-# convert a relative or absolute path reference into an appropriate remote client
+#------------------------------------------------------------
     def remotes_get(self, path):
         fullpath = self.absolute_remote_filepath(path)
         for mount in self.remotes:
@@ -212,11 +207,9 @@ class parser(cmd.Cmd):
                 return self.remotes[mount]
         return None
 
-
-# --- helper
+#------------------------------------------------------------
     def requires_auth(self, line):
         local_commands = ["login", "help", "lls", "lcd", "lpwd", "debug", "version", "exit", "quit"]
-
 # only want first keyword (avoid getting "not logged in" on input like "help get")
         try:
             primary = line.strip().split()[0]
@@ -227,7 +220,7 @@ class parser(cmd.Cmd):
 
         return True
 
-# --- helper
+#------------------------------------------------------------
     def human_size(self, nbytes):
         suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
 
@@ -251,7 +244,7 @@ class parser(cmd.Cmd):
                 text = "%.1f mins" % value
         return text
 
-# --- helper
+#------------------------------------------------------------
     def ask(self, text):
 # if script, assumes you know what you're doing
         if self.interactive is False:
@@ -261,11 +254,11 @@ class parser(cmd.Cmd):
             return True
         return False
 
-# --- helper
+#------------------------------------------------------------
     def escape_single_quotes(self, namespace):
         return namespace.replace("'", "\\'")
 
-# --- helper: convert a relative/absolute mediaflux namespace/asset reference to minimal (non-quoted) absolute form
+#------------------------------------------------------------
     def absolute_remote_filepath(self, line):
         if line.startswith('"') and line.endswith('"'):
             line = line[1:-1]
