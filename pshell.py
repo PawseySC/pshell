@@ -14,10 +14,8 @@ import time
 import json
 import shlex
 import urllib
-import getpass
 import logging
 import argparse
-import datetime
 import itertools
 import posixpath
 import threading
@@ -37,9 +35,6 @@ except:
 # standard lib python command line client for mediaflux
 # Author: Sean Fleming
 build= "Latest"
-delegate_default = 7
-delegate_min = 1
-delegate_max = 365
 
 #------------------------------------------------------------
 # picklable get()
@@ -88,15 +83,15 @@ class parser(cmd.Cmd):
 
 # --- initial setup of prompt
     def preloop(self):
-         self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+        self.prompt = "pshell:%s>" % self.cwd
 
 # --- not logged in -> don't even attempt to process remote commands
     def precmd(self, line):
         return cmd.Cmd.precmd(self, line)
 
-# --- prompt refresh (eg after login/logout)
+# --- prompt refresh 
     def postcmd(self, stop, line):
-        self.prompt = "%s:%s>" % (self.config_name, self.cwd)
+        self.prompt = "pshell:%s>" % self.cwd
         return cmd.Cmd.postcmd(self, stop, line)
 
 # TODO - rename asset->file/object, namespace->folder
@@ -187,13 +182,11 @@ class parser(cmd.Cmd):
         endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
         endpoints[mount] = module.endpoint()
         self.config.set(self.config_name, 'endpoints', json.dumps(endpoints))
-
-# FIXME - can't save here ... remote_add is called on startup ... so we don't want to save (and wipe) before we add ALL remotes
-#        self.remotes_config_save()
+# NB: don't save config here ... remote_add is called on startup ... so we don't want to save (and wipe) before we add ALL remotes
 
 #------------------------------------------------------------
     def remotes_get(self, path):
-        logging.info("path=[%s]" % path)
+        logging.debug("path=[%s]" % path)
         fullpath = self.absolute_remote_filepath(path)
         for mount in self.remotes:
 # FIXME - should look for best match ... eg we have a remote on '/' and another on '/projects'
@@ -204,7 +197,7 @@ class parser(cmd.Cmd):
 
 #------------------------------------------------------------
     def requires_auth(self, line):
-        local_commands = ["login", "help", "lls", "lcd", "lpwd", "debug", "version", "exit", "quit"]
+        local_commands = ["login", "help", "lls", "lcd", "lpwd", "version", "processes", "exit", "quit"]
 # only want first keyword (avoid getting "not logged in" on input like "help get")
         try:
             primary = line.strip().split()[0]
@@ -330,7 +323,6 @@ class parser(cmd.Cmd):
                 s3_client = s3client.s3_client()
                 self.keystone.discover_s3(s3_client)
                 self.remotes_add('/'+s3_client.prefix, s3_client)
-
                 self.remotes_config_save()
 
             except Exception as e:
@@ -359,6 +351,7 @@ class parser(cmd.Cmd):
                 raise Exception("Error: missing access reference")
             return
 
+        print("keystone=%s" % self.keystone.url)
 
 #------------------------------------------------------------
 # --- helper
@@ -450,32 +443,21 @@ class parser(cmd.Cmd):
 
 # --- 
     def do_ls(self, line):
-
         fullpath = self.absolute_remote_filepath(line)
-
         remote = self.remotes_get(fullpath)
-
         remote_list = remote.ls_iter(fullpath)
-
         count = 0
+        size = max(1, min(self.terminal_height - 3, 100))
         for line in remote_list:
             print(line)
             count = count+1
-            size = max(1, min(self.terminal_height - 3, 100))
-
             if count > size:
-                pagination_footer = "=== (enter = next, q = quit) === " 
-                response = self.pagination_controller(pagination_footer)
+                response = self.pagination_controller("=== (enter = next, q = quit) === ")
                 if response is not None:
                     if response == 'q' or response == 'quit':
                         return
                     else:
                         count = 0
-
-# -- old
-#    def poll_total(self, base_query):
-# run in background as this can timeout on larger DMF folders
-#        result = self.mf_client.aterm_run('asset.content.status.statistics :where "%s" &' % base_query)
 
 # --- helper
 # --
@@ -829,12 +811,6 @@ class parser(cmd.Cmd):
                 head, tail = os.path.split(filename)
                 print("%s | %-s" % (self.human_size(os.path.getsize(filename)), tail))
 
-# --- working example of PKI via mediaflux
-#     def do_mls(self, line):
-#         pkey = open('/Users/sean/.ssh/id_rsa', 'r').read()
-#         reply = self.mf_client.aterm_run("secure.shell.execute :command ls :host magnus.pawsey.org.au :private-key < :name sean :key \"%s\" >" % pkey)
-#         self.mf_client.xml_print(reply)
-
 #------------------------------------------------------------
     def help_processes(self):
         print("\nSet the number of concurrent processes to use when transferring files.")
@@ -874,16 +850,10 @@ class parser(cmd.Cmd):
 # ---
     def do_login(self, line):
         remote = self.remotes_get(self.cwd)
-        logging.info("remote = [%r]" % remote)
         if remote is None:
-            raise Exception("Please specify remote for login")
-
-        if remote.type == 'mfclient':
-            logging.info("Authentication domain [%s]" % remote.domain)
-            user = input("Username: ")
-            password = getpass.getpass("Password: ")
-            remote.login(user, password)
-            self.remotes_config_save()
+            raise Exception("Please specify remote target for login")
+        remote.login()
+        self.remotes_config_save()
 
 #------------------------------------------------------------
     def help_delegate(self):
@@ -893,59 +863,9 @@ class parser(cmd.Cmd):
 
 # ---
     def do_delegate(self, line):
-
         remote = self.remotes_get(self.cwd)
-        if remote.type != 'mfclient':
-            return
-
-# argument parse
-        dt = delegate_default
-        if line:
-            if line == "off":
-                try:
-                    remote.aterm_run("secure.identity.token.all.destroy")
-                    logging.debug("Removed secure tokens from server")
-# figure out the current session
-                    reply = remote.aterm_run("actor.self.describe")
-                    if 'identity' in reply.find(".//actor").attrib['type']:
-                        remote.session = ""
-                except Exception as e:
-# probably a bad session (eg generated from an expired token)
-                    logging.debug("Token destroy failed: %s" % str(e))
-                    remote.session = ""
-
-# remove all auth info and update config
-                remote.token = ""
-                self.remotes_config_save()
-                print("Delegate credentials removed.")
-                return
-            else:
-                try:
-                    dt = max(min(float(line), delegate_max), delegate_min)
-                except:
-                    print("Bad delegate lifetime.")
-# lifetime setup
-        d = datetime.datetime.now() + datetime.timedelta(days=dt)
-        expiry = d.strftime("%d-%b-%Y %H:%M:%S")
-
-        try:
-# query current authenticated identity
-            result = remote.aterm_run("actor.self.describe")
-            elem = result.find(".//actor")
-            actor = elem.attrib['name']
-            i = actor.find(":")
-            domain = actor[0:i]
-            user = actor[i+1:]
-            logging.debug("Attempting to delegate for: domain=%s, user=%s, until=%r" % (domain, user, expiry))
-# attempt to delegate as current identity
-            result = remote.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16 :wallet true' % (expiry, actor, domain))
-            elem = result.find(".//token")
-            remote.token = elem.text
+        if remote.delegate(line) is True:
             self.remotes_config_save()
-            print("Delegate valid until: " + expiry)
-        except Exception as e:
-            logging.debug(str(e))
-            print("Delegate creation failed")
 
 #------------------------------------------------------------
     def help_publish(self):
@@ -1078,7 +998,6 @@ def main():
 
 # WTF - urlparse not extracting the port
             aaa = urllib.parse.urlparse(args.url)
-
 # HACK - workaround for urlparse not extracting port, despite the doco indicating it should
             p = '(?:http.*://)?(?P<host>[^:/ ]+).?(?P<port>[0-9]*).*'
             m = re.search(p,args.url)
@@ -1092,13 +1011,7 @@ def main():
             endpoint['session'] = ""
             endpoint['token'] = ""
 
-#            if port == 80:
-#                endpoint['encrypt'] = False
-#            else:
-#                endpoint['encrypt'] = True
-
 # no such config section - add and save
-
             logging.info("Saving section: [%s] in config" % args.current)
 
             endpoints = { args.mount:endpoint }

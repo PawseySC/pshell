@@ -7,6 +7,7 @@ Author: Sean Fleming
 
 import json
 import urllib
+import getpass
 import logging
 
 #########################################################
@@ -106,8 +107,10 @@ class keystone:
         else:
             wallet_recreate = True
 
+
+# FIX AND TEST THIS
 # failed due to no key or no useable wallet
-        print("Keystone authentication for user [%s] required.")
+        print("Keystone authentication for user [%s] required." % user)
         password = getpass.getpass("Password: ")
         if wallet_recreate is True:
             mfclient.aterm_run("secure.wallet.recreate :password %s" % password)

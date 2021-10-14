@@ -15,13 +15,22 @@ class client:
         self.type = "generic"
         self.cwd = None
 
+    def endpoint(self):
+        raise Exception("Not implemented")
+
     def connect(self):
         raise Exception("Not implemented")
 
     def status(self):
         return(self.status)
 
-    def endpoint(self):
+    def login(self):
+        raise Exception("Not implemented")
+
+    def logout(self):
+        raise Exception("Not implemented")
+
+    def delegate(self, subcommand):
         raise Exception("Not implemented")
 
     def info(self, remote_filepath):

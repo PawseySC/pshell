@@ -15,13 +15,15 @@ import zlib
 import shlex
 import random
 import string
-import urllib.request, urllib.error, urllib.parse
-import http.client
+import getpass
 import logging
+import datetime
 import platform
 import mimetypes
 import posixpath
+import http.client
 import xml.etree.ElementTree as ET
+import urllib.request, urllib.error, urllib.parse
 
 # globals
 build= "20210923131216"
@@ -81,24 +83,23 @@ class mf_client:
         self.post_url = "%s://%s/__mflux_svc__" % (protocol, server)
         self.data_get = "%s://%s/mflux/content.mfjp" % (protocol, server)
         self.data_put = "%s:%s" % (server, port)
+
 # can override to test fast http data transfers (with https logins)
         if protocol == 'https':
             self.encrypted_data = True
-        else:
-            self.encrypted_data = False
-
 # check for unecrypted connection (faster data transfers)
 # FIXME - would love to ditch this, but the speed difference is huge
-        try:
-            response = urllib.request.urlopen("http://%s" % server, timeout=2)
-            if response.code == 200:
-                self.encrypted_data = False
+            try:
+                response = urllib.request.urlopen("http://%s" % server, timeout=2)
+                if response.code == 200:
+                    self.encrypted_data = False
                 # override (only does anything if we're encrypting posts)
-                self.data_get = "http://%s/mflux/content.mfjp" % server
-                self.data_put = "%s:%s" % (server, 80)
-        except Exception as e:
-            self.logging.debug(str(e))
-            pass
+                    self.data_get = "http://%s/mflux/content.mfjp" % server
+                    self.data_put = "%s:%s" % (server, 80)
+            except Exception as e:
+                self.logging.debug(str(e))
+        else:
+            self.encrypted_data = False
 
 # more info
         self.logging.info("PLATFORM=%s" % platform.system())
@@ -117,32 +118,6 @@ class mf_client:
 #        return cls(...)
 
 #------------------------------------------------------------
-    def connect(self):
-        """
-        Acquire a connection status description
-        """
-        for i in range(0,1):
-# convert session into a connection description
-            try:
-                if self.session != "":
-                    reply = self.aterm_run("actor.self.describe")
-                    elem = reply.find(".//actor")
-                    self.status = "connected: as %s=%s" % (elem.attrib['type'], elem.attrib['name'])
-                    return True
-            except Exception as e:
-                self.logging.error("session invalid: %s" % str(e))
-# session was invalid, try to get a new session via a token and retry
-            try:
-                if self.token != "":
-                    self.login(token=self.token)
-                    self.logging.info("token ok")
-            except Exception as e:
-                self.logging.error("token invalid: %s" % str(e))
-                break
-        self.status = "Not connected"
-        return False
-
-#------------------------------------------------------------
     def endpoint(self):
         """
         Return configuration as endpoint description
@@ -152,11 +127,151 @@ class mf_client:
         endpoint['encrypt'] = self.encrypted_data
         endpoint['session'] = self.session
         endpoint['token'] = self.token
-
 # FIXME - how?
         endpoint['name'] = 'pawsey'
 
         return endpoint
+
+#------------------------------------------------------------
+    def connect(self):
+        """
+        Acquire connection status via session or token
+        """
+
+        for i in range(0,1):
+# convert session into a connection description
+            try:
+                if self.session != "":
+# NB: don't use 'actor.self.describe' here as it will give a valid description for a session based on a destroyed token
+                    reply = self.aterm_run("system.session.self.describe")
+                    elem = reply.find(".//secure-token")
+
+# TODO - rework so delegate show WHO I'm a delegate for ...
+# I'm a token - get expiry date
+                    if elem is not None:
+                        reply = self.aterm_run("secure.identity.token.describe :id %s" % elem.text)
+                        elem = reply.find(".//validity/to")
+                        identity = "delegate, expiry: %s" % elem.text
+                    else:
+# normal session - get user identity
+                        elem = reply.find(".//actor")
+                        identity = "%s=%s" % (elem.attrib['type'], elem.text)
+                    self.status = "connected to: %s as %s" % (self.server, identity)
+                    return True
+
+            except Exception as e:
+                self.logging.error("session invalid: %s" % str(e))
+                self.session = ""
+
+# session was invalid, try to get a new session via a token and retry
+            try:
+                if self.token != "":
+                    self.login(token=self.token)
+                    self.logging.info("token ok")
+            except Exception as e:
+                self.logging.error("token invalid: %s" % str(e))
+# don't wipe token as there may be another cause (eg server down) for the connection failure
+# rely on explicit methods, such as delegate off, for a token wipe
+                break
+        self.status = "Not connected: %r" % self.server
+        return False
+
+#------------------------------------------------------------
+    def login(self, user=None, password=None, token=None):
+        """
+        Authenticate to the server and record the session on success
+
+        Input:
+            user, password: STRINGS specifying user login details
+                     token: STRING specifying a delegate credential
+
+        Raises:
+            An error if authentication fails
+        """
+# security check
+        if self.protocol != "https":
+            self.logging.debug("Permitting unencrypted login; I hope you know what you're doing.")
+
+# command prompt entry
+        if user is None and token is None:
+            logging.info("Authentication domain [%s]" % self.domain)
+            user = input("Username: ")
+            password = getpass.getpass("Password: ")
+
+# create a session - failed aterm_run calls should raise an exception that gets handed back up
+# priority order: user/password followed by token
+        reply = None
+        if user is not None:
+            reply = self.aterm_run("system.logon :domain %s :user %s :password %s" % (self.domain, user, password))
+        else:
+            if token is not None:
+                if len(token) > 0:
+                    reply = self.aterm_run("system.logon :token %s" % token)
+                    self.token = token
+# attempt to extract a session
+        try:
+            elem = reply.find(".//session")
+            self.session = elem.text
+            self.connect()
+        except Exception as e:
+            self.logging.error(str(e))
+            raise Exception("Invalid login call")
+
+#------------------------------------------------------------
+    def logout(self):
+        """
+        Destroy the current session (NB: delegate can auto-create a new session if available)
+        """
+        self.aterm_run("system.logoff")
+        self.session = ""
+        self.status = "Not connected: %r" % self.server
+
+
+#------------------------------------------------------------
+    def delegate(self, line):
+        """
+        Create a secure token for use in authenticating
+        """
+        delegate_default = 7
+        delegate_min = 1
+        delegate_max = 365
+
+# destroy
+        if line.startswith('off'):
+            self.logging.debug("Destroying secure tokens...")
+            self.aterm_run("secure.identity.token.all.destroy")
+            self.token = ""
+            return True
+
+# expiry date setup
+        try:
+            dt = max(min(float(line), delegate_max), delegate_min)
+        except:
+            dt = delegate_default
+        d = datetime.datetime.now() + datetime.timedelta(days=dt)
+        expiry = d.strftime("%d-%b-%Y %H:%M:%S")
+
+        try:
+# query current authenticated identity
+            result = self.aterm_run("actor.self.describe")
+            elem = result.find(".//actor")
+            actor = elem.attrib['name']
+            i = actor.find(":")
+            domain = actor[0:i]
+            user = actor[i+1:]
+            self.logging.debug("Attempting to delegate for: domain=%s, user=%s, until=%r" % (domain, user, expiry))
+# attempt to delegate as current identity
+            result = self.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16 :wallet true' % (expiry, actor, domain))
+            elem = result.find(".//token")
+            self.token = elem.text
+#            print("Delegate valid until: " + expiry)
+            return True
+
+        except Exception as e:
+            self.logging.error(str(e))
+#            print("Delegate creation failed")
+
+        return False
 
 #------------------------------------------------------------
     @staticmethod
@@ -190,7 +305,9 @@ class mf_client:
 # NB: timeout exception if server is unreachable
         elem=None
         try:
-            request = urllib.request.Request(self.post_url, data=xml_bytes, headers={'Content-Type': 'text/xml'})
+#            request = urllib.request.Request(self.post_url, data=xml_bytes, headers={'Content-Type': 'text/xml'})
+            request = urllib.request.Request(self.post_url, data=xml_bytes, headers={'Content-Type': 'text/xml', 'charset': 'utf-8'})
+
             response = urllib.request.urlopen(request, timeout=self.timeout)
             xml = response.read()
             tree = ET.fromstring(xml.decode())
@@ -478,11 +595,9 @@ class mf_client:
 # convert XML to string for posting ...
         xml_text = ET.tostring(xml)
 
-# password hiding for system.logon ...
-#        xml_hidden = self._xml_cloak(xml_text) 
 # PYTHON3 - bytes v strings
         xml_hidden = self._xml_cloak(xml_text.decode()).encode() 
-        self.logging.debug("XML out: %s" % xml_hidden)
+        self.logging.debug("XML out: %r" % xml_hidden)
 
 # testing hook
         if post is not True:
@@ -629,48 +744,6 @@ class mf_client:
         else:
             print("Empty XML document")
         return
-
-#------------------------------------------------------------
-    def logout(self):
-        """
-        Destroy the current session (NB: delegate can auto-create a new session if available)
-        """
-        self.aterm_run("system.logoff")
-        self.status = "not connected"
-        self.session = ""
-
-#------------------------------------------------------------
-    def login(self, user=None, password=None, token=None):
-        """
-        Authenticate to the current Mediaflux server and record the session ID on success
-
-        Input:
-            user, password: STRINGS specifying user login details
-                     token: STRING specifying a delegate credential
-
-        Raises:
-            An error if authentication fails
-        """
-# security check
-        if self.protocol != "https":
-            self.logging.debug("Permitting unencrypted login; I hope you know what you're doing.")
-
-# NEW - priority order and auto lookup of token or session in appropriate config file section
-# NB: failed login calls raise an exception in aterm_run post XML handling
-        reply = None
-        if user is not None and password is not None:
-            reply = self.aterm_run("system.logon :domain %s :user %s :password %s" % (self.domain, user, password))
-        elif len(token) > 0: 
-            reply = self.aterm_run("system.logon :token %s" % token)
-            self.token = token
-        else:
-            raise Exception("Invalid login call.")
-
-# if no exception has been raised, we should have a valid reply from the server at this point
-        elem = reply.find(".//session")
-        self.session = elem.text
-# refresh connection information
-        self.connect()
 
 #------------------------------------------------------------
     def namespace_exists(self, namespace):
