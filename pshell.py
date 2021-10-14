@@ -324,9 +324,8 @@ class parser(cmd.Cmd):
                 self.keystone.discover_s3(s3_client)
                 self.remotes_add('/'+s3_client.prefix, s3_client)
                 self.remotes_config_save()
-
             except Exception as e:
-                logging.debug(str(e))
+                logging.info(str(e))
                 # probably no boto3 - may have still got credentials
                 print("Discovery incomplete")
             return

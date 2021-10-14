@@ -11,9 +11,10 @@ RUN pip3 install pyflakes
 #RUN pip3 install pyinstaller
 #RUN git clone https://bitbucket.org/datapawsey/mfclient.git
 
-copy mfclient.py /
 copy pshell.py /
 copy keystone.py /
+copy remote.py /
+copy mfclient.py /
 copy s3client.py /
 
 # only way I could get this file (which usually sits in ~ into the container)
