@@ -33,6 +33,12 @@ class client:
     def delegate(self, subcommand):
         raise Exception("Not implemented")
 
+    def publish(self, filepath):
+        raise Exception("Not implemented")
+
+    def unpublish(self, filepath):
+        raise Exception("Not implemented")
+
     def info(self, remote_filepath):
         raise Exception("Not implemented")
 
@@ -46,15 +52,20 @@ class client:
         self.cwd = remote_fullpath
 
     def ls_iter(self, pattern):
-        yield "empty"
+        yield "Nothing"
 
-    def copy(self, src, dest, dest_type):
-        raise Exception("Not implemented")
+    def get_iter(self, pattern):
+        yield 1
+        yield 0
+        yield "Nothing"
 
     def get(self, remote_filepath, local_filepath=None):
         raise Exception("Not implemented")
 
     def put(self, remote_fullpath, local_filepath):
+        raise Exception("Not implemented")
+
+    def copy(self, src, dest, dest_type):
         raise Exception("Not implemented")
 
     def mkdir(self, fullpath):
@@ -65,6 +76,9 @@ class client:
 
     def rm(self, filepath, prompt=None):
         raise Exception("Not implemented")
+
+    def info(self, filepath):
+        return {}
 
     def command(self, line):
         raise Exception("Unknown command or not implemented")

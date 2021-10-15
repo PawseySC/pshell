@@ -110,13 +110,15 @@ class s3_client(client):
         if count > 2:
             bucket = mypath.parts[2]
             head = "%s%s/%s" % (mypath.parts[0], mypath.parts[1], bucket)
+            key = fullpath[1+len(head):]
 
 # remainder is the object, which will need to have "/" at the end for prefix matching
 # FIXME - this may have consequences if it's a reference to an object and not a prefix
 # currently though, since any trailing / characters will be stripped, it's difficult to fix
-            key = fullpath[1+len(head):]
-            if len(key) > 2:
-                key = key + "/"
+
+# FIXME - doing this will break downloads ... as it will add a / onto the end of the key -> and it won't be found
+#            if len(key) > 2:
+#                key = key + "/"
 
         self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
 
@@ -164,20 +166,30 @@ class s3_client(client):
                 yield "[Bucket] %s" % item['Name']
 
 #------------------------------------------------------------
-    def get(self, path):
+# TODO - wildcards?
+    def get_iter(self, pattern):
+        yield 1
+# FIXME - fake it till you make it
+        yield 666
+        yield pattern
 
-        bucket,key = self.path_split(path)
+#------------------------------------------------------------
+    def get(self, remote_filepath, local_filepath=None):
+
+        bucket,key = self.path_split(remote_filepath)
         self.logging.info('remote bucket=[%r] key=[%r]' % (bucket, key))
 
-        local_filepath = os.path.join(os.getcwd(), posixpath.basename(key))
+        if local_filepath is None:
+            local_filepath = os.path.join(os.getcwd(), posixpath.basename(key))
         self.logging.info('downloading to [%s]' % local_filepath)
 
         self.s3.download_file(str(bucket), str(key), local_filepath)
 
+        return os.path.getsize(local_filepath)
+
 #------------------------------------------------------------
     def put(self, remote_path, local_filepath):
 
-        self.logging.info('uploading [%s]' % local_filepath)
         bucket,key = self.path_split(remote_path)
         self.logging.info('remote bucket=[%r] key=[%r]' % (bucket, key))
 

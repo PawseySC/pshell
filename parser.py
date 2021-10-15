@@ -18,9 +18,9 @@ import s3client
 
 #------------------------------------------------------------
 # picklable get()
-def jump_get(remote, remote_fullpath, local_fullpath):
+def jump_get(remote, remote_filepath, local_filepath):
     try:
-        size = remote.get(remote_fullpath, local_filepath=local_fullpath)
+        size = remote.get(remote_filepath, local_filepath)
         logging.info("Local file size (bytes) = %r" % size)
     except Exception as e:
         logging.error(str(e))
@@ -193,6 +193,7 @@ class parser(cmd.Cmd):
         return True
 
 #------------------------------------------------------------
+# TODO - put multi-use stuff in helpers.py?
     def human_size(self, nbytes):
         suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
 
@@ -246,11 +247,10 @@ class parser(cmd.Cmd):
 
     def do_file(self, line):
         remote = self.remotes_get(line)
-        if remote is not None:
-            fullpath = self.absolute_remote_filepath(line)
-# TODO - this should be a dict that we can display to make it generic
-# TODO - include checksums ... will make for a faster compare to confirm migration
-            remote.info(fullpath)
+        fullpath = self.absolute_remote_filepath(line)
+        remote.info(fullpath)
+        for key, value in remote.info(fullpath).items():
+            print("%10s : %s" % (key, value))
 
 #------------------------------------------------------------
     def help_remotes(self):
@@ -428,7 +428,7 @@ class parser(cmd.Cmd):
             print(line)
             count = count+1
             if count > size:
-                response = self.pagination_controller("=== (enter = next, q = quit) === ")
+                response = self.pagination_controller(" ------- (enter = next page, q = quit) ------- ")
                 if response is not None:
                     if response == 'q' or response == 'quit':
                         return

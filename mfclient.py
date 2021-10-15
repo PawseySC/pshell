@@ -946,25 +946,28 @@ class mf_client:
         return True
 
 #------------------------------------------------------------
+# TODO - return a dict ... leave printing to the caller
     def info(self, fullpath):
         """
         information on a named file
         """
         self.logging.info("[%s]" % fullpath)
-        output_list = []
+        output_dict = {}
         result = self.aterm_run('asset.get :id "path=%s"' % fullpath)
         elem = result.find(".//asset")
-        output_list.append("%-10s : %s" % ('asset ID', elem.attrib['id']))
+        output_dict['asset ID'] = elem.attrib['id']
+
         xpath_list = [".//asset/path", ".//asset/ctime", ".//asset/type", ".//content/size", ".//content/csum"]
         for xpath in xpath_list:
             elem = result.find(xpath)
             if elem is not None:
-                output_list.append("%-10s : %s" % (elem.tag, elem.text))
+                output_dict[elem.tag] = elem.text
+
 # get content status 
         result = self.aterm_run('asset.content.status :id "path=%s"' % fullpath)
         elem = result.find(".//asset/state")
         if elem is not None:
-            output_list.append("%-10s : %s" % (elem.tag, elem.text))
+            output_dict[elem.tag] = elem.text
 
 # published (public URL)
         result = self.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % fullpath)
@@ -972,10 +975,9 @@ class mf_client:
         if elem is not None:
             if 'true' in elem.text.lower():
                 public_url = '%s://%s/download/%s' % (self.protocol, self.server, urllib.parse.quote(fullpath[10:]))
-                output_list.append("published  : %s" % public_url)
+                output_dict['published'] = public_url
 
-        for line in output_list:
-            print(line)
+        return output_dict
 
 #------------------------------------------------------------
     def ls_iter(self, pattern):
