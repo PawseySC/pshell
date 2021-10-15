@@ -238,6 +238,9 @@ class parser(cmd.Cmd):
         if not posixpath.isabs(line):
             line = posixpath.join(self.cwd, line)
         fullpath = posixpath.normpath(line)
+# replace any trailing / that may have been removed - important for S3 prefixes
+        if line[-1] == '/':
+            fullpath = fullpath+'/'
         return fullpath
 
 #------------------------------------------------------------

@@ -20,7 +20,12 @@ class s3client_syntax(unittest.TestCase):
     def test_split(self):
         reply = self.s3_client.path_split("/acacia/bucket/object1")
         self.assertEqual(reply[0], "bucket")
-        self.assertEqual(reply[1], "object1/")
+        self.assertEqual(reply[1], "object1")
+
+    def test_split_prefix(self):
+        reply = self.s3_client.path_split("/acacia/bucket/prefix/")
+        self.assertEqual(reply[0], "bucket")
+        self.assertEqual(reply[1], "prefix/")
 
     def test_cd(self):
         reply = self.s3_client.cd("relative")
