@@ -273,6 +273,8 @@ class parser(cmd.Cmd):
         remote = self.remotes_get(line)
         if remote is not None:
             fullpath = self.absolute_remote_filepath(line)
+# TODO - this should be a dict that we can display to make it generic
+# TODO - include checksums ... will make for a faster compare to confirm migration
             remote.info(fullpath)
 
 #------------------------------------------------------------
@@ -679,25 +681,14 @@ class parser(cmd.Cmd):
             logging.debug(str(e))
 
         if len(path_list) != 2:
-            raise Exception("Expected only two path arguments: source and destination")
+            raise Exception("Expected exactly two path arguments: source and destination")
 
-# FIXME - do via remote module types
-# expect source or destination to be S3 and the other to be mflux
-#        if self.s3client.is_mine(path_list[0]) == self.s3client.is_mine(path_list[1]):
-#            raise Exception("Require source and destination to be different storage systems")
-
-# CURRENT - only supporting mflux -> s3
-        if self.mf_client.namespace_exists(path_list[0]):
-            logging.info("Confirmed mediaflux namespace: %s" % path_list[0])
-        else:
-            raise Exception("Unsupported source for copy (expected single file? wildcards? namespace?")
-
-# away we go ...
-
-# 3rd party transfer (queues?) from mflux to s3 endpoint
-# NB: currently thinking path will be dropped ... ie /projects/a/b/etc/file.txt -> s3:bucket/file.txt
-# might have to have some smarts though if there is a max limit on # objects per bucket 
-# TODO - mfclient.s3copy_managed() method for this ???
+# source location is the remote client that controls the copy
+        from_abspath = self.absolute_remote_filepath(path_list[0])
+        to_abspath = self.absolute_remote_filepath(path_list[1])
+        source = self.remotes_get(from_abspath)
+        destination = self.remotes_get(to_abspath)
+        source.copy(from_abspath, to_abspath, destination, prompt=self.ask)
 
 #------------------------------------------------------------
     def help_cd(self):

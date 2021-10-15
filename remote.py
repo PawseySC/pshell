@@ -42,6 +42,9 @@ class client:
     def ls_iter(self, pattern):
         yield "empty"
 
+    def copy(self, src, dest, dest_type):
+        raise Exception("Not implemented")
+
     def get(self, remote_filepath, local_filepath=None):
         raise Exception("Not implemented")
 

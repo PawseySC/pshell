@@ -1112,7 +1112,6 @@ class mf_client:
         iterate = True
         count = 0
         while iterate:
-            logging.debug("Online iterator chunk")
 # get file list for this sub-set
             result = self.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
             for elem in result.findall(".//path"):
@@ -1218,3 +1217,52 @@ class mf_client:
 
         return asset_id
 
+#------------------------------------------------------------
+    def copy(self, from_pattern, to_path, client, prompt=None):
+
+        print("copy: [%s] -> [%s] with destination client = [%r]" % (from_pattern, to_path, client))
+
+        if self == client:
+            raise Exception("Duplicating files on the same remote is not permitted")
+
+# TODO - only support S3 ...
+        print("destination: %r" % client.endpoint())
+
+# 3rd party transfer (queues?) from mflux to s3 endpoint
+# NB: currently thinking path will be dropped ... ie /projects/a/b/etc/file.txt -> s3:bucket/file.txt
+# might have to have some smarts though if there is a max limit on # objects per bucket 
+# TODO - mfclient.s3copy_managed() method for this ???
+
+        item_list = self.get_iter(from_pattern)
+        count = int(next(item_list))
+        size = int(next(item_list))
+
+        if (count == 0):
+            raise Exception("No files to copy")
+        if (size == 0):
+            raise Exception("No data to copy")
+
+        summary = "total files=%d and total size=%s" % (count, self.human_size(size))
+        if prompt is not None:
+            if prompt("Proceed with copy for %s (y/n):" % summary) is False:
+                raise Exception("Aborting")
+        else:
+            print("Submitting copy job for %s" % summary)
+
+        print("Not implemented yet.")
+        return
+
+# make it so ...
+        for item in item_list:
+            relpath = posixpath.relpath(path=posixpath.dirname(item), start=self.cwd)
+            to_filepath = posixpath.normpath(posixpath.join(posixpath.join(to_path, relpath), posixpath.basename(item)))
+
+            print("[%s] -> [%s]" % (item, to_filepath))
+
+
+# CURRENT - we would have to add the store to mediaflux as ADMIN 
+# CURRENT - or arcitecta could enhance to allow users to add an s3 client as a viable endpoint
+
+# TODO - if client=s3 check to_path includes a valid bucket ...
+
+# then, any exceptions after will be failed legit transfers that can be redone
