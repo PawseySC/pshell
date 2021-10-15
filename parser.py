@@ -121,7 +121,8 @@ class parser(cmd.Cmd):
         for mount in self.remotes:
             if (size < len(mount)):
                 if mount.startswith(partial) is True:
-                    candidate_list.append(mount)
+                    candidate_list.append(mount[start:])
+
         if len(candidate_list) > 0:
             return candidate_list
 

@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 """
-This module is a Python 3.x implementation of a simple boto3 client
+This module is a Python 3.x implementation of a simple s3 client
 Author: Sean Fleming
 """
 
@@ -96,7 +96,6 @@ class s3_client(client):
 
 
 
-
 #------------------------------------------------------------
 # convert fullpath to bucket, key pair
     def path_split(self, fullpath):
@@ -126,19 +125,12 @@ class s3_client(client):
 
 #------------------------------------------------------------
     def cd(self, fullpath):
-
-        self.logging.debug("[%s]" % fullpath)
-
         mypath = pathlib.PurePosixPath(fullpath)
         count = len(mypath.parts)
         stop = min(3, count) 
-
         self.cwd = "/"
         for i in range(0,stop):
             self.cwd = posixpath.join(self.cwd, mypath.parts[i])
-
-        self.logging.debug("cwd = [%s]" % self.cwd)
-
         return self.cwd
 
 #------------------------------------------------------------
