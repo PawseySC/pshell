@@ -6,7 +6,6 @@ Author: Sean Fleming
 """
 
 import os
-import sys
 import logging
 import pathlib
 # deprec in favour of pathlib?
@@ -20,6 +19,11 @@ try:
     ok=True
 except:
     ok=False
+
+# auto 
+build= "20211015131216"
+
+#------------------------------------------------------------
 
 class s3_client(client):
     def __init__(self, host=None, access=None, secret=None):
@@ -35,8 +39,12 @@ class s3_client(client):
         self.s3 = None
         self.status = "not connected"
         self.logging = logging.getLogger('s3client')
+        global build
+
 # CURRENT
 #        self.logging.setLevel(logging.DEBUG)
+        self.logging.info("S3CLIENT=%s" % build)
+        self.logging.info("BOTO3=%r" % ok)
 
 #------------------------------------------------------------
 # prefix - the keystone project assoc with access/secret ... and trigger for s3client pathways
@@ -73,15 +81,20 @@ class s3_client(client):
 
         return prefix, pattern
 
-
 #------------------------------------------------------------
     def complete_folder(self, partial, start):
         self.logging.info("partial=[%s] start=[%d]" % (partial, start))
+# TODO
+
+
 
 
 #------------------------------------------------------------
     def complete_file(self, partial, start):
         self.logging.info("partial=[%s] start=[%d]" % (partial, start))
+# TODO
+
+
 
 
 #------------------------------------------------------------
@@ -116,7 +129,7 @@ class s3_client(client):
 
         mypath = pathlib.PurePosixPath(fullpath)
         count = len(mypath.parts)
-        stop = min(3, len(mypath.parts)) 
+        stop = min(3, count) 
 
         self.cwd = "/"
         for i in range(0,stop):

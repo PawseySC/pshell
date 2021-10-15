@@ -25,7 +25,7 @@ import http.client
 import xml.etree.ElementTree as ET
 import urllib.request, urllib.error, urllib.parse
 
-# globals
+# auto
 build= "20210923131216"
 
 #------------------------------------------------------------
@@ -36,8 +36,7 @@ class mf_client:
     All unexpected failures are handled by raising exceptions
     """
 
-#    def __init__(self, protocol, port, server, domain="system", session="", timeout=120, debug=0):
-    def __init__(self, protocol, port, server, domain="system"):
+    def __init__(self, protocol="http", port="80", server="localhost", domain="system"):
         """
         Create a Mediaflux server connection instance. Raises an exception on failure.
 
@@ -889,7 +888,7 @@ class mf_client:
         try:
             nbytes = int(nbytes)
         except Exception as e:
-            self.logging.debug("Bad input integer [%r]" % nbytes)
+            self.logging.debug("Bad input [%r]: %s" % (nbytes, str(e)))
             nbytes = 0
 
         if nbytes:
@@ -1154,9 +1153,9 @@ class mf_client:
                 os.makedirs(local_parent)
 
 # online recall - backgrounded
-            reply = self.aterm_run('asset.content.migrate :id "path=%s" :destination "online" &' % remote_filepath)
+            self.aterm_run('asset.content.migrate :id "path=%s" :destination "online" &' % remote_filepath)
 # download after recall completes
-            reply = self.aterm_run('asset.get :id "path=%s" :out %s' % (remote_filepath, local_filepath))
+            self.aterm_run('asset.get :id "path=%s" :out %s' % (remote_filepath, local_filepath))
 
 # done
         return os.path.getsize(local_filepath)

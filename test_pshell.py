@@ -7,7 +7,9 @@ import subprocess
 import xml.etree.ElementTree as ET
 from subprocess import Popen, PIPE, STDOUT
 
-import pshell
+
+# TODO - all this should be reworked as per the new parser + remote client layout
+
 
 #######################
 # pshell local commands 

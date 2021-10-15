@@ -12,10 +12,11 @@ RUN pip3 install pyflakes
 #RUN git clone https://bitbucket.org/datapawsey/mfclient.git
 
 copy pshell.py /
-copy keystone.py /
+copy parser.py /
 copy remote.py /
 copy mfclient.py /
 copy s3client.py /
+copy keystone.py /
 
 # only way I could get this file (which usually sits in ~ into the container)
 copy .pshell_config /root/.pshell_config

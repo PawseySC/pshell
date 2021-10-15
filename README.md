@@ -1,6 +1,7 @@
 # README #
 
-mfclient.py is a basic Mediaflux client module for Python 2.7
+mfclient.py is a basic Mediaflux client module for Python 3.x
+s3client.py is a basic S3 client module for Python 3.x
 
 owner: Sean Fleming (sean.fleming@pawsey.org.au)
 
@@ -22,13 +23,13 @@ To generate an API reference document, run:
 
 ### Command line client ###
 
-pshell.py - command line client for mediaflux that uses mfclient for server communication.
+pshell.py - command line client for mediaflux that uses mfclient and/or s3client for server communication.
 
 It features:
 
 * SFTP-like syntax
 * Tab completion
-* Basic support for mediaflux aterm commands
+* Basic support for passthru commands
 
 
 ### FUSE filesystem client ###
