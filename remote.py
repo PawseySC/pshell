@@ -36,6 +36,12 @@ class client:
     def info(self, remote_filepath):
         raise Exception("Not implemented")
 
+    def complete_file(self, partial, start):
+        raise Exception("Not implemented")
+
+    def complete_folder(self, partial, start):
+        raise Exception("Not implemented")
+
     def cd(self, remote_fullpath):
         self.cwd = remote_fullpath
 

@@ -73,6 +73,17 @@ class s3_client(client):
 
         return prefix, pattern
 
+
+#------------------------------------------------------------
+    def complete_folder(self, partial, start):
+        self.logging.info("partial=[%s] start=[%d]" % (partial, start))
+
+
+#------------------------------------------------------------
+    def complete_file(self, partial, start):
+        self.logging.info("partial=[%s] start=[%d]" % (partial, start))
+
+
 #------------------------------------------------------------
 # convert fullpath to bucket, key pair
     def path_split(self, fullpath):

@@ -94,53 +94,51 @@ class parser(cmd.Cmd):
         self.prompt = "pshell:%s>" % self.cwd
         return cmd.Cmd.postcmd(self, stop, line)
 
-# TODO - rename asset->file/object, namespace->folder
-# TODO - s3 implementation ... ugh
 # ---
     def complete_get(self, text, line, start_index, end_index):
-        remote = self.remotes_get(line)
-        candidate_list = remote.complete_asset(line[4:end_index], start_index-4)
-        candidate_list += remote.complete_namespace(line[4:end_index], start_index-4)
+        remote = self.remotes_get(line[start_index:])
+        candidate_list = remote.complete_file(line[4:end_index], start_index-4)
+        candidate_list += remote.complete_folder(line[4:end_index], start_index-4)
         return candidate_list
 
 # ---
     def complete_rm(self, text, line, start_index, end_index):
-        remote = self.remotes_get(line)
-        candidate_list = remote.complete_asset(line[3:end_index], start_index-3)
-        candidate_list += remote.complete_namespace(line[3:end_index], start_index-3)
+        remote = self.remotes_get(line[start_index:])
+        candidate_list = remote.complete_file(line[3:end_index], start_index-3)
+        candidate_list += remote.complete_folder(line[3:end_index], start_index-3)
         return candidate_list
 
 # ---
     def complete_file(self, text, line, start_index, end_index):
-        remote = self.remotes_get(line)
-        candidate_list = remote.complete_asset(line[5:end_index], start_index-5)
-        candidate_list += remote.complete_namespace(line[5:end_index], start_index-5)
+        remote = self.remotes_get(line[start_index:])
+        candidate_list = remote.complete_file(line[5:end_index], start_index-5)
+        candidate_list += remote.complete_folder(line[5:end_index], start_index-5)
         return candidate_list
 
 # ---
     def complete_publish(self, text, line, start_index, end_index):
-        remote = self.remotes_get(line)
-        candidate_list = remote.complete_asset(line[8:end_index], start_index-8)
-        candidate_list += remote.complete_namespace(line[8:end_index], start_index-8)
+        remote = self.remotes_get(line[start_index:])
+        candidate_list = remote.complete_file(line[8:end_index], start_index-8)
+        candidate_list += remote.complete_folder(line[8:end_index], start_index-8)
         return candidate_list
 
 # ---
     def complete_ls(self, text, line, start_index, end_index):
-        remote = self.remotes_get(line)
-        candidate_list = remote.complete_asset(line[3:end_index], start_index-3)
-        candidate_list += remote.complete_namespace(line[3:end_index], start_index-3)
+        remote = self.remotes_get(line[start_index:])
+        candidate_list = remote.complete_file(line[3:end_index], start_index-3)
+        candidate_list += remote.complete_folder(line[3:end_index], start_index-3)
         return candidate_list
 
 # ---
     def complete_cd(self, text, line, start_index, end_index):
-        remote = self.remotes_get(line)
-        ns_list = remote.complete_namespace(line[3:end_index], start_index-3)
+        remote = self.remotes_get(line[start_index:])
+        ns_list = remote.complete_folder(line[3:end_index], start_index-3)
         return ns_list
 
 # ---
     def complete_rmdir(self, text, line, start_index, end_index):
-        remote = self.remotes_get(line)
-        ns_list = remote.complete_namespace(line[6:end_index], start_index-6)
+        remote = self.remotes_get(line[start_index:])
+        ns_list = remote.complete_folder(line[6:end_index], start_index-6)
         return ns_list
 
 # ---
@@ -194,6 +192,11 @@ class parser(cmd.Cmd):
                 logging.debug("matched [%s] with [%s] = %r" % (fullpath, mount, self.remotes[mount]))
                 return self.remotes[mount]
         raise Exception("Could not find anything connected to [%s]" % path)
+
+#------------------------------------------------------------
+# necessary?
+    def remotes_complete(self, path):
+        return
 
 #------------------------------------------------------------
     def requires_auth(self, line):

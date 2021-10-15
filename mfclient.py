@@ -777,9 +777,9 @@ class mf_client:
         return fullpath
 
 #------------------------------------------------------------
-    def complete_namespace(self, partial_ns, start):
+    def complete_folder(self, partial_ns, start):
         """
-        Command line completion for folders
+        Command line completion for folders (aka namespaces)
         """
 
         self.logging.debug("cn seek: partial_ns=[%s] start=[%d]" % (partial_ns, start))
@@ -832,9 +832,9 @@ class mf_client:
         return namespace.replace("'", "\\'")
 
 #------------------------------------------------------------
-    def complete_asset(self, partial_asset_path, start):
+    def complete_file(self, partial_asset_path, start):
         """
-        Command line completion for files
+        Command line completion for files (aka assets)
         """
 
         self.logging.debug("ca seek: partial_asset=[%s] start=[%d]" % (partial_asset_path, start))
@@ -1228,10 +1228,8 @@ class mf_client:
 # TODO - only support S3 ...
         print("destination: %r" % client.endpoint())
 
-# 3rd party transfer (queues?) from mflux to s3 endpoint
-# NB: currently thinking path will be dropped ... ie /projects/a/b/etc/file.txt -> s3:bucket/file.txt
+# 3rd party transfer (migrate queue?) from mflux to s3 endpoint
 # might have to have some smarts though if there is a max limit on # objects per bucket 
-# TODO - mfclient.s3copy_managed() method for this ???
 
         item_list = self.get_iter(from_pattern)
         count = int(next(item_list))

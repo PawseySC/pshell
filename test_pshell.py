@@ -7,6 +7,8 @@ import subprocess
 import xml.etree.ElementTree as ET
 from subprocess import Popen, PIPE, STDOUT
 
+import pshell
+
 #######################
 # pshell local commands 
 #######################
@@ -54,24 +56,20 @@ class pshell_bugs(unittest.TestCase):
 ########################################
 # wrapper for new features 
 ########################################
-class pshell_features(unittest.TestCase):
+class pshell_offline(unittest.TestCase):
     def setUp(self):
-        global script, verbosity, config
-        self.script = script
-        self.verbosity = "1"
-        self.python = "python3"
-# CURRENT - override if we want to point at a server in config
-        self.config = config
+#        global script, verbosity, config
+#        self.script = script
+#        self.verbosity = "1"
+#        self.python = "python3"
+## CURRENT - override if we want to point at a server in config
+#        self.config = config
+# TODO - we actually just want to create a my_parser instance ... populate with endpoints ... and then test ...
+        print("TODO - pshell -> myparser")
 
 
-    def test_ls(self):
-        if self.config is not None:
-            p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "ls"], stdout=PIPE, stderr=STDOUT)
-            flag = False
-            for line in p.stdout:
-                print(line)
-        else:
-            print("No remote - skipping")
+    def test_complete(self):
+        print("No remote - skipping")
 
 
 
@@ -99,8 +97,8 @@ if __name__ == '__main__':
     config = "data.pawsey.org.au"
 
 # class suite to test
-#    test_class_list = [pshell_features]
-    test_class_list = [pshell_local]
+    test_class_list = [pshell_offline]
+#    test_class_list = [pshell_local]
 #    test_class_list = [pshell_bugs]
 
 # setup the session
