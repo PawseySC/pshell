@@ -24,18 +24,18 @@ import posixpath
 import http.client
 import xml.etree.ElementTree as ET
 import urllib.request, urllib.error, urllib.parse
+import remote
 
 # auto
 build= "20210923131216"
 
 #------------------------------------------------------------
-class mf_client:
+class mf_client(remote.client):
     """
     Base Mediaflux authentication and communication client
     Parallel transfers are handled by multiprocessing (urllib2 and httplib are not thread-safe)
     All unexpected failures are handled by raising exceptions
     """
-
     def __init__(self, protocol="http", port="80", server="localhost", domain="system"):
         """
         Create a Mediaflux server connection instance. Raises an exception on failure.
@@ -1219,15 +1219,15 @@ class mf_client:
         return asset_id
 
 #------------------------------------------------------------
-    def copy(self, from_pattern, to_path, client, prompt=None):
+    def copy(self, from_pattern, to_path, remote, prompt=None):
 
-        print("copy: [%s] -> [%s] with destination client = [%r]" % (from_pattern, to_path, client))
+        print("copy: [%s] -> [%s] with destination client = [%r]" % (from_pattern, to_path, remote))
 
-        if self == client:
+        if self == remote:
             raise Exception("Duplicating files on the same remote is not permitted")
 
 # TODO - only support S3 ...
-        print("destination: %r" % client.endpoint())
+        print("destination: %r" % remote.endpoint())
 
 # 3rd party transfer (migrate queue?) from mflux to s3 endpoint
 # might have to have some smarts though if there is a max limit on # objects per bucket 

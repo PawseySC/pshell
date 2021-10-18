@@ -6,13 +6,12 @@ Author: Sean Fleming
 """
 
 import os
+import getpass
 import logging
 import pathlib
 # deprec in favour of pathlib?
 import posixpath
-
-# NEW
-from remote import client
+import remote
 
 try:
     import boto3
@@ -25,7 +24,7 @@ build= "20211015131216"
 
 #------------------------------------------------------------
 
-class s3_client(client):
+class s3_client(remote.client):
     def __init__(self, host=None, access=None, secret=None):
         self.ok = ok
 # TODO - more reworking to replace these things with a generic "endpoint" dict
@@ -59,6 +58,13 @@ class s3_client(client):
             self.status = "not connected: %s" % str(e)
 
 #------------------------------------------------------------
+    def login(self, access=None, secret=None):
+        if access is None:
+            self.access = input("Access: ")
+            self.secret = getpass.getpass("Secret: ")
+        self.connect()
+
+#------------------------------------------------------------
     def endpoint(self):
         return { 'type':self.type, 'host':self.host, 'access':self.access, 'secret':self.secret }
 
@@ -81,20 +87,72 @@ class s3_client(client):
 
         return prefix, pattern
 
+
+#------------------------------------------------------------
+    def complete_path(self, partial, start, match_prefix=True, match_object=True):
+
+        self.logging.info("partial=[%s] start=[%d]" % (partial, start))
+
+        try:
+            fullpath = posixpath.join(self.cwd, partial)
+            self.logging.info("fullpath=[%s]" % fullpath)
+            bucket, key = self.path_split(fullpath)
+
+            candidate_list = []
+
+            if key == "":
+                self.logging.info("bucket search")
+
+                response = self.s3.list_buckets()
+                for item in response['Buckets']:
+                    if item['Name'].startswith(partial):
+                        candidate_list.append(item['Name'])
+            else:
+                self.logging.info("prefix search")
+
+                prefix_ix = key.rfind('/')
+                if prefix_ix > 0:
+                    self.logging.info(prefix_ix)
+                    prefix = key[:prefix_ix+1]
+                else:
+                    self.logging.info(prefix_ix)
+                    prefix = ""
+
+                self.logging.info("bucket=[%s] prefix=[%s] pattern=[%s]" % (bucket, prefix, key))
+
+                response = self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
+#                print(response)
+
+                if match_prefix is True:
+                    if 'CommonPrefixes' in response:
+                        for item in response['CommonPrefixes']:
+                            if item['Prefix'].startswith(key):
+                                candidate_ix = item['Prefix'].rfind(partial)
+                                candidate_list.append(item['Prefix'][candidate_ix+start:])
+
+                if match_object is True:
+                    if 'Contents' in response:
+                        for item in response['Contents']:
+                            if item['Key'].startswith(key):
+                                # TODO - do we need to do something like the prefix match?
+                                candidate_list.append(item['Key'][start:])
+
+
+        except Exception as e:
+            self.logging.error(str(e))
+
+        self.logging.info(candidate_list)
+
+        return candidate_list
+
+
 #------------------------------------------------------------
     def complete_folder(self, partial, start):
-        self.logging.info("partial=[%s] start=[%d]" % (partial, start))
-# TODO
-
-
-
+        return self.complete_path(partial, start, match_prefix=True, match_object=False)
 
 #------------------------------------------------------------
     def complete_file(self, partial, start):
-        self.logging.info("partial=[%s] start=[%d]" % (partial, start))
-# TODO
-
-
+        return self.complete_path(partial, start, match_prefix=True, match_object=True)
 
 #------------------------------------------------------------
 # convert fullpath to bucket, key pair
@@ -111,26 +169,50 @@ class s3_client(client):
             head = "%s%s/%s" % (mypath.parts[0], mypath.parts[1], bucket)
             key = fullpath[1+len(head):]
 
-# remainder is the object, which will need to have "/" at the end for prefix matching
-# FIXME - this may have consequences if it's a reference to an object and not a prefix
-# currently though, since any trailing / characters will be stripped, it's difficult to fix
-
-# FIXME - doing this will break downloads ... as it will add a / onto the end of the key -> and it won't be found
-#            if len(key) > 2:
-#                key = key + "/"
-
         self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
 
         return bucket, key
 
 #------------------------------------------------------------
     def cd(self, fullpath):
-        mypath = pathlib.PurePosixPath(fullpath)
-        count = len(mypath.parts)
-        stop = min(3, count) 
-        self.cwd = "/"
-        for i in range(0,stop):
-            self.cwd = posixpath.join(self.cwd, mypath.parts[i])
+
+        self.logging.info("input fullpath=[%s]" % fullpath)
+# make it easier to extract the last path item (/ may or may not be terminating fullpath)
+        if fullpath[-1] == '/':
+            fullpath = fullpath[:-1]
+        bucket,key = self.path_split(fullpath)
+        self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
+        exists = False
+        try:
+            if bucket is None:
+                # root level
+                exists = True
+            else:
+                if key == "":
+                    response = self.s3.list_buckets()
+                    for item in response['Buckets']:
+                        if item['Name'] == bucket:
+                            exists = True
+                else:
+                    prefix_ix = key.rfind('/')
+                    prefix = key[:prefix_ix+1]
+                    pattern = key+'/'
+                    self.logging.info("bucket=[%s] prefix=[%s] pattern=[%s]" % (bucket, prefix, pattern))
+                    response = self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
+#                    print(response)
+                    if 'CommonPrefixes' in response:
+                        for item in response['CommonPrefixes']:
+                            if item['Prefix'] == pattern:
+                                exists = True
+
+        except Exception as e:
+            self.logging.error(str(e))
+
+        if exists is True:
+            self.cwd = fullpath
+        else:
+            self.logging.info("Could not find remote path: [%s]" % fullpath)
+
         return self.cwd
 
 #------------------------------------------------------------

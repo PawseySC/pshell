@@ -259,12 +259,19 @@ class parser(cmd.Cmd):
 #------------------------------------------------------------
     def help_remotes(self):
         print("\nInformation about remote clients\n")
-        print("Usage: remotes <add>\n")
+        print("Usage: remotes <add /mount URL>\n")
 
 # --- 
     def do_remotes(self, line):
         if 'add' in line:
-            print("TODO")
+
+            mount = input("Mount location:")
+            remote_type = input("Remote type (eg s3): ")
+            remote_url = input("Remote URL: ")
+
+            print("TODO: mount on [%s] a server of type [%s] with URL [%s]" % (mount, remote_type, remote_url))
+
+
         else:
             for mount, client in self.remotes.items():
                 print("%-20s [%s]" % (mount, client.status))
@@ -676,15 +683,8 @@ class parser(cmd.Cmd):
 
     def do_cd(self, line):
         candidate = self.absolute_remote_filepath(line)
-        if candidate in self.remotes:
-            self.cwd = candidate
-        else:
-            try:
-                remote = self.remotes_get(candidate)
-                self.cwd = remote.cd(candidate)
-            except Exception as e:
-                self.logging.debug(str(e))
-                print("Could not access remote folder")
+        remote = self.remotes_get(candidate)
+        self.cwd = remote.cd(candidate)
 
 #------------------------------------------------------------
     def help_pwd(self):

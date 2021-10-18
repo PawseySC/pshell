@@ -134,6 +134,25 @@ def main():
 # generic thread pool for background processes
     my_parser.thread_executor = concurrent.futures.ThreadPoolExecutor(max_workers=my_parser.thread_max)
 
+
+# CURRENT - check imports - link to known client types?
+#    for module in sys.modules:
+#    import inspect
+#    if 's3client' in sys.modules:
+#        print("Got s3client")
+#        for name, data in inspect.getmro(s3client):
+#            print(name, data)
+#    if 'mfclient' in sys.modules:
+#        print("Got mfclient")
+#        for name,data in inspect.getmembers(mfclient):
+#            print(name)
+#            print(data)
+#        for name, data in inspect.getmro(mfclient):
+#            print(name, data)
+#        print(mfclient.__class__.__mro__)
+#        print(mfclient.__dict__)
+
+
 # add discovery url
     if args.keystone is not None:
         my_parser.config.set(args.current, 'keystone', args.keystone)
