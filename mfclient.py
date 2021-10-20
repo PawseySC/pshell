@@ -24,13 +24,12 @@ import posixpath
 import http.client
 import xml.etree.ElementTree as ET
 import urllib.request, urllib.error, urllib.parse
-import remote
 
 # auto
 build= "20210923131216"
 
 #------------------------------------------------------------
-class mf_client(remote.client):
+class mf_client():
     """
     Base Mediaflux authentication and communication client
     Parallel transfers are handled by multiprocessing (urllib2 and httplib are not thread-safe)
