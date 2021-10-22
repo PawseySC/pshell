@@ -32,14 +32,9 @@ def jump_get(remote, remote_filepath, local_filepath):
 # picklable put()
 def jump_put(remote, remote_fullpath, local_fullpath, metadata=False):
     try:
+# FIXME - should be generic ... bit too MFLUX specific
         asset_id = remote.put(remote_fullpath, local_fullpath)
-# FIXME - get size from the remote asset_id
         size = os.path.getsize(local_fullpath)
-# FIXME - this doesn't work ...
-#        reply = remote.command("asset.get :id %d" % int(asset_id))
-#        elem = reply.find(".//content/size")
-#        size = int(elem.text)
-
 # import metadata if required
         if metadata:
             metadata_filepath = local_fullpath+".meta"
@@ -61,8 +56,6 @@ class parser(cmd.Cmd):
     interactive = True
     terminal_height = 20
     script_output = None
-
-# TODO - class? or just a dict?
     thread_executor = None
     thread_max = 4
     get_count = 0
@@ -149,7 +142,6 @@ class parser(cmd.Cmd):
 #------------------------------------------------------------
     def remotes_config_save(self):
         endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
-# TODO - only if refresh=True
         for mount, endpoint in endpoints.items():
             client = self.remotes_get(mount)
             self.logging.debug("updating mount=[%s] using client=[%r]" % (mount, client))
@@ -225,7 +217,6 @@ class parser(cmd.Cmd):
         return True
 
 #------------------------------------------------------------
-# TODO - put multi-use stuff in helpers.py?
     def human_size(self, nbytes):
         suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
 
@@ -378,7 +369,6 @@ class parser(cmd.Cmd):
         print("keystone=%s" % self.keystone.url)
 
 #------------------------------------------------------------
-# --- helper
 # immediately return any key pressed as a character
     def wait_key(self):
 #        import select
@@ -582,7 +572,6 @@ class parser(cmd.Cmd):
                 remote_relpath = "/".join(relpath_list)
                 remote_fullpath = posixpath.join(self.cwd, remote_relpath)
                 for name in name_list:
-# CURRENT - reimpl of import
                     ignore = False
                     if metadata:
                         if name.endswith(".meta"):
@@ -594,7 +583,6 @@ class parser(cmd.Cmd):
             self.logging.info("Building file list... ")
             for name in glob.glob(line):
                 local_fullpath = os.path.abspath(name)
-# CURRENT - reimpl of import
                 ignore = False
                 if metadata:
                     if name.endswith(".meta"):
@@ -722,7 +710,6 @@ class parser(cmd.Cmd):
             print("Aborted")
 
 #------------------------------------------------------------
-# -- local commands
 # --
     def help_lpwd(self):
         print("\nDisplay local folder\n")

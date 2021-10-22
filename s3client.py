@@ -6,6 +6,7 @@ Author: Sean Fleming
 """
 
 import os
+import math
 import getpass
 import logging
 import pathlib
@@ -78,24 +79,25 @@ class s3_client(remote.client):
         return { 'type':self.type, 'url':self.url, 'access':self.access, 'secret':self.secret }
 
 #------------------------------------------------------------
-# split a key into prefix + filter
-    def key_split(self, key):
-        self.logging.info("key=[%s]" % key)
+    def human_size(self, nbytes):
+        suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
 
-        mykey = str(key)
+        try:
+            nbytes = int(nbytes)
+        except Exception as e:
+            self.logging.debug("Bad input [%r]: %s" % (nbytes, str(e)))
+            nbytes = 0
 
-        c = mykey.rfind('/') 
-        if c == -1:
-            prefix = None
-            pattern = mykey
+        if nbytes:
+            rank = int((math.log10(nbytes)) / 3)
+            rank = min(rank, len(suffixes) - 1)
+            human = nbytes / (1000.0 ** rank)
+            f = ("%.2f" % human).rstrip('0').rstrip('.')
         else:
-            prefix = mykey[:c]
-            pattern = mykey[c+1:]
+            f = "0"
+            rank = 0
 
-        self.logging.info("prefix=[%r] pattern=[%r]" % (prefix, pattern))
-
-        return prefix, pattern
-
+        return "%6s %-2s" % (f, suffixes[rank])
 
 #------------------------------------------------------------
     def complete_path(self, partial, start, match_prefix=True, match_object=True):
@@ -153,7 +155,6 @@ class s3_client(remote.client):
         self.logging.info(candidate_list)
 
         return candidate_list
-
 
 #------------------------------------------------------------
     def complete_folder(self, partial, start):
@@ -241,7 +242,7 @@ class s3_client(remote.client):
                 if 'Contents' in page:
                     for item in page['Contents']:
                         if item['Key'].endswith('/') is False:
-                            yield "%d B | %s" % (item['Size'], item['Key'])
+                            yield "%s | %s" % (self.human_size(item['Size']), item['Key'])
 
         else:
             response = self.s3.list_buckets()
