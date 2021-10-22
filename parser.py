@@ -30,11 +30,21 @@ def jump_get(remote, remote_filepath, local_filepath):
 
 #------------------------------------------------------------
 # picklable put()
-def jump_put(remote, remote_fullpath, local_fullpath):
+def jump_put(remote, remote_fullpath, local_fullpath, metadata=False):
     try:
         asset_id = remote.put(remote_fullpath, local_fullpath)
 # FIXME - get size from the remote asset_id
         size = os.path.getsize(local_fullpath)
+# FIXME - this doesn't work ...
+#        reply = remote.command("asset.get :id %d" % int(asset_id))
+#        elem = reply.find(".//content/size")
+#        size = int(elem.text)
+
+# import metadata if required
+        if metadata:
+            metadata_filepath = local_fullpath+".meta"
+            if os.path.isfile(metadata_filepath):
+                remote.import_metadata(asset_id, metadata_filepath)
     except Exception as e:
         logging.error(str(e))
         size = 0
@@ -170,22 +180,22 @@ class parser(cmd.Cmd):
         raise Exception("Failed to create remote, bad endpoint: %s" % error)
 
 #-----------------------------------------------------------
-    def remotes_add(self, mount='/remote', module=None):
-        self.logging.info("mount = [%s], module = [%r]" % (mount, module))
+    def remotes_add(self, mount='/remote', remote=None):
+        self.logging.info("mount = [%s], remote = [%r]" % (mount, remote))
 
 # get connection status, mount and set cwd
         try:
-            module.connect()
+            remote.connect()
         except Exception as e:
             self.logging.debug(str(e))
 
-        self.remotes[mount] = module
+        self.remotes[mount] = remote
         self.do_cd(mount)
 
 # add or update endpoint in config 
         if self.config is not None:
             endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
-            endpoints[mount] = module.endpoint()
+            endpoints[mount] = remote.endpoint()
             self.config.set(self.config_name, 'endpoints', json.dumps(endpoints))
         else:
             self.logging.debug("Missing config in parser")
@@ -479,77 +489,15 @@ class parser(cmd.Cmd):
         sys.stdout.write("\r"+text)
         sys.stdout.flush()
 
-# -- convert XML document to mediaflux shorthand XML markup
-    def xml_to_mf(self, xml_root, result=None):
-        if xml_root is not None:
-            if xml_root.text is not None:
-                result = " :%s %s" % (xml_root.tag, xml_root.text)
-            else:
-                result = " :%s <" % xml_root.tag
-                for xml_child in xml_root:
-                    if xml_child.text is not None:
-                        result += " :%s %s" % (xml_child.tag, xml_child.text)
-                    else:
-                        result += self.xml_to_mf(xml_child, result)
-                result += " >"
-        return result
-
-# -- metadata populator
-    def import_metadata(self, asset_id, filepath):
-        self.logging.debug("import_metadata() [%s] : [%s]" % (asset_id, filepath))
-        try:
-            config = configparser.ConfigParser()
-            config.read(filepath)
-# section -> xmlns
-            xml_root = ET.Element(None)
-            for section in config.sections():
-                xml_child = ET.SubElement(xml_root, section)
-                for option in config.options(section):
-                    elem_list = option.split('/')
-                    xml_item = xml_child
-                    xpath = './'
-# create any/all intermediate XML nodes in the xpath or merge with existing
-                    for elem in elem_list:
-                        xpath += "/%s" % elem
-                        match = xml_root.find(xpath)
-                        if match is not None:
-                            xml_item = match
-                            continue
-                        xml_item = ET.SubElement(xml_item, elem)
-# terminate at the final element to populate with the current option data
-                    if xml_item is not None:
-                        xml_item.text = config.get(section, option)
-# DEBUG
-#            self.mf_client.xml_print(xml_root)
-
-# construct the command
-            xml_command = 'asset.set :id %r' % asset_id
-            for xml_child in xml_root:
-                if xml_child.tag == 'asset':
-                    for xml_arg in xml_child:
-                        xml_command += self.xml_to_mf(xml_arg)
-                else:
-                    xml_command += ' :meta <%s >' % self.xml_to_mf(xml_child)
-
-# update the asset metadata
-            self.mf_client.aterm_run(xml_command)
-# re-analyze the content - stricly only needs to be done if type/ctype/lctype was changed
-# NEW - don't do this by default - it will generate stacktrace in mediaflux for DMF (offline) files
-#            self.mf_client.aterm_run("asset.reanalyze :id %r" % asset_id)
-
-        except Exception as e:
-            logging.warning("Metadata population failed: %s" % str(e))
-
 #------------------------------------------------------------
-#    def help_import(self):
-#        print("\nUpload files or folders with associated metadata")
-#        print("For every file <filename.ext> another file called <filename.ext.meta> should contain metadata in INI file format\n")
-#        print("Usage: import <file or folder>\n")
+    def help_import(self):
+        print("\nUpload files or folders with associated metadata")
+        print("For every file <filename.ext> another file called <filename.ext.meta> should contain metadata in INI file format\n")
+        print("Usage: import <file or folder>\n")
 
 # ---
     def do_import(self, line):
-        raise Exception("Not implemented yet.")
-#        self.do_put(line, meta=True)
+        self.do_put(line, metadata=True)
 
 #------------------------------------------------------------
     def help_get(self):
@@ -623,7 +571,7 @@ class parser(cmd.Cmd):
         self.print_over("put progress: [%r] files and [%r] bytes" % (self.put_count, self.put_bytes))
 
 # --
-    def put_iter(self, line):
+    def put_iter(self, line, metadata=False):
         if os.path.isdir(line):
             self.logging.info("Walking directory tree...")
             line = os.path.abspath(line)
@@ -634,17 +582,28 @@ class parser(cmd.Cmd):
                 remote_relpath = "/".join(relpath_list)
                 remote_fullpath = posixpath.join(self.cwd, remote_relpath)
                 for name in name_list:
-                    fullpath = os.path.normpath(os.path.join(os.getcwd(), root, name))
-                    yield remote_fullpath, fullpath
+# CURRENT - reimpl of import
+                    ignore = False
+                    if metadata:
+                        if name.endswith(".meta"):
+                            ignore = True
+                    if ignore is False:
+                        fullpath = os.path.normpath(os.path.join(os.getcwd(), root, name))
+                        yield remote_fullpath, fullpath
         else:
             self.logging.info("Building file list... ")
             for name in glob.glob(line):
                 local_fullpath = os.path.abspath(name)
-#                if os.path.isfile(local_fullpath):
-                yield self.cwd, local_fullpath
+# CURRENT - reimpl of import
+                ignore = False
+                if metadata:
+                    if name.endswith(".meta"):
+                        ignore = True
+                if ignore is False:
+                    yield self.cwd, local_fullpath
 
 # --
-    def do_put(self, line, meta=False):
+    def do_put(self, line, metadata=False):
 
         self.logging.info("[%s]" % line)
         remote = self.remotes_get(self.cwd)
@@ -655,11 +614,11 @@ class parser(cmd.Cmd):
             total_count = 0
             start_time = time.time()
 
-            results = self.put_iter(line)
+            results = self.put_iter(line, metadata=metadata)
 
             for remote_fullpath, local_fullpath in results:
                 self.logging.info("put remote=[%s] local=[%s]" % (remote_fullpath, local_fullpath))
-                future = self.thread_executor.submit(jump_put, remote, remote_fullpath, local_fullpath)
+                future = self.thread_executor.submit(jump_put, remote, remote_fullpath, local_fullpath, metadata=metadata)
                 future.add_done_callback(self.cb_put)
                 total_count += 1
 

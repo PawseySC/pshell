@@ -22,6 +22,7 @@ import platform
 import mimetypes
 import posixpath
 import http.client
+import configparser
 import xml.etree.ElementTree as ET
 import urllib.request, urllib.error, urllib.parse
 
@@ -1278,3 +1279,73 @@ class mf_client():
 # TODO - if client=s3 check to_path includes a valid bucket ...
 
 # then, any exceptions after will be failed legit transfers that can be redone
+
+
+#------------------------------------------------------------
+    def xml_to_mf(self, xml_root, result=None):
+        """
+        Convert XML document to mediaflux shorthand XML markup
+        """
+        if xml_root is not None:
+            if xml_root.text is not None:
+                result = " :%s %s" % (xml_root.tag, xml_root.text)
+            else:
+                result = " :%s <" % xml_root.tag
+                for xml_child in xml_root:
+                    if xml_child.text is not None:
+                        result += " :%s %s" % (xml_child.tag, xml_child.text)
+                    else:
+                        result += self.xml_to_mf(xml_child, result)
+                result += " >"
+        return result
+
+#------------------------------------------------------------
+    def import_metadata(self, asset_id, filepath):
+        """
+        populate metadata for an asset using INI style file
+        the section is the xml document namespace and options are flat element node + values
+        """
+        self.logging.debug("import_metadata() [%s] : [%s]" % (asset_id, filepath))
+        try:
+            config = configparser.ConfigParser()
+            config.read(filepath)
+# section -> xmlns
+            xml_root = ET.Element(None)
+            for section in config.sections():
+                xml_child = ET.SubElement(xml_root, section)
+                for option in config.options(section):
+                    elem_list = option.split('/')
+                    xml_item = xml_child
+                    xpath = './'
+# create any/all intermediate XML nodes in the xpath or merge with existing
+                    for elem in elem_list:
+                        xpath += "/%s" % elem
+                        match = xml_root.find(xpath)
+                        if match is not None:
+                            xml_item = match
+                            continue
+                        xml_item = ET.SubElement(xml_item, elem)
+# terminate at the final element to populate with the current option data
+                    if xml_item is not None:
+                        xml_item.text = config.get(section, option)
+# DEBUG
+#            self.mf_client.xml_print(xml_root)
+
+# construct the command
+            xml_command = 'asset.set :id %r' % asset_id
+            for xml_child in xml_root:
+                if xml_child.tag == 'asset':
+                    for xml_arg in xml_child:
+                        xml_command += self.xml_to_mf(xml_arg)
+                else:
+                    xml_command += ' :meta <%s >' % self.xml_to_mf(xml_child)
+
+# update the asset metadata
+            self.aterm_run(xml_command)
+# re-analyze the content - stricly only needs to be done if type/ctype/lctype was changed
+# NEW - don't do this by default - it will generate stacktrace in mediaflux for DMF (offline) files
+#            self.mf_client.aterm_run("asset.reanalyze :id %r" % asset_id)
+
+        except Exception as e:
+            self.logging.warning("Metadata population failed: %s" % str(e))
+
