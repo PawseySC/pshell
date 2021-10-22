@@ -15,6 +15,7 @@ import json
 import urllib
 import logging
 import argparse
+import platform
 import itertools
 import configparser
 import concurrent.futures
@@ -29,21 +30,25 @@ try:
 except:
     pass
 
+# auto
+build= "20211022131216"
+
 #------------------------------------------------------------
 def main():
     global build
 
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
-    p.add_argument("-c", dest='current', default='data.pawsey.org.au', help="the config name in $HOME/.mf_config to connect to")
+    p.add_argument("-c", dest='current', default='pawsey', help="the config name in $HOME/.mf_config to connect to")
     p.add_argument("-i", dest='script', help="input script file containing pshell commands")
     p.add_argument("-o", dest='output', default=None, help="output any failed commands to a script")
     p.add_argument("-v", dest='verbose', default=None, help="set verbosity level (0,1,2)")
-    p.add_argument("-u", dest='url', default=None, help="Remote endpoint")
+    p.add_argument("-u", dest='url', default=None, help="Remote endpoint URL")
+    p.add_argument("-t", dest='type', default=None, help="Remote endpoint type (eg mflux, s3)")
     p.add_argument("-d", dest='domain', default=None, help="login authentication domain")
     p.add_argument("-s", dest='session', default=None, help="session")
     p.add_argument("-m", dest='mount', default='/', help="mount point for remote")
-    p.add_argument("--keystone", dest='keystone', default=None, help="A URL to the REST interface for Keystone (Openstack)")
+    p.add_argument("-k", dest='keystone', default=None, help="A URL to the REST interface for OpenStack Keystone")
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
 
@@ -57,6 +62,13 @@ def main():
 #    print("log level = %d" % logging_level)
     logging.basicConfig(format='%(levelname)9s %(asctime)-15s >>> %(module)s.%(funcName)s(): %(message)s', level=logging_level)
 
+# basic info
+    logging.info("PSHELL=%s" % build)
+    logging.info("PLATFORM=%s" % platform.system())
+    version = sys.version
+    i = version.find("\n")
+    logging.info("PYTHON=%s" % version[:i])
+
 # attempt to locate a valid config file
     config_filepath = os.path.expanduser("~/.pshell_config")
     try:
@@ -68,10 +80,10 @@ def main():
     logging.debug("Reading config file: [%s]" % config_filepath)
     config.read(config_filepath)
 
-# attempt to use the current section in the config for connection info
+# create an endpoint 
     try:
+        endpoint = None 
         endpoints = None 
-
         if args.url is None:
 # existing config and no input URL
             if config.has_section(args.current) is True:
@@ -79,44 +91,28 @@ def main():
                 endpoints = json.loads(config.get(args.current, 'endpoints'))
             else:
 # 1st time default
-                logging.info("Initialising default config")
-                args.url = 'https://data.pawsey.org.au:443'
-                args.domain = 'ivec'
+                logging.info("Initialising Pawsey config")
+                endpoint = {'name':args.current, 'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'ivec' }
                 args.mount = '/projects'
-
+                args.keystone = 'https://nimbus.pawsey.org.au:5000'
+# 1st time default or URL override
         if endpoints is None:
-# if URL supplied or 1st time setup
-            logging.info("Creating endpoint from url: [%s]" % args.url)
+            if endpoint is None:
+                logging.info("Creating endpoint from url: [%s]" % args.url)
+                endpoint = {'name':'custom', 'type':args.type, 'url':args.url, 'domain':args.domain }
 
-# WTF - urlparse not extracting the port
-            aaa = urllib.parse.urlparse(args.url)
-# HACK - workaround for urlparse not extracting port, despite the doco indicating it should
-            p = '(?:http.*://)?(?P<host>[^:/ ]+).?(?P<port>[0-9]*).*'
-            m = re.search(p,args.url)
-            port = m.group('port')
-            args.current = aaa.hostname
-
-# FIXME - historically, have to assume it's mflux but now could be s3 
-# FIXME - could adopt a scheme where we use "mflux://data.pawsey.org.au:443" and "s3://etc" ... and assume the proto from the port
-            endpoint = {'name':args.current, 'type':'mfclient', 'protocol':aaa.scheme, 'server':aaa.hostname, 'port':port, 'domain':args.domain }
-# FIXME - session="" needs to be strongly enforced or can get some wierd bugs
-            endpoint['session'] = ""
-            endpoint['token'] = ""
-
-# no such config section - add and save
-            logging.info("Saving section: [%s] in config" % args.current)
-
+# setup for adding as remotes
             endpoints = { args.mount:endpoint }
-
             config[args.current] = {'endpoints':json.dumps(endpoints)}
-
-            with open(config_filepath, 'w') as f:
-                config.write(f)
 
     except Exception as e:
         logging.debug(str(e))
-        logging.info("No remote endpoints configured.")
 
+# CLI overrides
+    if args.session is not None:
+        endpoint['session'] = args.session
+    if args.domain is not None:
+        endpoint['domain'] = args.domain
 
 # extract terminal size for auto pagination
     try:
@@ -134,25 +130,6 @@ def main():
 # generic thread pool for background processes
     my_parser.thread_executor = concurrent.futures.ThreadPoolExecutor(max_workers=my_parser.thread_max)
 
-
-# CURRENT - check imports - link to known client types?
-#    for module in sys.modules:
-#    import inspect
-#    if 's3client' in sys.modules:
-#        print("Got s3client")
-#        for name, data in inspect.getmro(s3client):
-#            print(name, data)
-#    if 'mfclient' in sys.modules:
-#        print("Got mfclient")
-#        for name,data in inspect.getmembers(mfclient):
-#            print(name)
-#            print(data)
-#        for name, data in inspect.getmro(mfclient):
-#            print(name, data)
-#        print(mfclient.__class__.__mro__)
-#        print(mfclient.__dict__)
-
-
 # add discovery url
     if args.keystone is not None:
         my_parser.config.set(args.current, 'keystone', args.keystone)
@@ -163,34 +140,16 @@ def main():
     try:
         for mount in endpoints:
             endpoint = endpoints[mount]
-            logging.info("Connecting [%s] endpoint on [%s]" % (endpoint['type'], mount))
-            if endpoint['type'] == 'mfclient':
-                myclient = mfclient.mf_client(protocol=endpoint['protocol'], server=endpoint['server'], port=endpoint['port'], domain=endpoint['domain'])
-# CLI overrides
-                if args.session is not None:
-                    endpoint['session'] = args.session
-                if args.domain is not None:
-                    endpoint['domain'] = args.domain
-# TODO - remotes to accept endpoint as initialiser
-                if 'session' in endpoint:
-                    myclient.session = endpoint['session']
-                if 'token' in endpoint:
-                    myclient.token = endpoint['token']
-                if 'domain' in endpoint:
-                    myclient.domain = endpoint['domain']
-            elif endpoint['type'] == 's3':
-                myclient = s3client.s3_client(host=endpoint['host'], access=endpoint['access'], secret=endpoint['secret'])
-            else:
-                myclient = client()
-
-# associate client with mount
+            logging.info("Connecting [%s] endpoint to [%s]" % (endpoint['type'], mount))
+# create remote client and associate mount
+            myclient = my_parser.remotes_new(endpoint)
             my_parser.remotes_add(mount, myclient)
 
 # added all remotes without error - save to config
         my_parser.remotes_config_save()
 
     except Exception as e:
-        logging.error(str(e))
+        logging.info(str(e))
 
 # just in case the terminal height calculation returns a very low value
     my_parser.terminal_height = max(size[0], my_parser.terminal_height)
@@ -208,7 +167,7 @@ def main():
         else:
             readline.parse_and_bind("tab: complete")
     except:
-        logging.warning("No readline module; tab completion unavailable")
+        logging.info("No readline module; tab completion unavailable")
 
 # build non interactive input iterator
     input_list = []
@@ -243,6 +202,4 @@ def main():
 
 
 if __name__ == '__main__':
-# On Windows calling this function is necessary.
-#    multiprocessing.freeze_support()
     main()

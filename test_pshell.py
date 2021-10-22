@@ -4,109 +4,98 @@ import os
 import sys
 import unittest
 import subprocess
-import xml.etree.ElementTree as ET
 from subprocess import Popen, PIPE, STDOUT
 
-
-# TODO - all this should be reworked as per the new parser + remote client layout
-
-
-#######################
-# pshell local commands 
-#######################
-class pshell_local(unittest.TestCase):
+#------------------------------------------------------------
+class pshell_standard(unittest.TestCase):
     def setUp(self):
-        global script, verbosity, config
+        global config, python, script, verbosity
+        self.config = config
+        self.python = python
         self.script = script
         self.verbosity = verbosity
-        self.python = "python3"
-# CURRENT - override if we want to point at a server in config
-        self.config = config
 
-# --
+# ---
+    def test_remotes_add(self):
+        flag=False
+        line = "/remote mflux http://0.0.0.0:80"
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "remotes add %s && remotes" % line], stdout=PIPE, stderr=STDOUT)
+        for line in p.stdout:
+            text = line.decode()
+            if "/remote" in text:
+                if "mflux" in text:
+                    if "0.0.0.0" in text:
+                        flag=True
+        self.assertTrue(flag)
+
+# ---
+    def test_url_s3(self):
+        flag=False
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "-t", "s3", "-u", "http://localhost:80", "remotes"], stdout=PIPE, stderr=STDOUT)
+        for line in p.stdout:
+            text = line.decode()
+            if "s3" in text:
+                if "localhost" in text:
+                    flag=True
+                if "boto" in text:
+                    flag=True
+        self.assertTrue(flag)
+
+# ---
+    def test_url_mflux(self):
+        flag=False
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "-t", "mflux", "-u", "http://localhost:80", "remotes"], stdout=PIPE, stderr=STDOUT)
+        for line in p.stdout:
+            text = line.decode()
+            if "mflux" in text:
+                if "localhost" in text:
+                    flag=True
+        self.assertTrue(flag)
+
+# ---
+    def test_lpwd(self):
+        flag=False
+        pwd = os.getcwd()
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "lpwd"], stdout=PIPE, stderr=STDOUT)
+        for line in p.stdout:
+            if pwd in line.decode():
+                flag=True
+
+# ---
     def test_lcd(self):
         flag=False
-        p = Popen([self.python, self.script, "-v", self.verbosity, "lpwd"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "lcd ."], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
             if 'Local' in line.decode():
                 flag = True
         self.assertTrue(flag)
 
-# --
+# ---
     def test_lls(self):
         flag = False
-        p = Popen([self.python, self.script, "-v", self.verbosity, "lls"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "lls"], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
             if "test_pshell.py" in line.decode():
                 flag = True
         self.assertTrue(flag)
 
+#------------------------------------------------------------
 
-########################################
-# wrapper for squishing bugs
-########################################
-class pshell_bugs(unittest.TestCase):
-    def setUp(self):
-        global script, verbosity, config
-        self.script = script
-        self.verbosity = verbosity
-        self.python = "python3"
-# CURRENT - override if we want to point at a server in config
-        self.config = config
-
-
-########################################
-# wrapper for new features 
-########################################
-class pshell_offline(unittest.TestCase):
-    def setUp(self):
-#        global script, verbosity, config
-#        self.script = script
-#        self.verbosity = "1"
-#        self.python = "python3"
-## CURRENT - override if we want to point at a server in config
-#        self.config = config
-# TODO - we actually just want to create a my_parser instance ... populate with endpoints ... and then test ...
-        print("TODO - pshell -> myparser")
-
-
-    def test_complete(self):
-        print("No remote - skipping")
-
-
-
-######
-######
-# main
-######
 if __name__ == '__main__':
 
-    global session, server, script, verbosity
+    global python, config, script, verbosity
 
     print("\n----------------------------------------------------------------------")
     print("Running tests for: pshell")
     print("----------------------------------------------------------------------\n")
 
-# NB: don't use pshell as we can't run bundle_pshell in the container
+    python = "python3"
+    config = "test"
     script = "pshell.py"
     verbosity = "0"
 
-# local (offline) testing only
-#    config = None
-#   config = 0.0.0.0
-
-# remote testing (eg features)
-    config = "data.pawsey.org.au"
-
 # class suite to test
-    test_class_list = [pshell_offline]
-#    test_class_list = [pshell_local]
-#    test_class_list = [pshell_bugs]
-
-# setup the session
-# TODO - just use config ...
-    if config is not None:
-        print("TODO - run pshell and login if required ...")
+    test_class_list = [pshell_standard]
 
 # build suite
     suite_list = []

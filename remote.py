@@ -11,18 +11,48 @@ class client:
     """
 
     def __init__(self):
-        self.status = "not connected"
-        self.type = "generic"
+        self.status = "Connected to the void"
+        self.type = None
         self.cwd = None
 
+# --- primary methods
+
     def endpoint(self):
-        raise Exception("Not implemented")
+        return { 'type':self.type }
 
     def connect(self):
-        raise Exception("Not implemented")
+        return True
 
     def status(self):
         return(self.status)
+
+    def cd(self, remote_fullpath):
+        self.cwd = remote_fullpath
+
+    def ls_iter(self, pattern):
+        yield "Nothing"
+
+    def get_iter(self, pattern):
+        yield 1
+        yield 0
+        yield "Nothing"
+
+    def get(self, remote_filepath, local_filepath=None):
+        raise Exception("Not implemented")
+
+    def put(self, remote_fullpath, local_filepath):
+        raise Exception("Not implemented")
+
+    def mkdir(self, fullpath):
+        raise Exception("Not implemented")
+
+    def rmdir(self, fullpath, prompt=None):
+        raise Exception("Not implemented")
+
+    def rm(self, filepath, prompt=None):
+        raise Exception("Not implemented")
+
+# --- secondary methods
 
     def login(self):
         raise Exception("Not implemented")
@@ -48,37 +78,8 @@ class client:
     def complete_folder(self, partial, start):
         raise Exception("Not implemented")
 
-    def cd(self, remote_fullpath):
-        self.cwd = remote_fullpath
-
-    def ls_iter(self, pattern):
-        yield "Nothing"
-
-    def get_iter(self, pattern):
-        yield 1
-        yield 0
-        yield "Nothing"
-
-    def get(self, remote_filepath, local_filepath=None):
-        raise Exception("Not implemented")
-
-    def put(self, remote_fullpath, local_filepath):
-        raise Exception("Not implemented")
-
     def copy(self, src, dest, dest_type):
         raise Exception("Not implemented")
 
-    def mkdir(self, fullpath):
-        raise Exception("Not implemented")
-
-    def rmdir(self, fullpath, prompt=None):
-        raise Exception("Not implemented")
-
-    def rm(self, filepath, prompt=None):
-        raise Exception("Not implemented")
-
-    def info(self, filepath):
-        return {}
-
     def command(self, line):
-        raise Exception("Unknown command or not implemented")
+        raise Exception("Unknown remote command")

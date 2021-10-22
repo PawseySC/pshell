@@ -44,9 +44,6 @@ class mf_client():
                                port: a STRING which is usually "80" or "443"
                              server: a STRING giving the FQDN of the server
                              domain: a STRING giving the authentication domain to use when authenticating
-                            session: a STRING supplying the session ID which, if it exists, enables re-use of an existing authenticated session
-                            timeout: an INTEGER specifying the connection timeout
-                              debug: an INTEGER which controls output of troubleshooting information
 
         Returns:
             A reachable mediaflux server object that has not been tested for its authentication status
@@ -54,8 +51,9 @@ class mf_client():
         Raises:
             Error if server appears to be unreachable
         """
+
 # configure interfaces
-        self.type = "mfclient"
+        self.type = "mflux"
         self.protocol = protocol
         self.server = server
         self.port = int(port)
@@ -91,7 +89,7 @@ class mf_client():
                 response = urllib.request.urlopen("http://%s" % server, timeout=2)
                 if response.code == 200:
                     self.encrypted_data = False
-                # override (only does anything if we're encrypting posts)
+# override (only does anything if we're encrypting posts)
                     self.data_get = "http://%s/mflux/content.mfjp" % server
                     self.data_put = "%s:%s" % (server, 80)
             except Exception as e:
@@ -100,33 +98,50 @@ class mf_client():
             self.encrypted_data = False
 
 # more info
-        self.logging.info("PLATFORM=%s" % platform.system())
         self.logging.info("MFCLIENT=%s" % build)
         self.logging.info("POST=%s" % self.post_url)
         self.logging.info("GET=%s" % self.data_get)
         self.logging.info("PUT=%s" % self.data_put)
-        version = sys.version
-        i = version.find("\n")
-        self.logging.info("PYTHON=%s" % version[:i])
         self.logging.info("OpenSSL=%s", ssl.OPENSSL_VERSION)
 
-#    @classmethod
-#    def endpoint(cls, endpoint):
-#        print("mfclient init endpoint")
-#        return cls(...)
+# --- NEW
+    @classmethod
+    def from_endpoint(cls, endpoint):
+        """
+        Create mfclient using an endpoint description
+        """
+
+        if 'url' in endpoint:
+            url = urllib.parse.urlparse(endpoint['url'])
+#            p = '(?:http.*://)?(?P<host>[^:/ ]+).?(?P<port>[0-9]*).*'
+#            m = re.search(p,endpoint['url'])
+#            endpoint['port'] = m.group('port')
+            endpoint['port'] = url.port
+            endpoint['server'] = url.hostname
+            endpoint['protocol'] = url.scheme
+
+        client = cls(protocol=endpoint['protocol'], server=endpoint['server'], port=endpoint['port'])
+
+        if 'domain' in endpoint:
+            client.domain = endpoint['domain']
+        if 'encrypt' in endpoint:
+            client.encrypted_data = endpoint['encrypt']
+        if 'session' in endpoint:
+            client.session = endpoint['session']
+        if 'token' in endpoint:
+            client.token = endpoint['token']
+
+        return client
 
 #------------------------------------------------------------
     def endpoint(self):
         """
         Return configuration as endpoint description
         """
-
         endpoint = { 'type':self.type, 'protocol':self.protocol, 'server':self.server, 'port':self.port, 'domain':self.domain }
         endpoint['encrypt'] = self.encrypted_data
         endpoint['session'] = self.session
         endpoint['token'] = self.token
-# FIXME - how?
-        endpoint['name'] = 'pawsey'
 
         return endpoint
 
@@ -154,7 +169,7 @@ class mf_client():
 # normal session - get user identity
                         elem = reply.find(".//actor")
                         identity = "%s=%s" % (elem.attrib['type'], elem.text)
-                    self.status = "connected to: %s as %s" % (self.server, identity)
+                    self.status = "connected: %s as %s" % (self.server, identity)
                     return True
 
             except Exception as e:
@@ -310,11 +325,11 @@ class mf_client():
             xml = response.read()
             tree = ET.fromstring(xml.decode())
             elem = tree.find(".//reply/error")
+# process connection error
         except Exception as e:
-            self.logging.error(str(e))
-            return None
-
-# if error - attempt to extract a useful message
+            self.logging.debug(str(e))
+            raise Exception(str(e))
+# process server response error
         if elem is not None:
             elem = tree.find(".//message")
             error_message = self._xml_succint_error(elem.text)
@@ -670,7 +685,7 @@ class mf_client():
 
             except Exception as e:
                 message = str(e)
-                self.logging.error(message)
+                self.logging.debug(message)
                 if "session is not valid" in message:
 # restart the session if token exists
 #                    if self.token is not None:
@@ -683,7 +698,6 @@ class mf_client():
 #                        xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
                         xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text.decode()).encode()
                         self.logging.debug("session restored, retrying command")
-#                        self.config_save(refresh_session=True)
                         continue
                 break
 

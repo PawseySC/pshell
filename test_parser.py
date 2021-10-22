@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 import parser
-import mfclient
-import s3client
+import remote
 import unittest
 
 # global to avoid setup for every test class
@@ -11,18 +10,25 @@ myparser = None
 #------------------------------------------------------------
 class parser_standard(unittest.TestCase):
     def setUp(self):
-        self.mf_client = mfclient.mf_client()
-        self.s3_client = mfclient.s3_client()
         global parser
 
-
         self.parser = myparser
-        self.parser.remotes_add('/path1', self.mf_client)
-        self.parser.remotes_add('/path2', self.s3_client)
+        self.parser.remotes_add('/path1', remote.client())
+        self.parser.remotes_add('/path2', remote.client())
 
 # TODO - test more awkward mounting patterns ie /path and /path/subremote
-
 # TODO - test to enforce no mounting on the same path
+
+    def test_remotes_new(self):
+
+        error=""
+        try:
+            result = self.parser.remotes_new({'type':'mflux', 'protocol':'http', 'server':'localhost', 'port':80})
+            result = self.parser.remotes_new({'type':'s3', 'url':'http://localhost'})
+        except Exception as e:
+            error = str(e)
+
+        self.assertEqual(error, "")
 
 
 # ---
@@ -50,7 +56,7 @@ class parser_standard(unittest.TestCase):
 # ---
     def test_remotes_complete(self):
         result = self.parser.remotes_complete("/pa", 0)
-        if 'th1' in result and 'th2' in result:
+        if '/path1' in result and '/path2' in result:
             success = True
         else:
             success = False

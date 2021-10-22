@@ -28,19 +28,8 @@ class s3client_syntax(unittest.TestCase):
         self.assertEqual(reply[1], "prefix/")
 
     def test_cd(self):
-        reply = self.s3_client.cd("relative")
-        self.assertEqual(reply, "/relative")
-
         reply = self.s3_client.cd("/mount")
         self.assertEqual(reply, "/mount")
-
-        reply = self.s3_client.cd("/mount/bucket")
-        self.assertEqual(reply, "/mount/bucket")
-
-        reply = self.s3_client.cd("/mount/bucket/object/far/away/")
-        self.assertEqual(reply, "/mount/bucket")
-
-
 
 ########################################
 # convenience wrapper for squishing bugs

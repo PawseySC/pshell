@@ -59,14 +59,14 @@ class keystone:
         if s3endpoint:
 # TODO - can we discover the s3 url?
 #            s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], s3endpoint[0])
-            s3client.host = 'https://nimbus.pawsey.org.au:8080'
+            s3client.url = 'https://nimbus.pawsey.org.au:8080'
             s3client.access = s3endpoint[1]
             s3client.secret = s3endpoint[2]
             s3client.prefix = s3endpoint[0]
         else:
 # nothing found - clear the deck (ie ec2 credentials deleted)
 #            s3client.connect(None, None, None, None)
-            s3client.host = None
+            s3client.url = None
             s3client.access = None
             s3client.secret = None
             s3client.prefix = None

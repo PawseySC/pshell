@@ -14,6 +14,7 @@ import threading
 import configparser
 import concurrent.futures
 import xml.etree.ElementTree as ET
+import mfclient
 import s3client
 
 #------------------------------------------------------------
@@ -46,7 +47,7 @@ class parser(cmd.Cmd):
     config_filepath = None
     keystone = None
     remotes = {}
-    cwd = '/projects'
+    cwd = '/'
     interactive = True
     terminal_height = 20
     script_output = None
@@ -151,15 +152,35 @@ class parser(cmd.Cmd):
         with open(self.config_filepath, 'w') as f:
             self.config.write(f)
 
-#------------------------------------------------------------
+#-----------------------------------------------------------
+    def remotes_new(self, endpoint):
+        try:
+            self.logging.info("Creating remote type = [%s]" % endpoint['type'])
+
+            if endpoint['type'] == 'mflux':
+                return mfclient.mf_client.from_endpoint(endpoint)
+            elif endpoint['type'] == 's3':
+                return s3client.s3_client.from_endpoint(endpoint)
+            else:
+                error = "unknown type: [%s]" % endpoint['type']
+
+        except Exception as e:
+            error = str(e)
+
+        raise Exception("Failed to create remote, bad endpoint: %s" % error)
+
+#-----------------------------------------------------------
     def remotes_add(self, mount='/remote', module=None):
         self.logging.info("mount = [%s], module = [%r]" % (mount, module))
-        self.remotes[mount] = module
 
-# init cwd for parser and remote
-        if module.connect() is True:
-            self.cwd = mount
-            module.cd(mount)
+# get connection status, mount and set cwd
+        try:
+            module.connect()
+        except Exception as e:
+            self.logging.debug(str(e))
+
+        self.remotes[mount] = module
+        self.do_cd(mount)
 
 # add or update endpoint in config 
         if self.config is not None:
@@ -259,22 +280,28 @@ class parser(cmd.Cmd):
 #------------------------------------------------------------
     def help_remotes(self):
         print("\nInformation about remote clients\n")
-        print("Usage: remotes <add /mount URL>\n")
+        print("Usage: remotes <add /mount type URL>\n")
 
 # --- 
     def do_remotes(self, line):
         if 'add' in line:
 
-            mount = input("Mount location:")
-            remote_type = input("Remote type (eg s3): ")
-            remote_url = input("Remote URL: ")
+            args = line.split()
+            if len(args) != 4:
+                raise Exception("Expected command of the form: remotes add /mount type URL")
 
-            print("TODO: mount on [%s] a server of type [%s] with URL [%s]" % (mount, remote_type, remote_url))
+            mount = args[1]
+            remote_type = args[2]
+            remote_url = args[3]
 
+            print("mount on [%s] a server of type [%s] with URL [%s]" % (mount, remote_type, remote_url))
+
+            myclient = self.remotes_new({'type':remote_type, 'url':remote_url})
+            self.remotes_add(mount, myclient)
 
         else:
             for mount, client in self.remotes.items():
-                print("%-20s [%s]" % (mount, client.status))
+                print("%-20s [%s] %s" % (mount, client.type, client.status))
 
 #------------------------------------------------------------
     def help_ec2(self):
@@ -303,7 +330,7 @@ class parser(cmd.Cmd):
 # TODO - if no SSO (or we remove) then do old fashioned login
             mfclient = None
             for mount, client in self.remotes.items():
-                if client.type == 'mfclient':
+                if client.type == 'mflux':
                     self.logging.info("Attempting SSO via: [%r]" % client)
                     mfclient = client
             try:
@@ -684,7 +711,13 @@ class parser(cmd.Cmd):
     def do_cd(self, line):
         candidate = self.absolute_remote_filepath(line)
         remote = self.remotes_get(candidate)
-        self.cwd = remote.cd(candidate)
+# if exact match to a mount - just cwd to make this the active remote 
+# if not logged in - cd method simply won't work (can't find folder)
+        if candidate in self.remotes:
+            remote.cwd = candidate
+            self.cwd = candidate
+        else:
+            self.cwd = remote.cd(candidate)
 
 #------------------------------------------------------------
     def help_pwd(self):

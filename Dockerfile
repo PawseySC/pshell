@@ -19,7 +19,7 @@ copy s3client.py /
 copy keystone.py /
 
 # only way I could get this file (which usually sits in ~ into the container)
-copy .pshell_config /root/.pshell_config
+#copy .pshell_config /root/.pshell_config
 
 ENTRYPOINT ["/bin/bash"]
 #ENTRYPOINT ["python3", "pshell.py"]

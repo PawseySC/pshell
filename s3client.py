@@ -25,34 +25,43 @@ build= "20211015131216"
 #------------------------------------------------------------
 
 class s3_client(remote.client):
-    def __init__(self, host=None, access=None, secret=None):
+    def __init__(self, url=None, access=None, secret=None):
         self.ok = ok
-# TODO - more reworking to replace these things with a generic "endpoint" dict
         self.type = "s3"
-        self.host = host
+        self.url = url
         self.access = access
         self.secret = secret
-# TODO - rename to mount or something - prefix is confusing with the aws definition of prefix
-#        self.prefix = None
         self.cwd = None
         self.s3 = None
         self.status = "not connected"
         self.logging = logging.getLogger('s3client')
         global build
 
-# CURRENT
+# DEBUG
 #        self.logging.setLevel(logging.DEBUG)
         self.logging.info("S3CLIENT=%s" % build)
         self.logging.info("BOTO3=%r" % ok)
 
+# --- NEW
+    @classmethod
+    def from_endpoint(cls, endpoint):
+        """
+        Create s3client using an endpoint description
+        """
+        client = cls()
+        if 'url' in endpoint:
+            client.url = endpoint['url']
+        if 'access' in endpoint:
+            client.access = endpoint['access']
+        if 'secret' in endpoint:
+            client.secret = endpoint['secret']
+        return client
+
 #------------------------------------------------------------
-# prefix - the keystone project assoc with access/secret ... and trigger for s3client pathways
-# VFS style ... TODO - allow for multiple mounts ... eg AWS
-#    def connect(self, host, access, secret, prefix):
     def connect(self):
-        self.logging.info('endpoint=%s using acess=%s' % (self.host, self.access))
+        self.logging.info('endpoint=%s using acess=%s' % (self.url, self.access))
         try:
-            self.s3 = boto3.client('s3', endpoint_url=self.host, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
+            self.s3 = boto3.client('s3', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
             self.status = "connected: as access=%s" % self.access
         except Exception as e:
             self.status = "not connected: %s" % str(e)
@@ -66,7 +75,7 @@ class s3_client(remote.client):
 
 #------------------------------------------------------------
     def endpoint(self):
-        return { 'type':self.type, 'host':self.host, 'access':self.access, 'secret':self.secret }
+        return { 'type':self.type, 'url':self.url, 'access':self.access, 'secret':self.secret }
 
 #------------------------------------------------------------
 # split a key into prefix + filter
