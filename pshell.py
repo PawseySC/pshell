@@ -39,15 +39,13 @@ def main():
 
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
-    p.add_argument("-c", dest='current', default='pawsey', help="the config name in $HOME/.mf_config to connect to")
+    p.add_argument("-c", dest='current', default='pawsey', help="the config name in $HOME/.pshell_config to connect to")
     p.add_argument("-i", dest='script', help="input script file containing pshell commands")
     p.add_argument("-o", dest='output', default=None, help="output any failed commands to a script")
     p.add_argument("-v", dest='verbose', default=None, help="set verbosity level (0,1,2)")
     p.add_argument("-u", dest='url', default=None, help="Remote endpoint URL")
     p.add_argument("-t", dest='type', default=None, help="Remote endpoint type (eg mflux, s3)")
-    p.add_argument("-d", dest='domain', default=None, help="login authentication domain")
-    p.add_argument("-s", dest='session', default=None, help="session")
-    p.add_argument("-m", dest='mount', default='/', help="mount point for remote")
+    p.add_argument("-m", dest='mount', default='/', help="Remote endpoint mount location")
     p.add_argument("-k", dest='keystone', default=None, help="A URL to the REST interface for OpenStack Keystone")
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
@@ -99,7 +97,7 @@ def main():
         if endpoints is None:
             if endpoint is None:
                 logging.info("Creating endpoint from url: [%s]" % args.url)
-                endpoint = {'name':'custom', 'type':args.type, 'url':args.url, 'domain':args.domain }
+                endpoint = {'name':'custom', 'type':args.type, 'url':args.url}
 
 # setup for adding as remotes
             endpoints = { args.mount:endpoint }
@@ -107,12 +105,6 @@ def main():
 
     except Exception as e:
         logging.debug(str(e))
-
-# CLI overrides
-    if args.session is not None:
-        endpoint['session'] = args.session
-    if args.domain is not None:
-        endpoint['domain'] = args.domain
 
 # extract terminal size for auto pagination
     try:
