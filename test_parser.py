@@ -13,54 +13,25 @@ class parser_standard(unittest.TestCase):
         global parser
 
         self.parser = myparser
-        self.parser.remotes_add('/path1', remote.client())
-        self.parser.remotes_add('/path2', remote.client())
-
-# TODO - test more awkward mounting patterns ie /path and /path/subremote
-# TODO - test to enforce no mounting on the same path
-
-    def test_remotes_new(self):
-
-        error=""
-        try:
-            result = self.parser.remotes_new({'type':'mflux', 'protocol':'http', 'server':'localhost', 'port':80})
-            result = self.parser.remotes_new({'type':'s3', 'url':'http://localhost'})
-        except Exception as e:
-            error = str(e)
-
-        self.assertEqual(error, "")
-
+        self.parser.remotes_add('mfclient', {'type':'mflux', 'protocol':'http', 'server':'localhost', 'port':80})
+        self.parser.remotes_add('s3client', {'type':'s3', 'url':'http://localhost'})
 
 # ---
-    def test_remotes_get(self):
-        try:
-            result = self.parser.remotes_get("/path1")
-            result = self.parser.remotes_get("/path1/some/folder")
-            result = self.parser.remotes_get("/path2")
-            result = self.parser.remotes_get("/path2/some/folder")
-            success = True
-        except:
-            success = False
-        self.assertTrue(success)
-
-# ---
-    def test_remotes_get_fail(self):
-        try:
-            self.parser.remotes_get("/nothing")
-            success = True
-        except Exception as e:
-            success = False
-            pass
-        self.assertFalse(success)
-
-# ---
-    def test_remotes_complete(self):
-        result = self.parser.remotes_complete("/pa", 0)
-        if '/path1' in result and '/path2' in result:
+    def test_remote_complete(self):
+        result = self.parser.complete_remote("mf", "mf", 0, 2)
+        if 'mfclient' in result:
             success = True
         else:
             success = False
         self.assertTrue(success)
+
+# ---
+    def test_remote_set(self):
+        self.parser.do_remote('mfclient')
+        self.assertEqual(self.parser.remotes_current, 'mfclient')
+        self.parser.do_remote('s3client')
+        self.assertEqual(self.parser.remotes_current, 's3client')
+
 
 #------------------------------------------------------------
 

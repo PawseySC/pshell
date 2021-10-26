@@ -16,47 +16,60 @@ class pshell_standard(unittest.TestCase):
         self.verbosity = verbosity
 
 # ---
-    def test_remotes_add(self):
+    def test_remote_add_mflux(self):
         flag=False
-        line = "/remote mflux http://0.0.0.0:80"
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "remotes add %s && remotes" % line], stdout=PIPE, stderr=STDOUT)
+        line = "mfclient mflux http://0.0.0.0:80"
+        p = Popen([self.python, self.script, "-v", self.verbosity, "remote add %s && remote" % line], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
             text = line.decode()
-            if "/remote" in text:
+            if "mfclient" in text:
                 if "mflux" in text:
                     if "0.0.0.0" in text:
                         flag=True
         self.assertTrue(flag)
 
 # ---
-    def test_url_s3(self):
+    def test_remote_add_s3(self):
         flag=False
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "-t", "s3", "-u", "http://localhost:80", "remotes"], stdout=PIPE, stderr=STDOUT)
+        line = "s3client s3 http://0.0.0.0"
+        p = Popen([self.python, self.script, "-v", self.verbosity, "remote add %s && remote" % line], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
             text = line.decode()
-            if "s3" in text:
-                if "localhost" in text:
-                    flag=True
-                if "boto" in text:
-                    flag=True
+            if "s3client" in text:
+                if "s3" in text:
+                    if "0.0.0.0" in text:
+                        flag=True
         self.assertTrue(flag)
 
 # ---
-    def test_url_mflux(self):
+    def test_default_portal_config(self):
         flag=False
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "-t", "mflux", "-u", "http://localhost:80", "remotes"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "remote"], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
             text = line.decode()
-            if "mflux" in text:
-                if "localhost" in text:
-                    flag=True
+            if "portal" in text:
+                if "mflux" in text:
+                    if "data.pawsey.org.au" in text:
+                        flag=True
+        self.assertTrue(flag)
+
+# ---
+    def test_default_public_config(self):
+        flag=False
+        p = Popen([self.python, self.script, "-v", self.verbosity, "remote"], stdout=PIPE, stderr=STDOUT)
+        for line in p.stdout:
+            text = line.decode()
+            if "public" in text:
+                if "mflux" in text:
+                    if "data.pawsey.org.au" in text:
+                        flag=True
         self.assertTrue(flag)
 
 # ---
     def test_lpwd(self):
         flag=False
         pwd = os.getcwd()
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "lpwd"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "lpwd"], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
             if pwd in line.decode():
                 flag=True
@@ -64,7 +77,7 @@ class pshell_standard(unittest.TestCase):
 # ---
     def test_lcd(self):
         flag=False
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "lcd ."], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "lcd ."], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
             if 'Local' in line.decode():
                 flag = True
@@ -73,7 +86,7 @@ class pshell_standard(unittest.TestCase):
 # ---
     def test_lls(self):
         flag = False
-        p = Popen([self.python, self.script, "-v", self.verbosity, "-c", self.config, "lls"], stdout=PIPE, stderr=STDOUT)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "lls"], stdout=PIPE, stderr=STDOUT)
         for line in p.stdout:
             if "test_pshell.py" in line.decode():
                 flag = True

@@ -165,30 +165,42 @@ class s3_client(remote.client):
 
 #------------------------------------------------------------
 # convert fullpath to bucket, key pair
-    def path_split(self, fullpath):
-        self.logging.info("[%s]" % fullpath)
+    def path_split(self, path):
 
-# convert fullpath to [bucket][object]
+        self.logging.info("path=[%s]" % path)
+
+        fullpath = posixpath.normpath(path)
         mypath = pathlib.PurePosixPath(fullpath)
+
         bucket = None 
         key = ""
         count = len(mypath.parts)
-        if count > 2:
-            bucket = mypath.parts[2]
-            head = "%s%s/%s" % (mypath.parts[0], mypath.parts[1], bucket)
+        if count > 1:
+            bucket = mypath.parts[1]
+            head = "%s%s" % (mypath.parts[0], mypath.parts[1])
             key = fullpath[1+len(head):]
 
-        self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
+        self.logging.info("bucket=[%r] key=[%s]" % (bucket, key))
+
+# normpath will remove trailing slash, but this is meaningful for navigation
+        if path.endswith('/'):
+            key = key + '/'
 
         return bucket, key
 
 #------------------------------------------------------------
-    def cd(self, fullpath):
+    def cd(self, path):
+
+        self.logging.info("input fullpath=[%s]" % path)
+
+        fullpath = posixpath.normpath(path)
 
         self.logging.info("input fullpath=[%s]" % fullpath)
+
 # make it easier to extract the last path item (/ may or may not be terminating fullpath)
-        if fullpath[-1] == '/':
-            fullpath = fullpath[:-1]
+#        if fullpath[-1] == '/':
+#            fullpath = fullpath[:-1]
+
         bucket,key = self.path_split(fullpath)
         self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
         exists = False
@@ -218,6 +230,7 @@ class s3_client(remote.client):
             self.logging.error(str(e))
 
         if exists is True:
+            self.logging.info("output fullpath=[%s]" % fullpath)
             return fullpath
 
         raise Exception("Could not find remote path: [%s]" % fullpath)

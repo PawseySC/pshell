@@ -45,7 +45,6 @@ def main():
     p.add_argument("-v", dest='verbose', default=None, help="set verbosity level (0,1,2)")
     p.add_argument("-u", dest='url', default=None, help="Remote endpoint URL")
     p.add_argument("-t", dest='type', default=None, help="Remote endpoint type (eg mflux, s3)")
-    p.add_argument("-m", dest='mount', default=None, help="Remote endpoint name")
     p.add_argument("-k", dest='keystone', default=None, help="A URL to the REST interface for OpenStack Keystone")
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
@@ -81,11 +80,11 @@ def main():
 # NEW
     remotes_home = None
     remotes_current = None
+    endpoints = {} 
 
 # create an endpoint 
     try:
-        endpoint = None 
-        endpoints = {} 
+#        endpoint = None 
         if args.url is None:
 # existing config and no input URL
             if config.has_section(args.current) is True:
@@ -94,28 +93,22 @@ def main():
             else:
 # 1st time default
                 logging.info("Initialising [%s] config" % args.current)
-
-#                if args.current == 'public':
-#                    endpoints['public'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'public', 'home':'/' }
-#                elif args.current == 'pawsey':
-
                 if args.current == 'pawsey':
                     endpoints['portal'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'ivec'}
                     endpoints['public'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'public'}
-
-                    args.keystone = 'https://nimbus.pawsey.org.au:5000'
                     remotes_home = '/projects'
                     remotes_current = 'portal'
-                else:
-                    raise Exception("No default config available for [%s]" % args.current)
+                    args.keystone = 'https://nimbus.pawsey.org.au:5000'
 # store endpoints in config
-                config[args.current] = {'endpoints':json.dumps(endpoints)}
-
-# 1st time default or URL override
-        if endpoints is None:
-            if endpoint is None:
-                logging.info("Creating endpoint from url: [%s]" % args.url)
-                endpoints[args.mount] = {'type':args.type, 'url':args.url}
+                    config[args.current] = {'endpoints':json.dumps(endpoints)}
+                else:
+                    # TODO - could want to do this in combo with a URL ...
+                    raise Exception("No default config available for [%s]" % args.current)
+# URL override
+        else:
+            logging.info("Creating custom remote from url: [%s]" % args.url)
+            remotes_current = 'custom'
+            endpoints[remotes_current] = {'type':args.type, 'url':args.url}
 
     except Exception as e:
         logging.debug(str(e))

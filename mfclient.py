@@ -856,7 +856,7 @@ class mf_client():
         """
         Command line completion for files (aka assets)
         """
-        self.logging.debug("ca seek: cwd=[%s] partial_asset=[%s] start=[%d]" % (self.cwd, partial_asset_path, start))
+        self.logging.debug("ca seek: cwd=[%s] partial_asset=[%s] start=[%d]" % (cwd, partial_asset_path, start))
 # construct an absolute namespace (required for any remote lookups)
         candidate_ns = self.abspath(cwd, partial_asset_path)
 
@@ -939,7 +939,6 @@ class mf_client():
 #------------------------------------------------------------
     def cd(self, namespace):
         if self.namespace_exists(namespace):
-            self.cwd = namespace
             return namespace
         raise Exception("So such folder")
 
@@ -1272,11 +1271,10 @@ class mf_client():
         return
 
 # make it so ...
-        for item in item_list:
-            relpath = posixpath.relpath(path=posixpath.dirname(item), start=self.cwd)
-            to_filepath = posixpath.normpath(posixpath.join(posixpath.join(to_path, relpath), posixpath.basename(item)))
-
-            print("[%s] -> [%s]" % (item, to_filepath))
+#        for item in item_list:
+#            relpath = posixpath.relpath(path=posixpath.dirname(item), start=self.cwd)
+#            to_filepath = posixpath.normpath(posixpath.join(posixpath.join(to_path, relpath), posixpath.basename(item)))
+#            print("[%s] -> [%s]" % (item, to_filepath))
 
 
 # CURRENT - we would have to add the store to mediaflux as ADMIN 

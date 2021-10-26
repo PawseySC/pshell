@@ -17,19 +17,21 @@ class s3client_syntax(unittest.TestCase):
         global s3_client
         self.s3_client = s3_client
 
-    def test_split(self):
-        reply = self.s3_client.path_split("/acacia/bucket/object1")
+    def test_split_object(self):
+        reply = self.s3_client.path_split("/bucket/object1")
         self.assertEqual(reply[0], "bucket")
         self.assertEqual(reply[1], "object1")
 
     def test_split_prefix(self):
-        reply = self.s3_client.path_split("/acacia/bucket/prefix/")
+        reply = self.s3_client.path_split("/bucket/prefix/")
         self.assertEqual(reply[0], "bucket")
         self.assertEqual(reply[1], "prefix/")
 
-    def test_cd(self):
-        reply = self.s3_client.cd("/mount")
-        self.assertEqual(reply, "/mount")
+    def test_split_path_resolution(self):
+        reply = self.s3_client.path_split("/bucket/prefix1/../prefix2")
+        self.assertEqual(reply[0], "bucket")
+        self.assertEqual(reply[1], "prefix2")
+
 
 ########################################
 # convenience wrapper for squishing bugs
