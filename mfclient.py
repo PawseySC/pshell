@@ -60,9 +60,7 @@ class mf_client():
         self.port = int(port)
         self.domain = domain
         self.timeout = 120
-        self.cwd = None
-# message for parent
-        self.status = "not connected"
+        self.status = "[offline]"
 
 # NB: there can be some subtle bugs in python library handling if these are "" vs None
         self.session = ""
@@ -170,7 +168,7 @@ class mf_client():
 # normal session - get user identity
                         elem = reply.find(".//actor")
                         identity = "%s=%s" % (elem.attrib['type'], elem.text)
-                    self.status = "connected: %s as %s" % (self.server, identity)
+                    self.status = "[online:%s] %s : %s" % (self.type, self.server, identity)
                     return True
 
             except Exception as e:
@@ -187,11 +185,11 @@ class mf_client():
 # don't wipe token as there may be another cause (eg server down) for the connection failure
 # rely on explicit methods, such as delegate off, for a token wipe
                 break
-        self.status = "Not connected: %r" % self.server
+        self.status = "[offline:%s] %s" % (self.type, self.server)
         return False
 
 #------------------------------------------------------------
-    def login(self, user=None, password=None, token=None):
+    def login(self, user=None, password=None, domain=None, token=None):
         """
         Authenticate to the server and record the session on success
 
@@ -206,9 +204,16 @@ class mf_client():
         if self.protocol != "https":
             self.logging.debug("Permitting unencrypted login; I hope you know what you're doing.")
 
+# NEW - priority order: use preset domain, otherwise API argument, finally prompt
+        if self.domain is not None:
+            domain = self.domain
+        else:
+            if domain is None:
+                domain = input("Domain: ")
+
 # command prompt entry
         if user is None and token is None:
-            logging.info("Authentication domain [%s]" % self.domain)
+            logging.info("Authentication domain [%s]" % domain)
             user = input("Username: ")
             password = getpass.getpass("Password: ")
 
@@ -216,7 +221,7 @@ class mf_client():
 # priority order: user/password followed by token
         reply = None
         if user is not None:
-            reply = self.aterm_run("system.logon :domain %s :user %s :password %s" % (self.domain, user, password))
+            reply = self.aterm_run("system.logon :domain %s :user %s :password %s" % (domain, user, password))
         else:
             if token is not None:
                 if len(token) > 0:
@@ -334,7 +339,7 @@ class mf_client():
         if elem is not None:
             elem = tree.find(".//message")
             error_message = self._xml_succint_error(elem.text)
-            self.logging.debug("_post() raise: [%s]" % error_message)
+            self.logging.debug("raise: [%s]" % error_message)
             raise Exception(error_message)
 
         return tree
@@ -772,31 +777,31 @@ class mf_client():
         return False
 
 #------------------------------------------------------------
-    def absolute_namespace(self, line):
+# completion helper ...
+#    def absolute_namespace(self, cwd, path):
+    def abspath(self, cwd, path):
         """
         enforce absolute remote namespace path
         """
 
-        self.logging.debug("cwd = [%s] input = [%s]" % (self.cwd, line))
+        self.logging.debug("cwd = [%s] input = [%s]" % (cwd, path))
 
-        if line.startswith('"') and line.endswith('"'):
-            line = line[1:-1]
+#        if line.startswith('"') and line.endswith('"'):
+#            line = line[1:-1]
 
-        if not posixpath.isabs(line):
-            line = posixpath.join(self.cwd, line)
-
-        fullpath = posixpath.normpath(line)
+        if not posixpath.isabs(path):
+            fullpath = posixpath.normpath(posixpath.join(cwd, path))
+        else:
+            fullpath = posixpath.normpath(path)
 
         return fullpath
 
 #------------------------------------------------------------
-    def complete_folder(self, partial_ns, start):
+    def complete_folder(self, cwd, partial_ns, start):
         """
         Command line completion for folders (aka namespaces)
         """
-
-        self.logging.debug("cn seek: partial_ns=[%s] start=[%d]" % (partial_ns, start))
-
+        self.logging.debug("cn seek: cwd=[%s] partial_ns=[%s] start=[%d]" % (cwd, partial_ns, start))
 # extract any partial namespace to use as pattern match
         match = re.match(r".*/", partial_ns)
         if match:
@@ -816,7 +821,9 @@ class mf_client():
             return [partial_ns[start:]+"/"]
 
 # construct an absolute namespace (required for any remote lookups)
-        target_ns = self.absolute_namespace(partial_ns[:offset])
+#        target_ns = self.absolute_namespace(partial_ns[:offset])
+        target_ns = self.abspath(cwd, partial_ns[:offset])
+
         self.logging.debug("cn seek: target_ns: [%s] : prefix=[%r] : pattern=[%r] : start=%r : xlat=%r" % (target_ns, prefix, pattern, start, xlat_offset))
 
 # generate listing in target namespace for completion matches
@@ -845,14 +852,13 @@ class mf_client():
         return namespace.replace("'", "\\'")
 
 #------------------------------------------------------------
-    def complete_file(self, partial_asset_path, start):
+    def complete_file(self, cwd, partial_asset_path, start):
         """
         Command line completion for files (aka assets)
         """
-
-        self.logging.debug("ca seek: partial_asset=[%s] start=[%d]" % (partial_asset_path, start))
+        self.logging.debug("ca seek: cwd=[%s] partial_asset=[%s] start=[%d]" % (self.cwd, partial_asset_path, start))
 # construct an absolute namespace (required for any remote lookups)
-        candidate_ns = self.absolute_namespace(partial_asset_path)
+        candidate_ns = self.abspath(cwd, partial_asset_path)
 
         if self.namespace_exists(candidate_ns):
 # candidate is a namespace -> it's our target for listing

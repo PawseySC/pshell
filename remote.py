@@ -72,10 +72,10 @@ class client:
     def info(self, remote_filepath):
         raise Exception("Not implemented")
 
-    def complete_file(self, partial, start):
+    def complete_file(self, cwd, partial, start):
         raise Exception("Not implemented")
 
-    def complete_folder(self, partial, start):
+    def complete_folder(self, cwd, partial, start):
         raise Exception("Not implemented")
 
     def copy(self, src, dest, dest_type):

@@ -45,7 +45,7 @@ def main():
     p.add_argument("-v", dest='verbose', default=None, help="set verbosity level (0,1,2)")
     p.add_argument("-u", dest='url', default=None, help="Remote endpoint URL")
     p.add_argument("-t", dest='type', default=None, help="Remote endpoint type (eg mflux, s3)")
-    p.add_argument("-m", dest='mount', default='/', help="Remote endpoint mount location")
+    p.add_argument("-m", dest='mount', default=None, help="Remote endpoint name")
     p.add_argument("-k", dest='keystone', default=None, help="A URL to the REST interface for OpenStack Keystone")
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
@@ -78,10 +78,14 @@ def main():
     logging.debug("Reading config file: [%s]" % config_filepath)
     config.read(config_filepath)
 
+# NEW
+    remotes_home = None
+    remotes_current = None
+
 # create an endpoint 
     try:
         endpoint = None 
-        endpoints = None 
+        endpoints = {} 
         if args.url is None:
 # existing config and no input URL
             if config.has_section(args.current) is True:
@@ -89,19 +93,29 @@ def main():
                 endpoints = json.loads(config.get(args.current, 'endpoints'))
             else:
 # 1st time default
-                logging.info("Initialising Pawsey config")
-                endpoint = {'name':args.current, 'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'ivec' }
-                args.mount = '/projects'
-                args.keystone = 'https://nimbus.pawsey.org.au:5000'
+                logging.info("Initialising [%s] config" % args.current)
+
+#                if args.current == 'public':
+#                    endpoints['public'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'public', 'home':'/' }
+#                elif args.current == 'pawsey':
+
+                if args.current == 'pawsey':
+                    endpoints['portal'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'ivec'}
+                    endpoints['public'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'public'}
+
+                    args.keystone = 'https://nimbus.pawsey.org.au:5000'
+                    remotes_home = '/projects'
+                    remotes_current = 'portal'
+                else:
+                    raise Exception("No default config available for [%s]" % args.current)
+# store endpoints in config
+                config[args.current] = {'endpoints':json.dumps(endpoints)}
+
 # 1st time default or URL override
         if endpoints is None:
             if endpoint is None:
                 logging.info("Creating endpoint from url: [%s]" % args.url)
-                endpoint = {'name':'custom', 'type':args.type, 'url':args.url}
-
-# setup for adding as remotes
-            endpoints = { args.mount:endpoint }
-            config[args.current] = {'endpoints':json.dumps(endpoints)}
+                endpoints[args.mount] = {'type':args.type, 'url':args.url}
 
     except Exception as e:
         logging.debug(str(e))
@@ -122,6 +136,18 @@ def main():
 # generic thread pool for background processes
     my_parser.thread_executor = concurrent.futures.ThreadPoolExecutor(max_workers=my_parser.thread_max)
 
+# NEW - default remote name (could make it an arg...)
+    if remotes_current is not None:
+        my_parser.config.set(args.current, 'remotes_current', remotes_current)
+    if my_parser.config.has_option(args.current, 'remotes_current'):
+        my_parser.remotes_current = my_parser.config.get(args.current, 'remotes_current')
+
+# NEW - default home folder (could make it an arg...)
+    if remotes_home is not None:
+        my_parser.config.set(args.current, 'remotes_home', remotes_home)
+    if my_parser.config.has_option(args.current, 'remotes_home'):
+        my_parser.cwd = my_parser.config.get(args.current, 'remotes_home')
+
 # add discovery url
     if args.keystone is not None:
         my_parser.config.set(args.current, 'keystone', args.keystone)
@@ -131,11 +157,7 @@ def main():
 # add endpoints
     try:
         for mount in endpoints:
-            endpoint = endpoints[mount]
-            logging.info("Connecting [%s] endpoint to [%s]" % (endpoint['type'], mount))
-# create remote client and associate mount
-            myclient = my_parser.remotes_new(endpoint)
-            my_parser.remotes_add(mount, myclient)
+            my_parser.remotes_add(mount, endpoints[mount])
 
 # added all remotes without error - save to config
         my_parser.remotes_config_save()

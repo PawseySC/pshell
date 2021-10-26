@@ -9,6 +9,7 @@ import time
 import json
 import shlex
 import logging
+import pathlib
 import posixpath
 import threading
 import configparser
@@ -51,6 +52,7 @@ class parser(cmd.Cmd):
     config_name = None
     config_filepath = None
     keystone = None
+    remotes_current = None
     remotes = {}
     cwd = '/'
     interactive = True
@@ -68,7 +70,7 @@ class parser(cmd.Cmd):
 
 # --- initial setup 
     def preloop(self):
-        self.prompt = "pshell:%s>" % self.cwd
+        self.prompt = "%s:%s>" % (self.remotes_current, self.cwd)
 
 # --- not logged in -> don't even attempt to process remote commands
     def precmd(self, line):
@@ -76,7 +78,7 @@ class parser(cmd.Cmd):
 
 # --- prompt refresh 
     def postcmd(self, stop, line):
-        self.prompt = "pshell:%s>" % self.cwd
+        self.prompt = "%s:%s>" % (self.remotes_current, self.cwd)
         return cmd.Cmd.postcmd(self, stop, line)
 
 # ---
@@ -85,7 +87,7 @@ class parser(cmd.Cmd):
 
 # ---
     def default(self, line):
-        remote = self.remotes_get(self.cwd)
+        remote = self.remotes[self.remotes_current]
         remote.command(line)
 
 # TODO - complete for local commands?
@@ -117,25 +119,26 @@ class parser(cmd.Cmd):
     def complete_rmdir(self, text, line, start_index, end_index):
         return self.remotes_complete(line[6:end_index], start_index-6, file_search=False)
 
+# ---
+    def complete_remote(self, text, line, start_index, end_index):
+#        self.logging.info("text=[%s] line=[%s] start_index=[%d] end_index=[%d]" % (text, line, start_index, end_index))
+        candidates = []
+        for name in self.remotes:
+            if name.startswith(text):
+                candidates.append(name)
+        return candidates
+
 #------------------------------------------------------------
     def remotes_complete(self, partial, start, file_search=True, folder_search=True):
-        candidate_list = []
-# complete against mounted remotes roots
-        size = len(partial)
-        for mount in self.remotes:
-            if (size < len(mount)):
-                if mount.startswith(partial) is True:
-                    candidate_list.append(mount[start:])
-
-        if len(candidate_list) > 0:
-            return candidate_list
-
-# complete against mounted remotes with respective client API
-        remote = self.remotes_get(partial)
-        if file_search is True:
-            candidate_list += remote.complete_file(partial, start)
-        if folder_search is True:
-            candidate_list += remote.complete_folder(partial, start)
+        try:
+            candidate_list = []
+            remote = self.remotes[self.remotes_current]
+            if file_search is True:
+                candidate_list += remote.complete_file(self.cwd, partial, start)
+            if folder_search is True:
+                candidate_list += remote.complete_folder(self.cwd, partial, start)
+        except Exception as e:
+            self.logging.error(str(e))
 
         return candidate_list
 
@@ -143,9 +146,8 @@ class parser(cmd.Cmd):
     def remotes_config_save(self):
         endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
         for mount, endpoint in endpoints.items():
-            client = self.remotes_get(mount)
+            client = self.remotes[mount]
             self.logging.debug("updating mount=[%s] using client=[%r]" % (mount, client))
-# refresh the config endpoint via the client
             if client is not None:
                 endpoints[mount] = client.endpoint()
         self.config[self.config_name]['endpoints'] = json.dumps(endpoints)
@@ -154,54 +156,70 @@ class parser(cmd.Cmd):
         with open(self.config_filepath, 'w') as f:
             self.config.write(f)
 
-#-----------------------------------------------------------
-    def remotes_new(self, endpoint):
+#------------------------------------------------------------
+    def remotes_add(self, name, endpoint):
         try:
-            self.logging.info("Creating remote type = [%s]" % endpoint['type'])
-
+            self.logging.info("Creating remote name = [%s] type = [%s]" % (name, endpoint['type']))
+# create client
             if endpoint['type'] == 'mflux':
-                return mfclient.mf_client.from_endpoint(endpoint)
+                client = mfclient.mf_client.from_endpoint(endpoint)
             elif endpoint['type'] == 's3':
-                return s3client.s3_client.from_endpoint(endpoint)
-            else:
-                error = "unknown type: [%s]" % endpoint['type']
+                client = s3client.s3_client.from_endpoint(endpoint)
+# register in parser
+            self.remotes[name] = client
+# get connection status
+            client.connect()
+# register in config
+            if self.config is not None:
+                endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
+                endpoints[name] = client.endpoint()
+                self.config.set(self.config_name, 'endpoints', json.dumps(endpoints))
 
         except Exception as e:
-            error = str(e)
-
-        raise Exception("Failed to create remote, bad endpoint: %s" % error)
-
-#-----------------------------------------------------------
-    def remotes_add(self, mount='/remote', remote=None):
-        self.logging.info("mount = [%s], remote = [%r]" % (mount, remote))
-
-# get connection status, mount and set cwd
-        try:
-            remote.connect()
-        except Exception as e:
-            self.logging.debug(str(e))
-
-        self.remotes[mount] = remote
-        self.do_cd(mount)
-
-# add or update endpoint in config 
-        if self.config is not None:
-            endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
-            endpoints[mount] = remote.endpoint()
-            self.config.set(self.config_name, 'endpoints', json.dumps(endpoints))
-        else:
-            self.logging.debug("Missing config in parser")
+            self.logging.error(str(e))
 
 #------------------------------------------------------------
-    def remotes_get(self, path):
-        self.logging.debug("path=[%s]" % path)
+    def abspath(self, path):
+        self.logging.info("path=[%s]" % path)
+
+        if path.startswith('"') and path.endswith('"'):
+            path = line[1:-1]
+
+        if posixpath.isabs(path):
+            return path
+
+        return posixpath.join(self.cwd, path)
+
+#------------------------------------------------------------
+# deprec as well
+    def remotes_abspath_get(self, local_path):
+        self.logging.info("local_path=[%s]" % local_path)
+
+        if local_path.startswith('"') and local_path.endswith('"'):
+            local_path = line[1:-1]
+
+        if posixpath.isabs(local_path):
+            remote,abspath = self.unc_split(local_path)
+        else:
+            remote = self.remotes_current
+            abspath = posixpath.join(self.cwd, local_path)
+
+        self.logging.info("remote=[%s] remote abspath=[%s]" % (remote, abspath))
+ 
+        return remote, abspath
+
+#------------------------------------------------------------
+# TODO - this will become return self.remotes[name]
+    def remotes_get_deprec(self, path):
+        self.logging.info("path=[%s]" % path)
+
         fullpath = self.absolute_remote_filepath(path)
         for mount in self.remotes:
 # FIXME - should look for best match ... eg we have a remote on '/' and another on '/projects'
             if fullpath.startswith(mount) is True:
                 self.logging.debug("matched [%s] with [%s] = %r" % (fullpath, mount, self.remotes[mount]))
                 return self.remotes[mount]
-        raise Exception("Could not find anything connected to [%s]" % path)
+        raise Exception("Nothing connected to: %s" % path)
 
 #------------------------------------------------------------
     def requires_auth(self, line):
@@ -272,19 +290,29 @@ class parser(cmd.Cmd):
         print("Usage: file <filename>\n")
 
     def do_file(self, line):
-        remote = self.remotes_get(line)
-        fullpath = self.absolute_remote_filepath(line)
+        remote = self.remotes[self.remotes_current]
+        fullpath = self.abspath(line)
         remote.info(fullpath)
         for key, value in remote.info(fullpath).items():
             print("%10s : %s" % (key, value))
 
 #------------------------------------------------------------
-    def help_remotes(self):
+    def help_remote(self):
         print("\nInformation about remote clients\n")
-        print("Usage: remotes <add /mount type URL>\n")
+        print("Usage: remote <name>\n")
+        print("Usage: remote <add /mount type URL>\n")
 
 # --- 
-    def do_remotes(self, line):
+    def do_remote(self, line):
+
+        # CURRENT
+        if line in self.remotes:
+            self.remotes_current = line
+            remote = self.remotes[line]
+            self.cwd = "/"
+            return
+
+
         if 'add' in line:
 
             args = line.split()
@@ -295,14 +323,13 @@ class parser(cmd.Cmd):
             remote_type = args[2]
             remote_url = args[3]
 
-            print("mount on [%s] a server of type [%s] with URL [%s]" % (mount, remote_type, remote_url))
+            print("remote [%s] server of type [%s] with URL [%s]" % (mount, remote_type, remote_url))
 
-            myclient = self.remotes_new({'type':remote_type, 'url':remote_url})
-            self.remotes_add(mount, myclient)
+            self.remotes_add(mount, {'type':remote_type, 'url':remote_url})
 
         else:
-            for mount, client in self.remotes.items():
-                print("%-20s [%s] %s" % (mount, client.type, client.status))
+            for name, client in self.remotes.items():
+                print("%-20s %s" % (name, client.status))
 
 #------------------------------------------------------------
     def help_ec2(self):
@@ -328,21 +355,22 @@ class parser(cmd.Cmd):
 # find a mediaflux client
 # use as SSO for keystone auth
 # do discovery
-# TODO - if no SSO (or we remove) then do old fashioned login
-            mfclient = None
-            for mount, client in self.remotes.items():
-                if client.type == 'mflux':
-                    self.logging.info("Attempting SSO via: [%r]" % client)
-                    mfclient = client
+            remote = self.remotes[self.remotes_current]
+            endpoint = remote.endpoint()
+            if endpoint['type'] == 'mflux':
+                self.logging.info("Attempting SSO via: [%r]" % remote)
+            else:
+# TODO - do an old fashioned login instead
+                raise Exception("No valid SSO client found")
+
             try:
-                self.keystone.connect(mfclient, refresh=True)
-                s3_client = s3client.s3_client()
-                self.keystone.discover_s3(s3_client)
-                self.remotes_add('/'+s3_client.prefix, s3_client)
+                self.keystone.connect(remote, refresh=True)
+                endpoint = self.keystone.discover_s3_endpoint()
+                self.remotes_add(endpoint['name'], endpoint)
                 self.remotes_config_save()
             except Exception as e:
                 self.logging.info(str(e))
-                # probably no boto3 - may have still got credentials
+# probably no boto3 - may have still got credentials though
                 print("Discovery incomplete")
             return
 
@@ -457,8 +485,10 @@ class parser(cmd.Cmd):
 
 # --- 
     def do_ls(self, line):
-        fullpath = self.absolute_remote_filepath(line)
-        remote = self.remotes_get(fullpath)
+
+        fullpath = self.abspath(line)
+        remote = self.remotes[self.remotes_current]
+
         remote_list = remote.ls_iter(fullpath)
         count = 0
         size = max(1, min(self.terminal_height - 3, 100))
@@ -506,10 +536,16 @@ class parser(cmd.Cmd):
 # --
     def do_get(self, line):
 # turn input line into a matching file iterator
-        line = self.absolute_remote_filepath(line)
-        remote = self.remotes_get(line)
+
+#        line = self.absolute_remote_filepath(line)
+#        remote = self.remotes_get(line)
+
+        remote = self.remotes[self.remotes_current]
+        abspath = self.abspath(line)
+
         if remote is not None:
-            results = remote.get_iter(line)
+#            results = remote.get_iter(line)
+            results = remote.get_iter(abspath)
             self.total_count = int(next(results))
             self.total_bytes = int(next(results))
             self.get_count = 0
@@ -594,7 +630,8 @@ class parser(cmd.Cmd):
     def do_put(self, line, metadata=False):
 
         self.logging.info("[%s]" % line)
-        remote = self.remotes_get(self.cwd)
+#        remote = self.remotes_get(self.cwd)
+        remote = self.remotes[self.remotes_current]
 
         try:
             self.put_count = 0
@@ -644,11 +681,35 @@ class parser(cmd.Cmd):
             raise Exception("Expected exactly two path arguments: source and destination")
 
 # source location is the remote client that controls the copy
-        from_abspath = self.absolute_remote_filepath(path_list[0])
-        to_abspath = self.absolute_remote_filepath(path_list[1])
-        source = self.remotes_get(from_abspath)
-        destination = self.remotes_get(to_abspath)
-        source.copy(from_abspath, to_abspath, destination, prompt=self.ask)
+#        from_abspath = self.absolute_remote_filepath(path_list[0])
+#        to_abspath = self.absolute_remote_filepath(path_list[1])
+#        source = self.remotes_get(from_abspath)
+#        destination = self.remotes_get(to_abspath)
+#        source.copy(from_abspath, to_abspath, destination, prompt=self.ask)
+
+
+#------------------------------------------------------------
+# adapted from s3client
+    def unc_split(self, fullpath):
+        self.logging.info("[%s]" % fullpath)
+
+# convert fullpath to [bucket][object]
+        mypath = pathlib.PurePosixPath(fullpath)
+        host = None 
+        path = "/"
+        count = len(mypath.parts)
+
+        if count > 1:
+            host = "%s%s" % (mypath.parts[0], mypath.parts[1])
+
+        i=2
+        while i<count:
+            path = posixpath.join(path, mypath.parts[i])
+            i += 1
+
+        self.logging.info("host=[%r] path=[%r]" % (host, path))
+
+        return host, path
 
 #------------------------------------------------------------
     def help_cd(self):
@@ -656,15 +717,9 @@ class parser(cmd.Cmd):
         print("Usage: cd <folder>\n")
 
     def do_cd(self, line):
-        candidate = self.absolute_remote_filepath(line)
-        remote = self.remotes_get(candidate)
-# if exact match to a mount - just cwd to make this the active remote 
-# if not logged in - cd method simply won't work (can't find folder)
-        if candidate in self.remotes:
-            remote.cwd = candidate
-            self.cwd = candidate
-        else:
-            self.cwd = remote.cd(candidate)
+        remote = self.remotes[self.remotes_current]
+        abspath = self.abspath(line)
+        self.cwd = remote.cd(abspath)
 
 #------------------------------------------------------------
     def help_pwd(self):
@@ -681,8 +736,8 @@ class parser(cmd.Cmd):
         print("Usage: mkdir <folder>\n")
 
     def do_mkdir(self, line, silent=False):
-        ns_target = self.absolute_remote_filepath(line)
-        remote = self.remotes_get(ns_target)
+        ns_target = self.abspath(line)
+        remote = self.remotes[self.remotes_current]
         remote.mkdir(ns_target)
 
 #------------------------------------------------------------
@@ -691,9 +746,9 @@ class parser(cmd.Cmd):
         print("Usage: rm <file or pattern>\n")
 
     def do_rm(self, line):
-        fullpath = self.absolute_remote_filepath(line)
-        remote = self.remotes_get(fullpath)
-        if remote.rm(fullpath, prompt=self.ask) is False:
+        abspath = self.abspath(line)
+        remote = self.remotes[self.remotes_current]
+        if remote.rm(abspath, prompt=self.ask) is False:
             print("Delete aborted")
 
 #------------------------------------------------------------
@@ -702,8 +757,9 @@ class parser(cmd.Cmd):
         print("Usage: rmdir <folder>\n")
 
     def do_rmdir(self, line):
-        ns_target = self.absolute_remote_filepath(line)
-        remote = self.remotes_get(ns_target)
+        ns_target = self.abspath(line)
+        remote = self.remotes[self.remotes_current]
+
         if self.ask("Remove folder: %s (y/n) " % ns_target):
             remote.rmdir(ns_target)
         else:
@@ -786,9 +842,10 @@ class parser(cmd.Cmd):
 
 # ---
     def do_logout(self, line):
-        remote = self.remotes_get(self.cwd)
+        remote = self.remotes[self.remotes_current]
         if remote is not None:
             remote.logout()
+            self.remotes_config_save()
 
 #------------------------------------------------------------
     def help_login(self):
@@ -797,11 +854,10 @@ class parser(cmd.Cmd):
 
 # ---
     def do_login(self, line):
-        remote = self.remotes_get(self.cwd)
-        if remote is None:
-            raise Exception("Please specify remote target for login")
-        remote.login()
-        self.remotes_config_save()
+        remote = self.remotes[self.remotes_current]
+        if remote is not None:
+            remote.login()
+            self.remotes_config_save()
 
 #------------------------------------------------------------
     def help_delegate(self):
@@ -811,7 +867,7 @@ class parser(cmd.Cmd):
 
 # ---
     def do_delegate(self, line):
-        remote = self.remotes_get(self.cwd)
+        remote = self.remotes[self.remotes_current]
         if remote.delegate(line) is True:
             self.remotes_config_save()
 
@@ -822,8 +878,8 @@ class parser(cmd.Cmd):
 
 # --
     def do_publish(self, line):
-        fullpath = self.absolute_remote_filepath(line)
-        remote = self.remotes_get(fullpath)
+        fullpath = self.abspath(line)
+        remote = self.remotes[self.remotes_current]
         count = remote.publish(fullpath)
         print("Published %d files" % count)
 
@@ -834,8 +890,8 @@ class parser(cmd.Cmd):
 
 # --
     def do_unpublish(self, line):
-        fullpath = self.absolute_remote_filepath(line)
-        remote = self.remotes_get(fullpath)
+        fullpath = self.abspath(line)
+        remote = self.remotes[self.remotes_current]
         count = remote.unpublish(fullpath)
         print("Unpublished %d files" % count)
 

@@ -32,9 +32,8 @@ class s3_client(remote.client):
         self.url = url
         self.access = access
         self.secret = secret
-        self.cwd = None
         self.s3 = None
-        self.status = "not connected"
+        self.status = "[offline]"
         self.logging = logging.getLogger('s3client')
         global build
 
@@ -63,9 +62,9 @@ class s3_client(remote.client):
         self.logging.info('endpoint=%s using acess=%s' % (self.url, self.access))
         try:
             self.s3 = boto3.client('s3', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
-            self.status = "connected: as access=%s" % self.access
+            self.status = "[online:%s] %s : access=%s" % (self.type, self.url, self.access)
         except Exception as e:
-            self.status = "not connected: %s" % str(e)
+            self.status = "[offline:%s] %s : %s" % (self.type, self.url, str(e))
 
 #------------------------------------------------------------
     def login(self, access=None, secret=None):
@@ -100,12 +99,12 @@ class s3_client(remote.client):
         return "%6s %-2s" % (f, suffixes[rank])
 
 #------------------------------------------------------------
-    def complete_path(self, partial, start, match_prefix=True, match_object=True):
+    def complete_path(self, cwd, partial, start, match_prefix=True, match_object=True):
 
-        self.logging.info("partial=[%s] start=[%d]" % (partial, start))
+        self.logging.info("cwd=[%s] partial=[%s] start=[%d]" % (cwd, partial, start))
 
         try:
-            fullpath = posixpath.join(self.cwd, partial)
+            fullpath = posixpath.join(cwd, partial)
             self.logging.info("fullpath=[%s]" % fullpath)
             bucket, key = self.path_split(fullpath)
 
@@ -157,12 +156,12 @@ class s3_client(remote.client):
         return candidate_list
 
 #------------------------------------------------------------
-    def complete_folder(self, partial, start):
-        return self.complete_path(partial, start, match_prefix=True, match_object=False)
+    def complete_folder(self, cwd, partial, start):
+        return self.complete_path(cwd, partial, start, match_prefix=True, match_object=False)
 
 #------------------------------------------------------------
-    def complete_file(self, partial, start):
-        return self.complete_path(partial, start, match_prefix=True, match_object=True)
+    def complete_file(self, cwd, partial, start):
+        return self.complete_path(cwd, partial, start, match_prefix=True, match_object=True)
 
 #------------------------------------------------------------
 # convert fullpath to bucket, key pair
@@ -219,11 +218,9 @@ class s3_client(remote.client):
             self.logging.error(str(e))
 
         if exists is True:
-            self.cwd = fullpath
-        else:
-            self.logging.info("Could not find remote path: [%s]" % fullpath)
+            return fullpath
 
-        return self.cwd
+        raise Exception("Could not find remote path: [%s]" % fullpath)
 
 #------------------------------------------------------------
     def ls_iter(self, path):

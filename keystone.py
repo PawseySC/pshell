@@ -51,27 +51,6 @@ class keystone:
         self.get_credentials()
 
 #------------------------------------------------------------
-    def discover_s3(self, s3client):
-
-        s3endpoint = self.s3_candidate_find()
-
-# TODO - could potentially be a list of accessible endpoints
-        if s3endpoint:
-# TODO - can we discover the s3 url?
-#            s3client.connect('https://nimbus.pawsey.org.au:8080', s3endpoint[1], s3endpoint[2], s3endpoint[0])
-            s3client.url = 'https://nimbus.pawsey.org.au:8080'
-            s3client.access = s3endpoint[1]
-            s3client.secret = s3endpoint[2]
-            s3client.prefix = s3endpoint[0]
-        else:
-# nothing found - clear the deck (ie ec2 credentials deleted)
-#            s3client.connect(None, None, None, None)
-            s3client.url = None
-            s3client.access = None
-            s3client.secret = None
-            s3client.prefix = None
-
-#------------------------------------------------------------
     def get_auth_token(self, user, password):
         data = '{ "auth": { "identity": { "methods": ["password"], "password": { "user": { "name": "%s", "domain": { "name": "pawsey" }, "password": "%s" } } } } }' % (user, password)
         length = len(data)
@@ -149,12 +128,17 @@ class keystone:
         self.logging.info("success")
 
 #------------------------------------------------------------
-    def s3_candidate_find(self):
+    def discover_s3_endpoint(self):
 # TODO - could we query the magenta url as well???
+        endpoint = {'name':'s3project', 'type':'s3', 'url':'https://nimbus.pawsey.org.au:8080'}
         for project_name in self.project_dict:
             for credential in self.credential_list:
                 if credential['tenant_id'] == self.project_dict[project_name]:
-                    return (project_name, credential['access'], credential['secret'])
+                    endpoint['name'] = project_name
+                    endpoint['access'] = credential['access']
+                    endpoint['secret'] = credential['secret']
+
+        return endpoint
 
 #------------------------------------------------------------
     def credentials_print(self):
