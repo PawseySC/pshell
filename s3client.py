@@ -166,12 +166,13 @@ class s3_client(remote.client):
 #------------------------------------------------------------
 # convert fullpath to bucket, key pair
     def path_split(self, path):
-
         self.logging.info("path=[%s]" % path)
-
         fullpath = posixpath.normpath(path)
+# we only accept absolute paths for s3
+        if posixpath.isabs(fullpath) is False:
+            self.logging.info("Warning: converting relative path to absolute")
+            fullpath = '/'+fullpath
         mypath = pathlib.PurePosixPath(fullpath)
-
         bucket = None 
         key = ""
         count = len(mypath.parts)
@@ -180,11 +181,12 @@ class s3_client(remote.client):
             head = "%s%s" % (mypath.parts[0], mypath.parts[1])
             key = fullpath[1+len(head):]
 
-        self.logging.info("bucket=[%r] key=[%s]" % (bucket, key))
-
 # normpath will remove trailing slash, but this is meaningful for navigation
-        if path.endswith('/'):
-            key = key + '/'
+        if bucket is not None:
+            if path.endswith('/'):
+                key = key + '/'
+
+        self.logging.info("bucket=[%r] key=[%s]" % (bucket, key))
 
         return bucket, key
 
@@ -240,6 +242,11 @@ class s3_client(remote.client):
 
         bucket,key = self.path_split(path)
         self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
+
+# specific to doing an ls with a non-empty key
+        if len(key) > 2:
+            if key.endswith('/') is False:
+                key = key+'/'
 
         if bucket is not None:
             paginator = self.s3.get_paginator('list_objects_v2')
