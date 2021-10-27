@@ -1,0 +1,4 @@
+test_pshell.py
+test_parser.py
+test_mfclient.py
+test_s3client.py
