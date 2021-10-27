@@ -187,7 +187,7 @@ class parser(cmd.Cmd):
         else:
             path = posixpath.normpath(line)
 # replace any trailing / that may have been removed by normpath - important for S3 prefixes
-        if line[-1] == '/':
+        if line.endswith('/'):
             path = path+'/'
         return path
 

@@ -5,8 +5,9 @@ python setup.py bdist --formats=wininst
 
 dist/pshell-1.0.macosx-10.6-intel.exe 
 
+FIXME - this works, but does not connect to a python installation (if python is missing)
 
-FIXME - this no longer works ...
+pyinstaller in a docker container might be the way to go ...
 
 
 

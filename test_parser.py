@@ -15,6 +15,9 @@ class parser_standard(unittest.TestCase):
         self.parser.cwd = "/root"
 
 # --- abspath
+    def test_abspath_empty(self):
+        result = self.parser.abspath("")
+        self.assertEqual(result, '/root')
 
     def test_abspath_folder(self):
         result = self.parser.abspath("folder")
