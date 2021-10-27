@@ -310,19 +310,17 @@ class parser(cmd.Cmd):
 
         if 'login' in line:
             self.logging.info("Attempting discovery via: [%s]" % self.keystone)
-# find a mediaflux client
-# use as SSO for keystone auth
-# do discovery
-            remote = self.remotes[self.remotes_current]
-            endpoint = remote.endpoint()
-            if endpoint['type'] == 'mflux':
-                self.logging.info("Attempting SSO via: [%r]" % remote)
-            else:
-# TODO - do an old fashioned login instead
-                raise Exception("No valid SSO client found")
+# use mfclient as SSO for keystone auth - deprec
+#            remote = self.remotes[self.remotes_current]
+#            endpoint = remote.endpoint()
+#            if endpoint['type'] == 'mflux':
+#                self.logging.info("Attempting SSO via: [%r]" % remote)
+#            else:
+#                raise Exception("No valid SSO client found")
 
             try:
-                self.keystone.connect(remote, refresh=True)
+#                self.keystone.connect(remote)
+                self.keystone.connect()
                 endpoint = self.keystone.discover_s3_endpoint()
                 self.remotes_add(endpoint['name'], endpoint)
                 self.remotes_config_save()

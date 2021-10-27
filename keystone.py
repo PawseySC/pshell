@@ -41,12 +41,26 @@ class keystone:
 
 #------------------------------------------------------------
 # connect to keystone and acquire user details via mflux sso
-    def connect(self, mfclient, refresh=False):
-        self.logging.info("url=%r and refresh=%r" % (self.url, refresh))
-# refresh auth token
-        if refresh == True:
-            self.sso_mfclient(mfclient)
-# refresh info
+    def connect(self, mfclient=None):
+
+        self.logging.info("url=%r and mfclient=%r" % (self.url, mfclient))
+# first try (if cached credentials)
+        try:
+            self.get_projects()
+            self.get_credentials()
+            return
+        except Exception as e:
+            self.logging.info(str(e))
+
+# SSO auth - I don't like it
+#            self.sso_mfclient(mfclient)
+ 
+ # manual auth
+        print("Keystone authentication required.")
+        user = input("User: ")
+        password = getpass.getpass("Password: ")
+        self.get_auth_token(user, password)
+# second try 
         self.get_projects()
         self.get_credentials()
 
@@ -64,6 +78,7 @@ class keystone:
         self.logging.debug("acquired token for user [%s]" % self.user)
 
 #------------------------------------------------------------
+# deprec
     def sso_mfclient(self, mfclient):
         xml_reply = mfclient.aterm_run('user.self.describe')
         elem = xml_reply.find(".//user")
