@@ -179,16 +179,16 @@ class parser(cmd.Cmd):
             self.logging.error(str(e))
 
 #------------------------------------------------------------
-    def abspath(self, path):
-        self.logging.info("input path=[%s]" % path)
-
-        if path.startswith('"') and path.endswith('"'):
-            path = line[1:-1]
-
-        if posixpath.isabs(path) is False:
-            path = posixpath.normpath(posixpath.join(self.cwd, path))
-
-        self.logging.info("output path=[%s]" % path)
+    def abspath(self, line):
+        if line.startswith('"') and line.endswith('"'):
+            line = line[1:-1]
+        if posixpath.isabs(line) is False:
+            path = posixpath.normpath(posixpath.join(self.cwd, line))
+        else:
+            path = posixpath.normpath(line)
+# replace any trailing / that may have been removed by normpath - important for S3 prefixes
+        if line[-1] == '/':
+            path = path+'/'
         return path
 
 #------------------------------------------------------------
@@ -241,18 +241,6 @@ class parser(cmd.Cmd):
 #------------------------------------------------------------
     def escape_single_quotes(self, namespace):
         return namespace.replace("'", "\\'")
-
-#------------------------------------------------------------
-    def absolute_remote_filepath(self, line):
-        if line.startswith('"') and line.endswith('"'):
-            line = line[1:-1]
-        if not posixpath.isabs(line):
-            line = posixpath.join(self.cwd, line)
-        fullpath = posixpath.normpath(line)
-# replace any trailing / that may have been removed - important for S3 prefixes
-        if line[-1] == '/':
-            fullpath = fullpath+'/'
-        return fullpath
 
 #------------------------------------------------------------
     def help_file(self):
@@ -656,30 +644,6 @@ class parser(cmd.Cmd):
 #        source = self.remotes_get(from_abspath)
 #        destination = self.remotes_get(to_abspath)
 #        source.copy(from_abspath, to_abspath, destination, prompt=self.ask)
-
-
-#------------------------------------------------------------
-# adapted from s3client
-    def unc_split(self, fullpath):
-        self.logging.info("[%s]" % fullpath)
-
-# convert fullpath to [bucket][object]
-        mypath = pathlib.PurePosixPath(fullpath)
-        host = None 
-        path = "/"
-        count = len(mypath.parts)
-
-        if count > 1:
-            host = "%s%s" % (mypath.parts[0], mypath.parts[1])
-
-        i=2
-        while i<count:
-            path = posixpath.join(path, mypath.parts[i])
-            i += 1
-
-        self.logging.info("host=[%r] path=[%r]" % (host, path))
-
-        return host, path
 
 #------------------------------------------------------------
     def help_cd(self):
