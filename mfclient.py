@@ -15,6 +15,7 @@ import zlib
 import shlex
 import random
 import string
+import socket
 import getpass
 import logging
 import datetime
@@ -60,7 +61,8 @@ class mf_client():
         self.port = int(port)
         self.domain = domain
         self.timeout = 120
-        self.status = "[offline]"
+# connection info - not connected -> not authenticated -> ""
+        self.status = "not connected"
 
 # NB: there can be some subtle bugs in python library handling if these are "" vs None
         self.session = ""
@@ -150,6 +152,17 @@ class mf_client():
         Acquire connection status via session or token
         """
 
+# NEW - check if unreachable ...
+        try:
+#            response = urllib.request.urlopen("self.protocol://%s" % (self.protocol, self.server), timeout=2)
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(2)
+            s.connect((self.server, self.port))
+        except Exception as e:
+            self.status = "not connected to %s: %s" % (self.server, str(e))
+            self.logging.error(str(e))
+            return
+
         for i in range(0,1):
 # convert session into a connection description
             try:
@@ -168,8 +181,7 @@ class mf_client():
 # normal session - get user identity
                         elem = reply.find(".//actor")
                         identity = "%s=%s" % (elem.attrib['type'], elem.text)
-                    self.status = "[online:%s] %s : %s" % (self.type, self.server, identity)
-                    return True
+                    self.status = "authenticated to %s as %s" % (self.server, identity)
 
             except Exception as e:
                 self.logging.error("session invalid: %s" % str(e))
@@ -185,8 +197,8 @@ class mf_client():
 # don't wipe token as there may be another cause (eg server down) for the connection failure
 # rely on explicit methods, such as delegate off, for a token wipe
                 break
-        self.status = "[offline:%s] %s" % (self.type, self.server)
-        return False
+
+        self.status = "not authenticated to %s" % self.server
 
 #------------------------------------------------------------
     def login(self, user=None, password=None, domain=None, token=None):
@@ -243,7 +255,7 @@ class mf_client():
         """
         self.aterm_run("system.logoff")
         self.session = ""
-        self.status = "Not connected: %r" % self.server
+        self.status = "Not authenticated to %s" % self.server
 
 
 #------------------------------------------------------------

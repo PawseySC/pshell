@@ -33,7 +33,7 @@ class s3_client(remote.client):
         self.access = access
         self.secret = secret
         self.s3 = None
-        self.status = "[offline]"
+        self.status = "not connected"
         self.logging = logging.getLogger('s3client')
         global build
 
@@ -62,9 +62,9 @@ class s3_client(remote.client):
         self.logging.info('endpoint=%s using acess=%s' % (self.url, self.access))
         try:
             self.s3 = boto3.client('s3', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
-            self.status = "[online:%s] %s : access=%s" % (self.type, self.url, self.access)
+            self.status = "authenticated to %s as access=%s" % (self.url, self.access)
         except Exception as e:
-            self.status = "[offline:%s] %s : %s" % (self.type, self.url, str(e))
+            self.status = "not authenticated to %s: %s" % (self.url, str(e))
 
 #------------------------------------------------------------
     def login(self, access=None, secret=None):

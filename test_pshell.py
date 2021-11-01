@@ -16,6 +16,17 @@ class pshell_standard(unittest.TestCase):
         self.verbosity = verbosity
 
 # ---
+    def test_exit_codes(self):
+        p = Popen([self.python, self.script, "-v", self.verbosity, "help"], stdout=PIPE, stderr=STDOUT)
+        data = p.communicate()
+        code = p.returncode
+        self.assertEqual(code, 0)
+        p = Popen([self.python, self.script, "-v", self.verbosity, "bad_command_or_error_of_some_kind"], stdout=PIPE, stderr=STDOUT)
+        data = p.communicate()
+        code = p.returncode
+        self.assertNotEqual(code, 0)
+
+# ---
     def test_remote_add_mflux(self):
         flag=False
         line = "mfclient mflux http://0.0.0.0:80"

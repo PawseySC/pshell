@@ -72,11 +72,17 @@ class parser(cmd.Cmd):
     def preloop(self):
         self.prompt = "%s:%s>" % (self.remotes_current, self.cwd)
 
-# --- not logged in -> don't even attempt to process remote commands
+# --- prompt run before
     def precmd(self, line):
+# filter out commands that require authentication, if not authenticated/connected
+        remote = self.remotes[self.remotes_current]
+        if "not" in remote.status:
+            if self.requires_auth(line):
+                print(remote.status)
+                return ""
         return cmd.Cmd.precmd(self, line)
 
-# --- prompt refresh 
+# --- prompt run after 
     def postcmd(self, stop, line):
         self.prompt = "%s:%s>" % (self.remotes_current, self.cwd)
         return cmd.Cmd.postcmd(self, stop, line)
@@ -168,7 +174,10 @@ class parser(cmd.Cmd):
 # register in parser
             self.remotes[name] = client
 # get connection status
+# TODO - if this returns False ... we are not connected so disallow anything but login
+# technically, should distinguish between not connected/authenticated and unreachable
             client.connect()
+
 # register in config
             if self.config is not None:
                 endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
@@ -193,15 +202,15 @@ class parser(cmd.Cmd):
 
 #------------------------------------------------------------
     def requires_auth(self, line):
-        local_commands = ["login", "help", "lls", "lcd", "lpwd", "version", "processes", "exit", "quit"]
-# only want first keyword (avoid getting "not logged in" on input like "help get")
+        local_commands = ["login", "help", "lls", "lcd", "lpwd", "processes", "exit", "quit"]
         try:
-            primary = line.strip().split()[0]
-            if primary in local_commands:
-                return False
-        except:
-            pass
-
+            primary = line.strip()
+            for item in local_commands:
+                if primary.startswith(item):
+                    return False
+        except Exception as e:
+            self.logging.error(str(e))
+            return False
         return True
 
 #------------------------------------------------------------
