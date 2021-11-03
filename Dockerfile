@@ -20,7 +20,7 @@ copy remote.py /
 copy mfclient.py /
 copy s3client.py /
 copy keystone.py /
-copy installer.cfg /
+#copy installer.cfg /
 
 # only way I could get this file (which usually sits in ~ into the container)
 copy .pshell_config /root/.pshell_config

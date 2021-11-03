@@ -202,7 +202,7 @@ class parser(cmd.Cmd):
 
 #------------------------------------------------------------
     def requires_auth(self, line):
-        local_commands = ["login", "help", "lls", "lcd", "lpwd", "processes", "exit", "quit"]
+        local_commands = ["login", "help", "lls", "lcd", "lpwd", "processes", "remote", "exit", "quit"]
         try:
             primary = line.strip()
             for item in local_commands:
