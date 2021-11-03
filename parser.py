@@ -176,7 +176,7 @@ class parser(cmd.Cmd):
 # get connection status
 # TODO - if this returns False ... we are not connected so disallow anything but login
 # technically, should distinguish between not connected/authenticated and unreachable
-            client.connect()
+#            client.connect()
 
 # register in config
             if self.config is not None:
@@ -184,6 +184,17 @@ class parser(cmd.Cmd):
                 endpoints[name] = client.endpoint()
                 self.config.set(self.config_name, 'endpoints', json.dumps(endpoints))
 
+        except Exception as e:
+            self.logging.error(str(e))
+
+#------------------------------------------------------------
+    def remote_set(self, name, home='/'):
+
+        try:
+            remote = self.remotes[name]
+            remote.connect()
+            self.remotes_current = name
+            self.cwd = home 
         except Exception as e:
             self.logging.error(str(e))
 
@@ -272,16 +283,11 @@ class parser(cmd.Cmd):
 # --- 
     def do_remote(self, line):
 
-        # CURRENT
         if line in self.remotes:
-            self.remotes_current = line
-            remote = self.remotes[line]
-            self.cwd = "/"
+            self.remote_set(line)
             return
 
-
         if 'add' in line:
-
             args = line.split()
             if len(args) != 4:
                 raise Exception("Expected command of the form: remotes add /mount type URL")

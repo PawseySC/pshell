@@ -152,6 +152,9 @@ def main():
         for mount in endpoints:
             my_parser.remotes_add(mount, endpoints[mount])
 
+# set current
+        my_parser.remote_set(my_parser.remotes_current, my_parser.cwd)
+
 # added all remotes without error - save to config
         my_parser.remotes_config_save()
 
