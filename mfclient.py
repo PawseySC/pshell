@@ -155,7 +155,7 @@ class mf_client():
 
         try:
 # reachability check
-            code = urllib.request.urlopen(url, timeout=2)
+            code = urllib.request.urlopen(url, timeout=2).getcode()
             self.logging.info("connection code: %r" % code)
         except Exception as e:
             self.status = "not connected to %s: %s" % (url, str(e))
@@ -169,7 +169,6 @@ class mf_client():
 # NB: don't use 'actor.self.describe' here as it will give a valid description for a session based on a destroyed token
                     reply = self.aterm_run("system.session.self.describe")
                     elem = reply.find(".//secure-token")
-
 # TODO - rework so delegate show WHO I'm a delegate for ...
 # I'm a token - get expiry date
                     if elem is not None:
@@ -181,6 +180,7 @@ class mf_client():
                         elem = reply.find(".//actor")
                         identity = "%s=%s" % (elem.attrib['type'], elem.text)
                     self.status = "authenticated to %s as %s" % (url, identity)
+                    return
 
             except Exception as e:
                 self.logging.error("session invalid: %s" % str(e))
@@ -191,6 +191,8 @@ class mf_client():
                 if self.token != "":
                     self.login(token=self.token)
                     self.logging.info("token ok")
+                    return
+
             except Exception as e:
                 self.logging.error("token invalid: %s" % str(e))
 # don't wipe token as there may be another cause (eg server down) for the connection failure
@@ -242,6 +244,7 @@ class mf_client():
         try:
             elem = reply.find(".//session")
             self.session = elem.text
+# refresh connection info
             self.connect()
         except Exception as e:
             self.logging.error(str(e))
