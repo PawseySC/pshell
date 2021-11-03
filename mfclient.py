@@ -15,7 +15,6 @@ import zlib
 import shlex
 import random
 import string
-import socket
 import getpass
 import logging
 import datetime
@@ -152,14 +151,14 @@ class mf_client():
         Acquire connection status via session or token
         """
 
-# NEW - check if unreachable ...
+        url = "%s://%s:%d" % (self.protocol, self.server, self.port)
+
         try:
-#            response = urllib.request.urlopen("self.protocol://%s" % (self.protocol, self.server), timeout=2)
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(2)
-            s.connect((self.server, self.port))
+# reachability check
+            code = urllib.request.urlopen(url, timeout=2)
+            self.logging.info("connection code: %r" % code)
         except Exception as e:
-            self.status = "not connected to %s: %s" % (self.server, str(e))
+            self.status = "not connected to %s: %s" % (url, str(e))
             self.logging.error(str(e))
             return
 
@@ -181,7 +180,7 @@ class mf_client():
 # normal session - get user identity
                         elem = reply.find(".//actor")
                         identity = "%s=%s" % (elem.attrib['type'], elem.text)
-                    self.status = "authenticated to %s as %s" % (self.server, identity)
+                    self.status = "authenticated to %s as %s" % (url, identity)
 
             except Exception as e:
                 self.logging.error("session invalid: %s" % str(e))
@@ -198,7 +197,7 @@ class mf_client():
 # rely on explicit methods, such as delegate off, for a token wipe
                 break
 
-        self.status = "not authenticated to %s" % self.server
+        self.status = "not authenticated to %s" % url
 
 #------------------------------------------------------------
     def login(self, user=None, password=None, domain=None, token=None):

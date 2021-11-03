@@ -7,6 +7,7 @@ Author: Sean Fleming
 
 import os
 import math
+import urllib
 import getpass
 import logging
 import pathlib
@@ -60,8 +61,23 @@ class s3_client(remote.client):
 #------------------------------------------------------------
     def connect(self):
         self.logging.info('endpoint=%s using acess=%s' % (self.url, self.access))
+
+# connection check
         try:
             self.s3 = boto3.client('s3', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
+# reachability check
+            code = urllib.request.urlopen(self.url, timeout=2).getcode()
+            self.logging.info("connection code: %r" % code)
+        except Exception as e:
+            self.logging.error(str(e))
+            self.status = "not connected to %s: %s" % (self.url, str(e))
+            return
+
+# authenticated user check
+        try:
+# TODO - check if we're actually authenticated ... resource discovery ... etc
+#            self.s3.get_available_resources()
+#            self.s3.get_caller_identity()
             self.status = "authenticated to %s as access=%s" % (self.url, self.access)
         except Exception as e:
             self.status = "not authenticated to %s: %s" % (self.url, str(e))
