@@ -36,7 +36,7 @@ class mf_client():
     Parallel transfers are handled by multiprocessing (urllib2 and httplib are not thread-safe)
     All unexpected failures are handled by raising exceptions
     """
-    def __init__(self, protocol="http", port="80", server="localhost", domain="system"):
+    def __init__(self, protocol="http", port="80", server="localhost", domain="system", encrypted_data=True):
         """
         Create a Mediaflux server connection instance. Raises an exception on failure.
 
@@ -75,27 +75,22 @@ class mf_client():
 # XML pretty print hack
         self.indent = 0
 
-# build data URLs
+# POST URL
         self.post_url = "%s://%s/__mflux_svc__" % (protocol, server)
-        self.data_get = "%s://%s/mflux/content.mfjp" % (protocol, server)
-        self.data_put = "%s:%s" % (server, port)
 
 # can override to test fast http data transfers (with https logins)
         if protocol == 'https':
-            self.encrypted_data = True
-# check for unecrypted connection (faster data transfers)
-# FIXME - would love to ditch this, but the speed difference is huge
-            try:
-                response = urllib.request.urlopen("http://%s" % server, timeout=2)
-                if response.code == 200:
-                    self.encrypted_data = False
-# override (only does anything if we're encrypting posts)
-                    self.data_get = "http://%s/mflux/content.mfjp" % server
-                    self.data_put = "%s:%s" % (server, 80)
-            except Exception as e:
-                self.logging.debug(str(e))
+            self.encrypted_data = encrypted_data
         else:
             self.encrypted_data = False
+
+# data URLs ... a bit hacky (hard coded ports) but the speed improvement is huge
+        if self.encrypted_data:
+            self.data_get = "https://%s/mflux/content.mfjp" % server
+            self.data_put = "%s:%s" % (server, 443)
+        else:
+            self.data_get = "http://%s/mflux/content.mfjp" % server
+            self.data_put = "%s:%s" % (server, 80)
 
 # more info
         self.logging.info("MFCLIENT=%s" % build)
@@ -120,12 +115,15 @@ class mf_client():
             endpoint['server'] = url.hostname
             endpoint['protocol'] = url.scheme
 
-        client = cls(protocol=endpoint['protocol'], server=endpoint['server'], port=endpoint['port'])
+        if 'encrypt' in endpoint:
+            encrypt = endpoint['encrypt']
+        else:
+            encrypt = True
+
+        client = cls(protocol=endpoint['protocol'], server=endpoint['server'], port=endpoint['port'], encrypted_data=encrypt)
 
         if 'domain' in endpoint:
             client.domain = endpoint['domain']
-        if 'encrypt' in endpoint:
-            client.encrypted_data = endpoint['encrypt']
         if 'session' in endpoint:
             client.session = endpoint['session']
         if 'token' in endpoint:
@@ -153,14 +151,27 @@ class mf_client():
 
         url = "%s://%s:%d" % (self.protocol, self.server, self.port)
 
-        try:
 # reachability check
+        try:
             code = urllib.request.urlopen(url, timeout=2).getcode()
             self.logging.info("connection code: %r" % code)
         except Exception as e:
             self.status = "not connected to %s: %s" % (url, str(e))
             self.logging.error(str(e))
             return
+
+# fast data channel check
+        if self.protocol == 'https' and self.encrypted_data == True:
+            try:
+                response = urllib.request.urlopen("http://%s:80" % self.server, timeout=2)
+                if response.code == 200:
+                    self.logging.info("Setting data channel to http")
+                    self.encrypted_data = False
+# override data channel only
+                    self.data_get = "http://%s/mflux/content.mfjp" % self.server
+                    self.data_put = "%s:%s" % (self.server, 80)
+            except Exception as e:
+                self.logging.debug(str(e))
 
         for i in range(0,1):
 # convert session into a connection description

@@ -75,11 +75,18 @@ class parser(cmd.Cmd):
 # --- prompt run before
     def precmd(self, line):
 # filter out commands that require authentication, if not authenticated/connected
-        remote = self.remotes[self.remotes_current]
-        if "not" in remote.status:
-            if self.requires_auth(line):
+        if self.requires_auth(line):
+            remote = self.remote_active()
+            if "not" in remote.status:
                 print(remote.status)
                 return ""
+
+#            if self.remotes_current in self.remotes:
+#                remote = self.remotes[self.remotes_current]
+#                if "not" in remote.status:
+#                    print(remote.status)
+#                    return ""
+
         return cmd.Cmd.precmd(self, line)
 
 # --- prompt run after 
@@ -93,7 +100,7 @@ class parser(cmd.Cmd):
 
 # ---
     def default(self, line):
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
         remote.command(line)
 
 # TODO - complete for local commands?
@@ -127,7 +134,7 @@ class parser(cmd.Cmd):
 
 # ---
     def complete_remote(self, text, line, start_index, end_index):
-#        self.logging.info("text=[%s] line=[%s] start_index=[%d] end_index=[%d]" % (text, line, start_index, end_index))
+        self.logging.info("text=[%s] line=[%s] start_index=[%d] end_index=[%d]" % (text, line, start_index, end_index))
         candidates = []
         for name in self.remotes:
             if name.startswith(text):
@@ -135,10 +142,19 @@ class parser(cmd.Cmd):
         return candidates
 
 #------------------------------------------------------------
+    def remote_active(self):
+        if self.remotes_current in self.remotes:
+            return self.remotes[self.remotes_current]
+        raise Exception("No current active remote")
+
+#------------------------------------------------------------
     def remotes_complete(self, partial, start, file_search=True, folder_search=True):
         try:
             candidate_list = []
-            remote = self.remotes[self.remotes_current]
+            remote = self.remote_active()
+            if "not" in remote.status:
+                return
+
             if file_search is True:
                 candidate_list += remote.complete_file(self.cwd, partial, start)
             if folder_search is True:
@@ -268,7 +284,7 @@ class parser(cmd.Cmd):
         print("Usage: file <filename>\n")
 
     def do_file(self, line):
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
         fullpath = self.abspath(line)
         remote.info(fullpath)
         for key, value in remote.info(fullpath).items():
@@ -458,7 +474,7 @@ class parser(cmd.Cmd):
     def do_ls(self, line):
 
         fullpath = self.abspath(line)
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
 
         remote_list = remote.ls_iter(fullpath)
         count = 0
@@ -511,7 +527,7 @@ class parser(cmd.Cmd):
 #        line = self.absolute_remote_filepath(line)
 #        remote = self.remotes_get(line)
 
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
         abspath = self.abspath(line)
 
         if remote is not None:
@@ -601,8 +617,7 @@ class parser(cmd.Cmd):
     def do_put(self, line, metadata=False):
 
         self.logging.info("[%s]" % line)
-#        remote = self.remotes_get(self.cwd)
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
 
         try:
             self.put_count = 0
@@ -664,7 +679,7 @@ class parser(cmd.Cmd):
         print("Usage: cd <folder>\n")
 
     def do_cd(self, line):
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
         abspath = self.abspath(line)
         self.cwd = remote.cd(abspath)
 
@@ -684,7 +699,7 @@ class parser(cmd.Cmd):
 
     def do_mkdir(self, line, silent=False):
         ns_target = self.abspath(line)
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
         remote.mkdir(ns_target)
 
 #------------------------------------------------------------
@@ -694,7 +709,7 @@ class parser(cmd.Cmd):
 
     def do_rm(self, line):
         abspath = self.abspath(line)
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
         if remote.rm(abspath, prompt=self.ask) is False:
             print("Delete aborted")
 
@@ -705,7 +720,7 @@ class parser(cmd.Cmd):
 
     def do_rmdir(self, line):
         ns_target = self.abspath(line)
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
 
         if self.ask("Remove folder: %s (y/n) " % ns_target):
             remote.rmdir(ns_target)
@@ -789,7 +804,7 @@ class parser(cmd.Cmd):
 
 # ---
     def do_logout(self, line):
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
         if remote is not None:
             remote.logout()
             self.remotes_config_save()
@@ -801,10 +816,9 @@ class parser(cmd.Cmd):
 
 # ---
     def do_login(self, line):
-        remote = self.remotes[self.remotes_current]
-        if remote is not None:
-            remote.login()
-            self.remotes_config_save()
+        remote = self.remote_active()
+        remote.login()
+        self.remotes_config_save()
 
 #------------------------------------------------------------
     def help_delegate(self):
@@ -814,7 +828,7 @@ class parser(cmd.Cmd):
 
 # ---
     def do_delegate(self, line):
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
         if remote.delegate(line) is True:
             self.remotes_config_save()
 
@@ -826,7 +840,7 @@ class parser(cmd.Cmd):
 # --
     def do_publish(self, line):
         fullpath = self.abspath(line)
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
         count = remote.publish(fullpath)
         print("Published %d files" % count)
 
@@ -838,7 +852,7 @@ class parser(cmd.Cmd):
 # --
     def do_unpublish(self, line):
         fullpath = self.abspath(line)
-        remote = self.remotes[self.remotes_current]
+        remote = self.remote_active()
         count = remote.unpublish(fullpath)
         print("Unpublished %d files" % count)
 
