@@ -59,9 +59,7 @@ class pshell_standard(unittest.TestCase):
         for line in p.stdout:
             text = line.decode()
             if "portal" in text:
-                if "mflux" in text:
-                    if "data.pawsey.org.au" in text:
-                        flag=True
+                flag=True
         self.assertTrue(flag)
 
 # ---
@@ -71,9 +69,7 @@ class pshell_standard(unittest.TestCase):
         for line in p.stdout:
             text = line.decode()
             if "public" in text:
-                if "mflux" in text:
-                    if "data.pawsey.org.au" in text:
-                        flag=True
+                flag=True
         self.assertTrue(flag)
 
 # ---

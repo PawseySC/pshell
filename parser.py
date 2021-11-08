@@ -275,8 +275,9 @@ class parser(cmd.Cmd):
         return False
 
 #------------------------------------------------------------
-    def escape_single_quotes(self, namespace):
-        return namespace.replace("'", "\\'")
+    def print_over(self, text):
+        sys.stdout.write("\r"+text)
+        sys.stdout.flush()
 
 #------------------------------------------------------------
     def help_file(self):
@@ -489,12 +490,6 @@ class parser(cmd.Cmd):
                         return
                     else:
                         count = 0
-
-# --- helper
-# --
-    def print_over(self, text):
-        sys.stdout.write("\r"+text)
-        sys.stdout.flush()
 
 #------------------------------------------------------------
     def help_import(self):

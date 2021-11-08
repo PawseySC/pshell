@@ -36,7 +36,6 @@ class parser_standard(unittest.TestCase):
         self.assertEqual(result, '/root/folder/child2/')
 
 # --- remote
-
     def test_remote_complete(self):
         self.parser.remotes_add('mfclient', {'type':'mflux', 'protocol':'http', 'server':'localhost', 'port':80})
         result = self.parser.complete_remote("mf", "mf", 0, 2)
@@ -45,14 +44,6 @@ class parser_standard(unittest.TestCase):
         else:
             success = False
         self.assertTrue(success)
-
-    def test_remote_set_current(self):
-        self.parser.remotes_add('mfclient', {'type':'mflux', 'protocol':'http', 'server':'localhost', 'port':80})
-        self.parser.remotes_add('s3client', {'type':'s3', 'url':'http://localhost'})
-        self.parser.do_remote('mfclient')
-        self.assertEqual(self.parser.remotes_current, 'mfclient')
-        self.parser.do_remote('s3client')
-        self.assertEqual(self.parser.remotes_current, 's3client')
 
 #------------------------------------------------------------
 
