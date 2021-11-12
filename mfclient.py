@@ -158,7 +158,7 @@ class mf_client():
         except Exception as e:
             self.status = "not connected to %s: %s" % (url, str(e))
             self.logging.error(str(e))
-            return
+            return False
 
 # fast data channel check
         if self.protocol == 'https' and self.encrypted_data == True:
@@ -191,7 +191,7 @@ class mf_client():
                         elem = reply.find(".//actor")
                         identity = "%s=%s" % (elem.attrib['type'], elem.text)
                     self.status = "authenticated to %s as %s" % (url, identity)
-                    return
+                    return True
 
             except Exception as e:
                 self.logging.error("session invalid: %s" % str(e))
@@ -202,7 +202,7 @@ class mf_client():
                 if self.token != "":
                     self.login(token=self.token)
                     self.logging.info("token ok")
-                    return
+                    return True
 
             except Exception as e:
                 self.logging.error("token invalid: %s" % str(e))
@@ -211,6 +211,7 @@ class mf_client():
                 break
 
         self.status = "not authenticated to %s" % url
+        return False
 
 #------------------------------------------------------------
     def login(self, user=None, password=None, domain=None, token=None):
