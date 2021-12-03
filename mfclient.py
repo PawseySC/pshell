@@ -194,7 +194,7 @@ class mf_client():
                     return True
 
             except Exception as e:
-                self.logging.error("session invalid: %s" % str(e))
+                self.logging.debug("session invalid: %s" % str(e))
                 self.session = ""
 
 # session was invalid, try to get a new session via a token and retry
@@ -205,7 +205,7 @@ class mf_client():
                     return True
 
             except Exception as e:
-                self.logging.error("token invalid: %s" % str(e))
+                self.logging.warning("token invalid: %s" % str(e))
 # don't wipe token as there may be another cause (eg server down) for the connection failure
 # rely on explicit methods, such as delegate off, for a token wipe
                 break
