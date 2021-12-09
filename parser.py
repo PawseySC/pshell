@@ -229,7 +229,8 @@ class parser(cmd.Cmd):
 
 #------------------------------------------------------------
     def requires_auth(self, line):
-        local_commands = ["login", "help", "lls", "lcd", "lpwd", "processes", "remote", "exit", "quit"]
+# FIXME - adding ec2 even though it's not local ... but it doesnt behave like a "remote" so it shouldnt get prevented
+        local_commands = ["login", "help", "lls", "lcd", "lpwd", "processes", "remote", "exit", "quit", "ec2"]
         try:
             primary = line.strip()
             for item in local_commands:
@@ -561,7 +562,7 @@ class parser(cmd.Cmd):
             elapsed = time.time() - start_time
             rate = float(self.total_bytes) / float(elapsed)
             rate = rate / 1000000.0
-            self.print_over("Completed get: %d files, total size: %s, speed: %.1f MB/s   \n" % (self.get_count, self.human_size(self.get_bytes), rate))
+            self.print_over("Completed get: %d files, total size: %s, speed: %.2f MB/s   \n" % (self.get_count, self.human_size(self.get_bytes), rate))
 
 #------------------------------------------------------------
     def help_put(self):
@@ -640,7 +641,7 @@ class parser(cmd.Cmd):
         elapsed = time.time() - start_time
         rate = float(self.put_bytes) / float(elapsed)
         rate = rate / 1000000.0
-        self.print_over("Completed put: %d files, total size: %s, speed: %.1f MB/s   \n" % (self.put_count, self.human_size(self.put_bytes), rate))
+        self.print_over("Completed put: %d files, total size: %s, speed: %.2f MB/s   \n" % (self.put_count, self.human_size(self.put_bytes), rate))
 
 #------------------------------------------------------------
     def do_copy(self, line):

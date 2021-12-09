@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 """
 This module is a Python 3.x (standard lib only) implementation of a simple keystone client
@@ -6,7 +6,7 @@ Author: Sean Fleming
 """
 
 import json
-import urllib
+import urllib.request
 import getpass
 import logging
 
@@ -37,7 +37,7 @@ class keystone:
         self.credential_list = None
         self.logging = logging.getLogger('keystone')
 # CURRENT
-#        self.logging.setLevel(logging.DEBUG)
+        self.logging.setLevel(logging.DEBUG)
 
 #------------------------------------------------------------
 # connect to keystone and acquire user details via mflux sso
@@ -144,8 +144,9 @@ class keystone:
 
 #------------------------------------------------------------
     def discover_s3_endpoint(self):
-# TODO - could we query the magenta url as well???
-        endpoint = {'name':'s3project', 'type':'s3', 'url':'https://nimbus.pawsey.org.au:8080'}
+# HACK - change the port on the keystone URL to get the s3 gateway
+        s3url = self.url[:-4] + "8080"
+        endpoint = {'name':'s3project', 'type':'s3', 'url':s3url}
         for project_name in self.project_dict:
             for credential in self.credential_list:
                 if credential['tenant_id'] == self.project_dict[project_name]:

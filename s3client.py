@@ -315,7 +315,7 @@ class s3_client(remote.client):
 #------------------------------------------------------------
     def rm(self, filepath, prompt=None):
         bucket,key = self.path_split(filepath)
-        if bucket is not None and key is not None:
+        if bucket is not None:
             if prompt is not None:
                 if prompt("Delete object (y/n)") is False:
                     return
@@ -326,21 +326,16 @@ class s3_client(remote.client):
 #------------------------------------------------------------
 # TODO - this might have to become create bucket/folder -> split the components and then implement separately
     def mkdir(self, path):
-
         bucket,key = self.path_split(path)
-
-        if bucket is not None and key is None:
+        if bucket is not None:
             self.s3.create_bucket(Bucket=bucket)
         else:
             raise Exception("No valid remote bucket in path [%s]" % path)
 
 #------------------------------------------------------------
-    def rmdir(self, path, prompt=None):
+    def rmdir(self, path):
         bucket,key = self.path_split(path)
-
-        if bucket is not None and key is None:
-            if prompt("Delete bucket (y/n)") is False:
-                return
+        if bucket is not None:
             self.s3.delete_bucket(Bucket=bucket)
         else:
             raise Exception("No valid remote bucket in path [%s]" % path)

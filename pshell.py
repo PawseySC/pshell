@@ -98,7 +98,10 @@ def main():
                     endpoints['public'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'public'}
                     remotes_home = '/projects'
                     remotes_current = 'portal'
-                    args.keystone = 'https://nimbus.pawsey.org.au:5000'
+
+                    if args.keystone is None:
+                        args.keystone = 'https://nimbus.pawsey.org.au:5000'
+
 # store endpoints in config
                     config[args.current] = {'endpoints':json.dumps(endpoints)}
                 else:
