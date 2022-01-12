@@ -353,8 +353,10 @@ class s3_client(remote.client):
             print("public url = %s" % url)
             return(1)
 
-        except exception as e:
-            print(str(e))
+        except Exception as e:
+            self.logging.error(str(e))
+            # probably a wildcard
+            print("Failed to publish, error: %s" % str(e))
 
         return(0)
  
