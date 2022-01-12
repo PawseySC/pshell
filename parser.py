@@ -296,7 +296,7 @@ class parser(cmd.Cmd):
     def help_remote(self):
         print("\nInformation about remote clients\n")
         print("Usage: remote <name>\n")
-        print("Usage: remote <add /mount type URL>\n")
+        print("Usage: remote <add name type URL>\neg remote add mystuff s3 https://somewhere.org:8080")
 
 # --- 
     def do_remote(self, line):

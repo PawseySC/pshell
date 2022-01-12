@@ -86,6 +86,7 @@ class s3client_bugs(unittest.TestCase):
         global s3_client
         self.s3_client = s3_client
 
+
 #------------------------------------------------------------
 if __name__ == '__main__':
 
@@ -102,6 +103,7 @@ if __name__ == '__main__':
 
 # classes to test
     test_class_list = [s3client_standard]
+#    test_class_list = [s3client_bugs]
 
 # build suite
     suite_list = []

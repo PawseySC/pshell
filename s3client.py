@@ -342,3 +342,19 @@ class s3_client(remote.client):
             self.s3.delete_bucket(Bucket=bucket)
         else:
             raise Exception("No valid remote bucket in path [%s]" % path)
+
+#------------------------------------------------------------
+    def publish(self, path):
+        self.logging.info("s3 publish: %s" % path)
+        try:
+            bucket,key = self.path_split(path)
+            # TODO - try different expiry times ... ?
+            url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': key}, ExpiresIn=3600)
+            print("public url = %s" % url)
+            return(1)
+
+        except exception as e:
+            print(str(e))
+
+        return(0)
+ 
