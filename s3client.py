@@ -163,7 +163,6 @@ class s3_client(remote.client):
                                 # TODO - do we need to do something like the prefix match?
                                 candidate_list.append(item['Key'][start:])
 
-
         except Exception as e:
             self.logging.error(str(e))
 
@@ -203,6 +202,10 @@ class s3_client(remote.client):
                 key = key + '/'
 
         self.logging.info("bucket=[%r] key=[%s]" % (bucket, key))
+
+# TODO
+        if '*' in key:
+            raise Exception("Wildcards in keys not yet supported")
 
         return bucket, key
 
