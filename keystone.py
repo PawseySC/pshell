@@ -162,7 +162,8 @@ class keystone:
             print("project = %s" % project_name)
             for credential in self.credential_list:
                 if credential['tenant_id'] == self.project_dict[project_name]:
-                    print("    access = %s : secret = %s" % (credential['access'], credential['secret']))
+#                    print("    access = %s : secret = %s" % (credential['access'], credential['secret']))
+                    print("    access = %s " % (credential['access']))
 
 #------------------------------------------------------------
     def credentials_create(self, project):
