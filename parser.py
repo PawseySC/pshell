@@ -703,6 +703,7 @@ class parser(cmd.Cmd):
         print("\nDelete remote file(s)\n")
         print("Usage: rm <file or pattern>\n")
 
+# TODO - rework as _iter() implementation
     def do_rm(self, line):
         abspath = self.abspath(line)
         remote = self.remote_active()

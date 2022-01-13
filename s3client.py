@@ -8,6 +8,7 @@ Author: Sean Fleming
 import os
 import math
 import urllib
+import fnmatch
 import getpass
 import logging
 import pathlib
@@ -203,9 +204,9 @@ class s3_client(remote.client):
 
         self.logging.info("bucket=[%r] key=[%s]" % (bucket, key))
 
-# TODO
-        if '*' in key:
-            raise Exception("Wildcards in keys not yet supported")
+# FIXME - implement get_iter() and remove this
+#        if '*' in key:
+#            raise Exception("Wildcards in keys not yet supported")
 
         return bucket, key
 
@@ -260,47 +261,79 @@ class s3_client(remote.client):
     def ls_iter(self, path):
 
         bucket,key = self.path_split(path)
-        self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
 
 # specific to doing an ls with a non-empty key
-        if len(key) > 2:
-            if key.endswith('/') is False:
-                key = key+'/'
+#        if len(key) > 2:
+#            if key.endswith('/') is False:
+#                key = key+'/'
+
+# NB: attempt to treat key as a glob style filename pattern match
+        self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
 
         if bucket is not None:
             paginator = self.s3.get_paginator('list_objects_v2')
-            pages = paginator.paginate(Bucket=bucket, Delimiter='/', Prefix=key)
-            for page in pages:
+#            for page in paginator.paginate(Bucket=bucket, Delimiter='/', Prefix=key):
+            for page in paginator.paginate(Bucket=bucket, Delimiter='/'):
+#                print(" >>> page: %s\n<<<\n" % page)
                 if 'CommonPrefixes' in page:
-                    for item in page['CommonPrefixes']:
+                    for item in page.get('CommonPrefixes'):
                         yield "[prefix] %s" % item['Prefix']
-
+# match everything if no pattern
+                if len(key) == 0:
+                    key = '*'
                 if 'Contents' in page:
-                    for item in page['Contents']:
-                        if item['Key'].endswith('/') is False:
+                    for item in page.get('Contents'):
+#                        print("\nitem: %s" % item)
+                        if fnmatch.fnmatch(item['Key'], key):
                             yield "%s | %s" % (self.human_size(item['Size']), item['Key'])
-
         else:
             response = self.s3.list_buckets()
             for item in response['Buckets']:
                 yield "[Bucket] %s" % item['Name']
 
 #------------------------------------------------------------
-# TODO - wildcards?
+# CURRENT - test wildcard implementation
+# NB: 1st yield of get_iter() must be the number of items and the 2nd the number of bytes ...
+
     def get_iter(self, pattern):
-        yield 1
-# FIXME - fake it till you make it
-        yield 666
-        yield pattern
+        bucket,key_pattern = self.path_split(pattern)
+        self.logging.debug("bucket=[%s] pattern=[%s]" % (bucket, key_pattern))
+
+# TODO - handle get on a bucket only...
+        count = 0
+        size = 0
+
+# match everything if no pattern
+        if len(key_pattern) == 0:
+            key_pattern = '*'
+
+# precompute the size of the download
+        paginator = self.s3.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket, Delimiter='/'):
+            for item in page.get('Contents'):
+                if fnmatch.fnmatch(item['Key'], key_pattern):
+                    count += 1
+                    size += item['Size']
+        yield count
+        yield size
+
+# yield fullpaths of the objects to get
+        paginator = self.s3.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket, Delimiter='/'):
+            for item in page.get('Contents'):
+                print(item)
+                if fnmatch.fnmatch(item['Key'], key_pattern):
+                    yield "/%s/%s" % (bucket, item['Key'])
 
 #------------------------------------------------------------
     def get(self, remote_filepath, local_filepath=None):
 
         bucket,key = self.path_split(remote_filepath)
-        self.logging.info('remote bucket=[%r] key=[%r]' % (bucket, key))
+        self.logging.info('remote bucket=[%r] key=[%r] : local_filepath=[%r]' % (bucket, key, local_filepath))
 
         if local_filepath is None:
-            local_filepath = os.path.join(os.getcwd(), posixpath.basename(key))
+            local_filepath = os.path.normpath(os.path.join(os.getcwd(), posixpath.basename(key)))
+
         self.logging.info('downloading to [%s]' % local_filepath)
 
         self.s3.download_file(str(bucket), str(key), local_filepath)

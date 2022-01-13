@@ -145,6 +145,7 @@ class keystone:
 #------------------------------------------------------------
     def discover_s3_endpoint(self):
 # HACK - change the port on the keystone URL to get the s3 gateway
+# FIXME - make this a bit more robust
         s3url = self.url[:-4] + "8080"
         endpoint = {'name':'s3project', 'type':'s3', 'url':s3url}
         for project_name in self.project_dict:

@@ -15,8 +15,7 @@ class keystone_standard(unittest.TestCase):
 # --- port change to 8080 ...
     def test_discover_s3(self):
 
-
-# TODO 
+# TODO - test robustness
 
         self.keystone.url = "https://somewhere.org:500"
         s3 = self.keystone.discover_s3_endpoint()
