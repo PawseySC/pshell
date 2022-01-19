@@ -294,7 +294,6 @@ class s3_client(remote.client):
 #------------------------------------------------------------
 # CURRENT - test wildcard implementation
 # NB: 1st yield of get_iter() must be the number of items and the 2nd the number of bytes ...
-
     def get_iter(self, pattern):
         bucket,key_pattern = self.path_split(pattern)
         self.logging.debug("bucket=[%s] pattern=[%s]" % (bucket, key_pattern))
@@ -321,7 +320,7 @@ class s3_client(remote.client):
         paginator = self.s3.get_paginator('list_objects_v2')
         for page in paginator.paginate(Bucket=bucket, Delimiter='/'):
             for item in page.get('Contents'):
-                print(item)
+#                print(item)
                 if fnmatch.fnmatch(item['Key'], key_pattern):
                     yield "/%s/%s" % (bucket, item['Key'])
 
@@ -349,15 +348,22 @@ class s3_client(remote.client):
         self.s3.upload_file(local_filepath, bucket, os.path.basename(local_filepath))
 
 #------------------------------------------------------------
-    def rm(self, filepath, prompt=None):
-        bucket,key = self.path_split(filepath)
-        if bucket is not None:
-            if prompt is not None:
-                if prompt("Delete object (y/n)") is False:
-                    return
-            self.s3.delete_object(Bucket=str(bucket), Key=str(key))
-        else:
-            raise Exception("No valid remote bucket, object in path [%s]" % filepath)
+    def rm(self, pattern, prompt=None):
+
+        results = self.get_iter(pattern)
+        count = int(next(results))
+        size = int(next(results))
+
+        if prompt is not None:
+            if prompt("Delete %d objects and %d bytes (y/n)" % (count,size)) is False:
+                return
+
+        for filepath in results:
+            bucket,key = self.path_split(filepath)
+            if bucket is not None:
+                self.s3.delete_object(Bucket=str(bucket), Key=str(key))
+            else:
+                raise Exception("No valid remote bucket, object in path [%s]" % filepath)
 
 #------------------------------------------------------------
 # TODO - this might have to become create bucket/folder -> split the components and then implement separately
@@ -377,19 +383,18 @@ class s3_client(remote.client):
             raise Exception("No valid remote bucket in path [%s]" % path)
 
 #------------------------------------------------------------
-    def publish(self, path):
-        self.logging.info("s3 publish: %s" % path)
-        try:
-            bucket,key = self.path_split(path)
-            # TODO - try different expiry times ... ?
-            url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': key}, ExpiresIn=3600)
+    def publish(self, pattern):
+        results = self.get_iter(pattern)
+        count = int(next(results))
+        size = int(next(results))
+        print("Publishing %d files..." % count)
+        for filepath in results:
+            self.logging.info("s3 publish: %s" % filepath)
+            bucket,key = self.path_split(filepath)
+# try different expiry times ... no limit?
+#            url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': key}, ExpiresIn=3600)
+            url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': key}, ExpiresIn=3600000)
             print("public url = %s" % url)
-            return(1)
 
-        except Exception as e:
-            self.logging.error(str(e))
-            # probably a wildcard
-            print("Failed to publish, error: %s" % str(e))
-
-        return(0)
+        return(count)
  
