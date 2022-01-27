@@ -153,7 +153,7 @@ def main():
 # add endpoints
     try:
         for mount in endpoints:
-            my_parser.remotes_add(mount, endpoints[mount])
+            my_parser.remote_add(mount, endpoints[mount])
 
 # set current
         my_parser.remote_set(my_parser.remotes_current, my_parser.cwd)
