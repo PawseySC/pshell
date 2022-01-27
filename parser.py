@@ -316,11 +316,8 @@ class parser(cmd.Cmd):
     def do_usage(self, line):
         remote = self.remote_active()
         fullpath = self.abspath(line)
-
-        print("TODO - compute usage on [%s]" % fullpath)
-
+        print("Computing usage on [%s] ..." % fullpath)
         remote = self.remote_active()
-# TODO - quota?
         try:
             remote.usage(fullpath)
         except Exception as e:

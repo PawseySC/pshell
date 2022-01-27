@@ -486,7 +486,6 @@ class s3_client(remote.client):
             count, size = self.bucket_usage(bucket)
             print("[%s] has %d objects, total size: %s" % (bucket, count, self.human_size(size)))
         else:
-            print("TODO - for all buckets...")
             response = self.s3.list_buckets()
             for item in response['Buckets']:
                 bucket = item['Name']
