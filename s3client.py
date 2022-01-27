@@ -65,10 +65,22 @@ class s3_client(remote.client):
 
 # connection check
         try:
-            self.s3 = boto3.client('s3', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
+
+            if 'http' in self.url:
+                print("Assuming url is endpoint")
+                self.s3 = boto3.client('s3', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
+
+            else:
+                print("Assuming url is region")
+                self.s3 = boto3.client('s3', region_name=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
+
+
 # reachability check
-            code = urllib.request.urlopen(self.url, timeout=2).getcode()
-            self.logging.info("connection code: %r" % code)
+# CURRENT - this works for acacia - URL ... but breaks AWS 
+#            code = urllib.request.urlopen(self.url, timeout=10).getcode()
+#            self.logging.info("connection code: %r" % code)
+
+
         except Exception as e:
             self.logging.error(str(e))
             self.status = "not connected to %s: %s" % (self.url, str(e))
@@ -392,6 +404,7 @@ class s3_client(remote.client):
             bucket,prefix,key = self.path_convert(filepath)
             fullkey = posixpath.join(prefix, key)
 
+# TODO - delete_objects() more efficient if lots of matches
             if bucket is not None:
                 self.s3.delete_object(Bucket=str(bucket), Key=str(fullkey))
             else:
@@ -401,22 +414,17 @@ class s3_client(remote.client):
     def mkdir(self, path):
         bucket,prefix,key = self.path_convert(path)
 
-# can't create a prefix (without an object) in the same way as a folder -> fail if prefix is not empty
-
-# TODO - AWS apparently creates an empty object with / appended to the key to simulate a folder
-
         if bucket is not None:
             if prefix == "":
+# create a bucket if top level
+                self.logging.debug("Creating bucket [%s]" % bucket)
                 self.s3.create_bucket(Bucket=bucket)
+                return
             else:
-                print("TODO: create empty object [%s] in bucket [%s]" % (prefix, bucket))
-
-#                import io
-#                empty_file = io.StringIO("")
-# upload file object?
-#                self.s3.upload_file(filename, bucket, prefix)
-
-# put_object?
+# create an empty object with / appended to the key to simulate a folder
+                self.logging.debug("Creating prefix [%s] in bucket [%s]" % (prefix, bucket))
+                self.s3.put_object(Bucket=bucket, Key=prefix, Body='')
+                return
 
         raise Exception("Bad input bucket [%s] or prefix [%s] in path [%s]" % (bucket, prefix, path))
 
@@ -424,11 +432,16 @@ class s3_client(remote.client):
     def rmdir(self, path):
         bucket,prefix,key = self.path_convert(path)
 
-# TODO - use get_iter ... report what you would delete and prompt ...
-# can't delete a prefix in the same way as a folder -> fail if prefix is not empty
         if bucket is not None:
             if prefix == "":
+# remove bucket if top level
+                self.logging.debug("Removing bucket [%s]" % bucket)
                 self.s3.delete_bucket(Bucket=bucket)
+                return
+            else:
+# remove prefix
+                self.logging.debug("Removing prefix [%s] in bucket [%s]" % (prefix, bucket))
+                self.s3.delete_object(Bucket=bucket, Key=prefix)
                 return
 
         raise Exception("Bad input bucket [%s] or prefix [%s] in path [%s]" % (bucket, prefix, path))
@@ -450,4 +463,34 @@ class s3_client(remote.client):
             print("public url = %s" % url)
 
         return(count)
- 
+
+#------------------------------------------------------------
+    def bucket_usage(self, bucket):
+        count = 0
+        size = 0
+        paginator = self.s3.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket):
+            if 'Contents' in page:
+                for item in page.get('Contents'):
+                    count += 1
+                    size += item['Size']
+        return count, size
+
+#------------------------------------------------------------
+# NEW - experimental ...
+    def usage(self, path, recursive=True):
+
+        bucket,prefix,key = self.path_convert(path)
+
+        if bucket is not None:
+            count, size = self.bucket_usage(bucket)
+            print("[%s] has %d objects, total size: %s" % (bucket, count, self.human_size(size)))
+        else:
+            print("TODO - for all buckets...")
+            response = self.s3.list_buckets()
+            for item in response['Buckets']:
+                bucket = item['Name']
+                count, size = self.bucket_usage(bucket)
+                print("[%s] has %d objects, total size: %s" % (bucket, count, self.human_size(size)))
+
+

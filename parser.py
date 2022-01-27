@@ -313,19 +313,18 @@ class parser(cmd.Cmd):
 
 
 #------------------------------------------------------------
-    def do_du(self, line):
+    def do_usage(self, line):
         remote = self.remote_active()
         fullpath = self.abspath(line)
 
-        print("TODO - du on [%s]" % fullpath)
+        print("TODO - compute usage on [%s]" % fullpath)
 
-# FIXME - this only gets objects in the current path - we want recursive counting
-        results = remote.get_iter(fullpath)
-
-        count = int(next(results))
-        size = int(next(results))
-
-        print("object count = %d, total size = %s" % (count, self.human_size(size)))
+        remote = self.remote_active()
+# TODO - quota?
+        try:
+            remote.usage(fullpath)
+        except Exception as e:
+            self.logging.error(str(e))
 
 #------------------------------------------------------------
     def help_remote(self):
