@@ -106,31 +106,31 @@ class parser(cmd.Cmd):
 # TODO - complete for local commands?
 # ---
     def complete_get(self, text, line, start_index, end_index):
-        return self.remotes_complete(line[4:end_index], start_index-4)
+        return self.remote_complete(line[4:end_index], start_index-4)
 
 # ---
     def complete_rm(self, text, line, start_index, end_index):
-        return self.remotes_complete(line[3:end_index], start_index-3)
+        return self.remote_complete(line[3:end_index], start_index-3)
 
 # ---
     def complete_file(self, text, line, start_index, end_index):
-        return self.remotes_complete(line[5:end_index], start_index-5)
+        return self.remote_complete(line[5:end_index], start_index-5)
 
 # ---
     def complete_publish(self, text, line, start_index, end_index):
-        return self.remotes_complete(line[8:end_index], start_index-8)
+        return self.remote_complete(line[8:end_index], start_index-8)
 
 # ---
     def complete_ls(self, text, line, start_index, end_index):
-        return self.remotes_complete(line[3:end_index], start_index-3)
+        return self.remote_complete(line[3:end_index], start_index-3)
 
 # ---
     def complete_cd(self, text, line, start_index, end_index):
-        return self.remotes_complete(line[3:end_index], start_index-3, file_search=False)
+        return self.remote_complete(line[3:end_index], start_index-3, file_search=False)
 
 # ---
     def complete_rmdir(self, text, line, start_index, end_index):
-        return self.remotes_complete(line[6:end_index], start_index-6, file_search=False)
+        return self.remote_complete(line[6:end_index], start_index-6, file_search=False)
 
 # ---
     def complete_remote(self, text, line, start_index, end_index):
@@ -148,7 +148,7 @@ class parser(cmd.Cmd):
         raise Exception("No current active remote")
 
 #------------------------------------------------------------
-    def remotes_complete(self, partial, start, file_search=True, folder_search=True):
+    def remote_complete(self, partial, start, file_search=True, folder_search=True):
         try:
             candidate_list = []
             remote = self.remote_active()
@@ -179,7 +179,7 @@ class parser(cmd.Cmd):
             self.config.write(f)
 
 #------------------------------------------------------------
-    def remotes_add(self, name, endpoint):
+    def remote_add(self, name, endpoint):
         try:
             self.logging.info("Creating remote name = [%s] type = [%s]" % (name, endpoint['type']))
 # create client
@@ -204,26 +204,45 @@ class parser(cmd.Cmd):
             self.logging.error(str(e))
 
 #------------------------------------------------------------
-    def remote_set(self, name, home='/'):
+    def remote_del(self, name):
+        try:
+# remove remote entry
+# FIXME - this logic is a bit convoluted ... can we merge self.remotes[] and endpoints in some way?
+            del self.remotes[name]
+            self.logging.info("Deleted remote [%s]" % name)
+            endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
+            del endpoints[name]
+            self.config.set(self.config_name, 'endpoints', json.dumps(endpoints))
+# update stored config
+            self.remotes_config_save()
+        except Exception as e:
+            self.logging.debug(str(e))
+            self.logging.error("Could not delete remote [%s]" % name)
 
+#------------------------------------------------------------
+    def remote_set(self, name, home='/'):
         try:
             remote = self.remotes[name]
             remote.connect()
             self.remotes_current = name
             self.cwd = home 
         except Exception as e:
-            self.logging.error(str(e))
+            self.logging.error("Could not connect to remote [%s]" % name)
 
 #------------------------------------------------------------
     def abspath(self, line):
         if line.startswith('"') and line.endswith('"'):
             line = line[1:-1]
+# convert blank entry to cwd (which should have a trailing / for S3 reasons)
+        if line == "":
+            line = self.cwd
+# convert relative path to absolute
         if posixpath.isabs(line) is False:
             path = posixpath.normpath(posixpath.join(self.cwd, line))
         else:
             path = posixpath.normpath(line)
-# replace any trailing / that may have been removed by normpath - important for S3 prefixes
-        if line.endswith('/'):
+# enforce trailing / removed by normpath - important for S3 prefix handling
+        if line.endswith('/') is True:
             path = path+'/'
         return path
 
@@ -292,33 +311,56 @@ class parser(cmd.Cmd):
         for key, value in remote.info(fullpath).items():
             print("%10s : %s" % (key, value))
 
+
+#------------------------------------------------------------
+    def do_du(self, line):
+        remote = self.remote_active()
+        fullpath = self.abspath(line)
+
+        print("TODO - du on [%s]" % fullpath)
+
+# FIXME - this only gets objects in the current path - we want recursive counting
+        results = remote.get_iter(fullpath)
+
+        count = int(next(results))
+        size = int(next(results))
+
+        print("object count = %d, total size = %s" % (count, self.human_size(size)))
+
 #------------------------------------------------------------
     def help_remote(self):
-        print("\nInformation about remote clients\n")
-        print("Usage: remote <name>\n")
-        print("Usage: remote <add name type URL>\neg remote add mystuff s3 https://somewhere.org:8080")
+        print("\nSelect, add, or delete remote storage locations\n")
+        print("Usages:")
+        print("    remote <name>")
+        print("    remote <add name type URL>")
+        print("    remote <del name>\negs:")
+        print("    remote add mystuff s3 https://somewhere.org:8080")
+        print("    remote mystuff")
+        print("    remote del mystuff\n")
 
 # --- 
     def do_remote(self, line):
 
-        if line in self.remotes:
+        args = line.split()
+        nargs = len(args)
+
+        if nargs == 1:
+            self.logging.debug("SET remote [%s]" % line)
             self.remote_set(line)
-            return
-
-        if 'add' in line:
-            args = line.split()
-            if len(args) != 4:
-                raise Exception("Expected command of the form: remotes add /mount type URL")
-
+        elif nargs == 4:
             mount = args[1]
             remote_type = args[2]
             remote_url = args[3]
-
-            print("remote [%s] server of type [%s] with URL [%s]" % (mount, remote_type, remote_url))
-
-            self.remotes_add(mount, {'type':remote_type, 'url':remote_url})
-
+            if 'add' in args[0]:
+                self.logging.debug("ADD remote [%s] server of type [%s] with URL [%s]" % (mount, remote_type, remote_url))
+                self.remote_add(mount, {'type':remote_type, 'url':remote_url})
+        elif nargs == 2:
+            mount = args[1]
+            if 'del' in args[0]:
+                self.logging.debug("DEL remote [%s]" % mount)
+                self.remote_del(mount)
         else:
+            # show all remotes
             for name, client in self.remotes.items():
                 print("%-20s %s" % (name, client.status))
 
@@ -355,7 +397,7 @@ class parser(cmd.Cmd):
 #                self.keystone.connect(remote)
                 self.keystone.connect()
                 endpoint = self.keystone.discover_s3_endpoint()
-                self.remotes_add(endpoint['name'], endpoint)
+                self.remote_add(endpoint['name'], endpoint)
                 self.remotes_config_save()
             except Exception as e:
                 self.logging.info(str(e))

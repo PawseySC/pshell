@@ -180,7 +180,44 @@ class s3_client(remote.client):
         return self.complete_path(cwd, partial, start, match_prefix=True, match_object=True)
 
 #------------------------------------------------------------
-# convert fullpath to bucket, key pair
+# NEW - convert fullpath to bucket, commonprefix, and key (which might contain wildcards)
+    def path_convert(self, path):
+        self.logging.info("path=[%s]" % path)
+
+        if posixpath.isabs(path) is False:
+            self.logging.info("Warning: converting relative path to absolute")
+            path = '/' + path
+
+        fullpath = posixpath.normpath(path)
+        mypath = pathlib.PurePosixPath(fullpath)
+        count = len(mypath.parts)
+        prefix = ""
+        key = ""
+        if count > 1:
+            bucket = mypath.parts[1]
+            if path.endswith('/') or count==2:
+                # path contains no key
+                prefix_last = count
+            else:
+                # otherwise key is last item
+                prefix_last = count-1
+                key = mypath.parts[count-1]
+            head = "%s%s" % (mypath.parts[0], mypath.parts[1])
+            for i in range(2, prefix_last):
+                prefix = posixpath.join(prefix, mypath.parts[i])
+# prefixes (if not empty) MUST always end in '/'
+            if prefix_last > 2:
+                prefix = prefix + '/'
+        else:
+            bucket = None
+
+        self.logging.info("bucket=[%r] prefix=[%r] key=[%s]" % (bucket, prefix, key))
+
+        return bucket, prefix, key
+
+#------------------------------------------------------------
+# TODO - rework complete_path() and get rid of this (superceeded by path_convert)
+# convert fullpath to bucket, and full object key
     def path_split(self, path):
         self.logging.info("path=[%s]" % path)
         fullpath = posixpath.normpath(path)
@@ -197,60 +234,49 @@ class s3_client(remote.client):
             head = "%s%s" % (mypath.parts[0], mypath.parts[1])
             key = fullpath[1+len(head):]
 
-# normpath will remove trailing slash, but this is meaningful for navigation
+# normpath will remove trailing slash, but this is meaningful for navigation if we have non-empty key
         if bucket is not None:
-            if path.endswith('/'):
+            if path.endswith('/') and len(key) > 0:
                 key = key + '/'
 
         self.logging.info("bucket=[%r] key=[%s]" % (bucket, key))
-
-# FIXME - implement get_iter() and remove this
-#        if '*' in key:
-#            raise Exception("Wildcards in keys not yet supported")
 
         return bucket, key
 
 #------------------------------------------------------------
     def cd(self, path):
-
         self.logging.info("input fullpath=[%s]" % path)
-
-        fullpath = posixpath.normpath(path)
-
+# all paths must end in /
+        fullpath = posixpath.normpath(path) + '/'
         self.logging.info("input fullpath=[%s]" % fullpath)
-
-# make it easier to extract the last path item (/ may or may not be terminating fullpath)
-#        if fullpath[-1] == '/':
-#            fullpath = fullpath[:-1]
-
-        bucket,key = self.path_split(fullpath)
-        self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
+        bucket,prefix,key = self.path_convert(fullpath)
+# check for existence
         exists = False
         try:
             if bucket is None:
-                # root level
+# root level
                 exists = True
             else:
-                if key == "":
+# bucket level
+                if prefix == "":
                     response = self.s3.list_buckets()
                     for item in response['Buckets']:
                         if item['Name'] == bucket:
                             exists = True
+# prefix (subdir) levels
                 else:
-                    prefix_ix = key.rfind('/')
-                    prefix = key[:prefix_ix+1]
-                    pattern = key+'/'
-                    self.logging.info("bucket=[%s] prefix=[%s] pattern=[%s]" % (bucket, prefix, pattern))
+                    self.logging.info("bucket=[%s] prefix=[%s]" % (bucket, prefix))
                     response = self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
-#                    print(response)
+# if the path contains objects or prefixes then it is valid
+                    if 'Contents' in response:
+                        exists = True
                     if 'CommonPrefixes' in response:
-                        for item in response['CommonPrefixes']:
-                            if item['Prefix'] == pattern:
-                                exists = True
+                        exists = True
 
         except Exception as e:
             self.logging.error(str(e))
 
+# return path (for setting cwd) if exists
         if exists is True:
             self.logging.info("output fullpath=[%s]" % fullpath)
             return fullpath
@@ -260,43 +286,41 @@ class s3_client(remote.client):
 #------------------------------------------------------------
     def ls_iter(self, path):
 
-        bucket,key = self.path_split(path)
-
-# specific to doing an ls with a non-empty key
-#        if len(key) > 2:
-#            if key.endswith('/') is False:
-#                key = key+'/'
-
-# NB: attempt to treat key as a glob style filename pattern match
-        self.logging.info("bucket=[%r] key=[%r]" % (bucket, key))
+        bucket,prefix,key = self.path_convert(path)
 
         if bucket is not None:
             paginator = self.s3.get_paginator('list_objects_v2')
-#            for page in paginator.paginate(Bucket=bucket, Delimiter='/', Prefix=key):
-            for page in paginator.paginate(Bucket=bucket, Delimiter='/'):
+            do_match = True
+            if len(key) == 0:
+                do_match = False
+            page_list = paginator.paginate(Bucket=bucket, Delimiter='/', Prefix=prefix)
+            for page in page_list:
 #                print(" >>> page: %s\n<<<\n" % page)
                 if 'CommonPrefixes' in page:
                     for item in page.get('CommonPrefixes'):
+                        if do_match: 
+                            if fnmatch.fnmatch(item['Prefix'], key) is False:
+                                continue
                         yield "[prefix] %s" % item['Prefix']
-# match everything if no pattern
-                if len(key) == 0:
-                    key = '*'
+
                 if 'Contents' in page:
                     for item in page.get('Contents'):
 #                        print("\nitem: %s" % item)
-                        if fnmatch.fnmatch(item['Key'], key):
-                            yield "%s | %s" % (self.human_size(item['Size']), item['Key'])
+                        if do_match:
+                            if fnmatch.fnmatch(item['Key'], key) is False:
+                                continue
+                        yield "%s | %s" % (self.human_size(item['Size']), item['Key'])
+
         else:
             response = self.s3.list_buckets()
             for item in response['Buckets']:
                 yield "[Bucket] %s" % item['Name']
 
 #------------------------------------------------------------
-# CURRENT - test wildcard implementation
-# NB: 1st yield of get_iter() must be the number of items and the 2nd the number of bytes ...
+# return number, size of objects that match the pattern, followed by the URL to the objects
     def get_iter(self, pattern):
-        bucket,key_pattern = self.path_split(pattern)
-        self.logging.debug("bucket=[%s] pattern=[%s]" % (bucket, key_pattern))
+
+        bucket,prefix,key_pattern = self.path_convert(pattern)
 
 # TODO - handle get on a bucket only...
         count = 0
@@ -306,9 +330,9 @@ class s3_client(remote.client):
         if len(key_pattern) == 0:
             key_pattern = '*'
 
-# precompute the size of the download
+# 1 iterate to compute the size of the download
         paginator = self.s3.get_paginator('list_objects_v2')
-        for page in paginator.paginate(Bucket=bucket, Delimiter='/'):
+        for page in paginator.paginate(Bucket=bucket, Delimiter='/', Prefix=prefix):
             for item in page.get('Contents'):
                 if fnmatch.fnmatch(item['Key'], key_pattern):
                     count += 1
@@ -316,9 +340,9 @@ class s3_client(remote.client):
         yield count
         yield size
 
-# yield fullpaths of the objects to get
+# 2 iterate to yield the actual objects
         paginator = self.s3.get_paginator('list_objects_v2')
-        for page in paginator.paginate(Bucket=bucket, Delimiter='/'):
+        for page in paginator.paginate(Bucket=bucket, Delimiter='/', Prefix=prefix):
             for item in page.get('Contents'):
 #                print(item)
                 if fnmatch.fnmatch(item['Key'], key_pattern):
@@ -327,25 +351,31 @@ class s3_client(remote.client):
 #------------------------------------------------------------
     def get(self, remote_filepath, local_filepath=None):
 
-        bucket,key = self.path_split(remote_filepath)
-        self.logging.info('remote bucket=[%r] key=[%r] : local_filepath=[%r]' % (bucket, key, local_filepath))
+        bucket,prefix,key = self.path_convert(remote_filepath)
+        fullkey = posixpath.join(prefix, key)
+
+        self.logging.info('remote bucket=[%r] fullkey=[%r] : local_filepath=[%r]' % (bucket, fullkey, local_filepath))
 
         if local_filepath is None:
-            local_filepath = os.path.normpath(os.path.join(os.getcwd(), posixpath.basename(key)))
+            local_filepath = os.path.normpath(os.path.join(os.getcwd(), posixpath.basename(fullkey)))
 
         self.logging.info('downloading to [%s]' % local_filepath)
 
-        self.s3.download_file(str(bucket), str(key), local_filepath)
+        self.s3.download_file(str(bucket), str(fullkey), local_filepath)
 
         return os.path.getsize(local_filepath)
 
 #------------------------------------------------------------
     def put(self, remote_path, local_filepath):
 
-        bucket,key = self.path_split(remote_path)
-        self.logging.info('remote bucket=[%r] key=[%r]' % (bucket, key))
+        bucket,prefix,key = self.path_convert(remote_path+'/')
 
-        self.s3.upload_file(local_filepath, bucket, os.path.basename(local_filepath))
+        filename = os.path.basename(local_filepath)
+        fullkey = posixpath.join(prefix, filename)
+
+        self.logging.info('remote bucket=[%r] fullkey=[%r]' % (bucket, fullkey))
+
+        self.s3.upload_file(local_filepath, bucket, fullkey)
 
 #------------------------------------------------------------
     def rm(self, pattern, prompt=None):
@@ -359,28 +389,49 @@ class s3_client(remote.client):
                 return
 
         for filepath in results:
-            bucket,key = self.path_split(filepath)
+            bucket,prefix,key = self.path_convert(filepath)
+            fullkey = posixpath.join(prefix, key)
+
             if bucket is not None:
-                self.s3.delete_object(Bucket=str(bucket), Key=str(key))
+                self.s3.delete_object(Bucket=str(bucket), Key=str(fullkey))
             else:
                 raise Exception("No valid remote bucket, object in path [%s]" % filepath)
 
 #------------------------------------------------------------
-# TODO - this might have to become create bucket/folder -> split the components and then implement separately
     def mkdir(self, path):
-        bucket,key = self.path_split(path)
+        bucket,prefix,key = self.path_convert(path)
+
+# can't create a prefix (without an object) in the same way as a folder -> fail if prefix is not empty
+
+# TODO - AWS apparently creates an empty object with / appended to the key to simulate a folder
+
         if bucket is not None:
-            self.s3.create_bucket(Bucket=bucket)
-        else:
-            raise Exception("No valid remote bucket in path [%s]" % path)
+            if prefix == "":
+                self.s3.create_bucket(Bucket=bucket)
+            else:
+                print("TODO: create empty object [%s] in bucket [%s]" % (prefix, bucket))
+
+#                import io
+#                empty_file = io.StringIO("")
+# upload file object?
+#                self.s3.upload_file(filename, bucket, prefix)
+
+# put_object?
+
+        raise Exception("Bad input bucket [%s] or prefix [%s] in path [%s]" % (bucket, prefix, path))
 
 #------------------------------------------------------------
     def rmdir(self, path):
-        bucket,key = self.path_split(path)
+        bucket,prefix,key = self.path_convert(path)
+
+# TODO - use get_iter ... report what you would delete and prompt ...
+# can't delete a prefix in the same way as a folder -> fail if prefix is not empty
         if bucket is not None:
-            self.s3.delete_bucket(Bucket=bucket)
-        else:
-            raise Exception("No valid remote bucket in path [%s]" % path)
+            if prefix == "":
+                self.s3.delete_bucket(Bucket=bucket)
+                return
+
+        raise Exception("Bad input bucket [%s] or prefix [%s] in path [%s]" % (bucket, prefix, path))
 
 #------------------------------------------------------------
     def publish(self, pattern):
@@ -390,10 +441,12 @@ class s3_client(remote.client):
         print("Publishing %d files..." % count)
         for filepath in results:
             self.logging.info("s3 publish: %s" % filepath)
-            bucket,key = self.path_split(filepath)
+            bucket,prefix,key = self.path_convert(filepath)
+            fullkey = posixpath.join(prefix, key)
+
 # try different expiry times ... no limit?
 #            url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': key}, ExpiresIn=3600)
-            url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': key}, ExpiresIn=3600000)
+            url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': fullkey}, ExpiresIn=3600000)
             print("public url = %s" % url)
 
         return(count)
