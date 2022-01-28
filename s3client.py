@@ -330,7 +330,7 @@ class s3_client(remote.client):
 
 #------------------------------------------------------------
 # return number, size of objects that match the pattern, followed by the URL to the objects
-    def get_iter(self, pattern):
+    def get_iter(self, pattern, delimiter='/'):
 
         bucket,prefix,key_pattern = self.path_convert(pattern)
 
@@ -342,9 +342,9 @@ class s3_client(remote.client):
         if len(key_pattern) == 0:
             key_pattern = '*'
 
-# 1 iterate to compute the size of the download
+# 1 iterate to compute the size of the match
         paginator = self.s3.get_paginator('list_objects_v2')
-        for page in paginator.paginate(Bucket=bucket, Delimiter='/', Prefix=prefix):
+        for page in paginator.paginate(Bucket=bucket, Delimiter=delimiter, Prefix=prefix):
             for item in page.get('Contents'):
                 if fnmatch.fnmatch(item['Key'], key_pattern):
                     count += 1
@@ -354,7 +354,7 @@ class s3_client(remote.client):
 
 # 2 iterate to yield the actual objects
         paginator = self.s3.get_paginator('list_objects_v2')
-        for page in paginator.paginate(Bucket=bucket, Delimiter='/', Prefix=prefix):
+        for page in paginator.paginate(Bucket=bucket, Delimiter=delimiter, Prefix=prefix):
             for item in page.get('Contents'):
 #                print(item)
                 if fnmatch.fnmatch(item['Key'], key_pattern):
@@ -447,22 +447,20 @@ class s3_client(remote.client):
                 self.s3.delete_bucket(Bucket=bucket)
                 return True
             else:
-# FIXME - rm isn't quite right ... rmdir implies a recursiveness that rm doesn't
-# get_iter() ... might be better?
-                self.logging.debug("Redirecting to rm for deleting bucket and prefix pattern")
+# recursive get on objects if we have a prefix (folder)
+                results = self.get_iter(path, '')
+                count = int(next(results))
+                size = int(next(results))
+                if prompt is not None:
+                    if prompt("Delete %d objects, total size: %s (y/n)" % (count, self.human_size(size))) is False:
+                        return False
 
+                for item in results:
+                    bucket,prefix,key = self.path_convert(item)
+                    fullkey = posixpath.join(prefix, key)
+                    self.s3.delete_object(Bucket=bucket, Key=fullkey)
 
-                result = self.get_iter(path)
-
-                count = int(next(result))
-                size = int(next(result))
-
-                print("delete %d items, size = %d" % (count, size))
-
-                return False
-
-#                self.s3.delete_object(Bucket=bucket, Key=prefix)
-#                return self.rm(path, prompt)
+                return True
 
         raise Exception("Invalid bucket, prefix, or key specified in folder [%s]" % path)
 
