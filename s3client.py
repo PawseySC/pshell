@@ -342,6 +342,12 @@ class s3_client(remote.client):
         if len(key_pattern) == 0:
             key_pattern = '*'
 
+
+# NEW - recursive if no key (ie no pattern)
+            if prefix != "":
+                delimiter = ""
+
+
 # 1 iterate to compute the size of the match
         paginator = self.s3.get_paginator('list_objects_v2')
         for page in paginator.paginate(Bucket=bucket, Delimiter=delimiter, Prefix=prefix):
@@ -371,7 +377,13 @@ class s3_client(remote.client):
         if local_filepath is None:
             local_filepath = os.path.normpath(os.path.join(os.getcwd(), posixpath.basename(fullkey)))
 
-        self.logging.info('downloading to [%s]' % local_filepath)
+        self.logging.info('Downloading to [%s]' % local_filepath)
+
+# make any intermediate folders required ...
+        local_parent = os.path.dirname(local_filepath)
+        if os.path.exists(local_parent) is False:
+            self.logging.debug("Creating required local folder(s): [%s]" % local_parent)
+            os.makedirs(local_parent)
 
         self.s3.download_file(str(bucket), str(fullkey), local_filepath)
 
