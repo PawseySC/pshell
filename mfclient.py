@@ -949,11 +949,16 @@ class mf_client():
         return "%6s %-2s" % (f, suffixes[rank])
 
 #------------------------------------------------------------
-    def rmdir(self, namespace):
+    def rmdir(self, namespace, prompt=None):
         """
         remove a namespace
         """
+        # TODO - compute count and size of assets for prompt
+        if prompt is not None:
+            if prompt("Delete folder %s (y/n): " % namespace) is False:
+                return False
         self.aterm_run('asset.namespace.destroy :namespace "%s"' % namespace.replace('"', '\\\"'))
+        return True
 
 #------------------------------------------------------------
     def mkdir(self, namespace):

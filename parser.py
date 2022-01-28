@@ -226,6 +226,14 @@ class parser(cmd.Cmd):
             remote.connect()
             self.remotes_current = name
             self.cwd = home 
+
+# NEW
+            self.config.set(self.config_name, 'remotes_current', name)
+            self.config.set(self.config_name, 'remotes_home', home)
+            with open(self.config_filepath, 'w') as f:
+                self.config.write(f)
+
+
         except Exception as e:
             self.logging.error("Could not connect to remote [%s]" % name)
 
@@ -311,7 +319,6 @@ class parser(cmd.Cmd):
         for key, value in remote.info(fullpath).items():
             print("%10s : %s" % (key, value))
 
-
 #------------------------------------------------------------
     def do_usage(self, line):
         remote = self.remote_active()
@@ -328,9 +335,10 @@ class parser(cmd.Cmd):
         print("\nSelect, add, or delete remote storage locations\n")
         print("Usages:")
         print("    remote <name>")
-        print("    remote <add name type URL>")
+        print("    remote <add name type LOCATION>")
         print("    remote <del name>\negs:")
         print("    remote add mystuff s3 https://somewhere.org:8080")
+        print("    remote add myaws s3 ap-southeast-2")
         print("    remote mystuff")
         print("    remote del mystuff\n")
 
@@ -746,7 +754,7 @@ class parser(cmd.Cmd):
         abspath = self.abspath(line)
         remote = self.remote_active()
         if remote.rm(abspath, prompt=self.ask) is False:
-            print("Delete aborted")
+            print("rm aborted")
 
 #------------------------------------------------------------
     def help_rmdir(self):
@@ -757,10 +765,13 @@ class parser(cmd.Cmd):
         ns_target = self.abspath(line)
         remote = self.remote_active()
 
-        if self.ask("Remove folder: %s (y/n) " % ns_target):
-            remote.rmdir(ns_target)
-        else:
-            print("Aborted")
+        if remote.rmdir(ns_target, prompt=self.ask) is False:
+            print("rmdir aborted")
+
+#        if self.ask("Remove folder: %s (y/n) " % ns_target):
+#            remote.rmdir(ns_target)
+#        else:
+#            print("Aborted")
 
 #------------------------------------------------------------
 # --

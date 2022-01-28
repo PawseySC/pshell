@@ -398,7 +398,7 @@ class s3_client(remote.client):
 
         if prompt is not None:
             if prompt("Delete %d objects and %d bytes (y/n)" % (count,size)) is False:
-                return
+                return False
 
         for filepath in results:
             bucket,prefix,key = self.path_convert(filepath)
@@ -409,6 +409,8 @@ class s3_client(remote.client):
                 self.s3.delete_object(Bucket=str(bucket), Key=str(fullkey))
             else:
                 raise Exception("No valid remote bucket, object in path [%s]" % filepath)
+
+        return True
 
 #------------------------------------------------------------
     def mkdir(self, path):
@@ -426,25 +428,43 @@ class s3_client(remote.client):
                 self.s3.put_object(Bucket=bucket, Key=prefix, Body='')
                 return
 
-        raise Exception("Bad input bucket [%s] or prefix [%s] in path [%s]" % (bucket, prefix, path))
+        raise Exception("Bad input bucket [%s] or prefix [%s] in folder [%s]" % (bucket, prefix, path))
 
 #------------------------------------------------------------
-    def rmdir(self, path):
+    def rmdir(self, path, prompt=None):
         bucket,prefix,key = self.path_convert(path)
 
-        if bucket is not None:
+#        if key != "":
+#            raise Exception("Bad input path [%s], missing / terminating character" % path)
+
+        if bucket is not None and key == "":
             if prefix == "":
 # remove bucket if top level
+                if prompt is not None:
+                    if prompt("Delete bucket %s (y/n)" % bucket) is False:
+                        return False
                 self.logging.debug("Removing bucket [%s]" % bucket)
                 self.s3.delete_bucket(Bucket=bucket)
-                return
+                return True
             else:
-# remove prefix
-                self.logging.debug("Removing prefix [%s] in bucket [%s]" % (prefix, bucket))
-                self.s3.delete_object(Bucket=bucket, Key=prefix)
-                return
+# FIXME - rm isn't quite right ... rmdir implies a recursiveness that rm doesn't
+# get_iter() ... might be better?
+                self.logging.debug("Redirecting to rm for deleting bucket and prefix pattern")
 
-        raise Exception("Bad input bucket [%s] or prefix [%s] in path [%s]" % (bucket, prefix, path))
+
+                result = self.get_iter(path)
+
+                count = int(next(result))
+                size = int(next(result))
+
+                print("delete %d items, size = %d" % (count, size))
+
+                return False
+
+#                self.s3.delete_object(Bucket=bucket, Key=prefix)
+#                return self.rm(path, prompt)
+
+        raise Exception("Invalid bucket, prefix, or key specified in folder [%s]" % path)
 
 #------------------------------------------------------------
     def publish(self, pattern):
