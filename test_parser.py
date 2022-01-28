@@ -37,7 +37,7 @@ class parser_standard(unittest.TestCase):
 
 # --- remote
     def test_remote_complete(self):
-        self.parser.remotes_add('mfclient', {'type':'mflux', 'protocol':'http', 'server':'localhost', 'port':80})
+        self.parser.remote_add('mfclient', {'type':'mflux', 'protocol':'http', 'server':'localhost', 'port':80})
         result = self.parser.complete_remote("mf", "mf", 0, 2)
         if 'mfclient' in result:
             success = True
