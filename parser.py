@@ -634,6 +634,7 @@ class parser(cmd.Cmd):
 # progress update report
         self.print_over("put progress: [%r] files and [%r] bytes" % (self.put_count, self.put_bytes))
 
+# TODO - redo this in same style as get_iter() ... ie walk and return count/size before the subsequent yields ...
 # --
     def put_iter(self, line, metadata=False):
         if os.path.isdir(line):
@@ -699,23 +700,24 @@ class parser(cmd.Cmd):
         self.print_over("Completed put: %d files, total size: %s, speed: %.2f MB/s   \n" % (self.put_count, self.human_size(self.put_bytes), rate))
 
 #------------------------------------------------------------
-    def do_copy(self, line):
-        self.logging.info("in: %s" % line)
+# TODO
+#    def do_copy(self, line):
+#        self.logging.info("in: %s" % line)
 
 # TODO - options for metadata copy as well (IF src = mflux)
 #        option_list, tail = getopt.getopt(line, "r")
 #        self.logging.info("options: %r" % option_list)
 #        self.logging.info("tail: %r" % tail)
 
-        try:
-            path_list = shlex.split(line, posix=True)
-            self.logging.info("copy [%r]" % path_list)
-
-        except Exception as e:
-            self.logging.debug(str(e))
-
-        if len(path_list) != 2:
-            raise Exception("Expected exactly two path arguments: source and destination")
+#        try:
+#            path_list = shlex.split(line, posix=True)
+#            self.logging.info("copy [%r]" % path_list)
+#
+#        except Exception as e:
+#            self.logging.debug(str(e))
+#
+#        if len(path_list) != 2:
+#            raise Exception("Expected exactly two path arguments: source and destination")
 
 # source location is the remote client that controls the copy
 #        from_abspath = self.absolute_remote_filepath(path_list[0])
