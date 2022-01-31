@@ -226,19 +226,19 @@ class parser(cmd.Cmd):
             remote.connect()
             self.remotes_current = name
             self.cwd = home 
-
-# NEW
             self.config.set(self.config_name, 'remotes_current', name)
             self.config.set(self.config_name, 'remotes_home', home)
             with open(self.config_filepath, 'w') as f:
                 self.config.write(f)
-
 
         except Exception as e:
             self.logging.error("Could not connect to remote [%s]" % name)
 
 #------------------------------------------------------------
     def abspath(self, line):
+
+        self.logging.info("in: [%s]" % line)
+
         if line.startswith('"') and line.endswith('"'):
             line = line[1:-1]
 # convert blank entry to cwd (which should have a trailing / for S3 reasons)
@@ -249,9 +249,14 @@ class parser(cmd.Cmd):
             path = posixpath.normpath(posixpath.join(self.cwd, line))
         else:
             path = posixpath.normpath(line)
+
 # enforce trailing / removed by normpath - important for S3 prefix handling
         if line.endswith('/') is True:
-            path = path+'/'
+            if path.endswith('/') is False:
+                path = path+'/'
+
+        self.logging.info("out: [%s]" % path)
+
         return path
 
 #------------------------------------------------------------
@@ -320,6 +325,10 @@ class parser(cmd.Cmd):
             print("%10s : %s" % (key, value))
 
 #------------------------------------------------------------
+    def help_usage(self):
+        print("\nReturn usage amounts on a remote storage system\n")
+        print("Usage: usage <path>\n")
+
     def do_usage(self, line):
         remote = self.remote_active()
         fullpath = self.abspath(line)

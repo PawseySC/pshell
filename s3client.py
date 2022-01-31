@@ -257,9 +257,10 @@ class s3_client(remote.client):
 
 #------------------------------------------------------------
     def cd(self, path):
-        self.logging.info("input fullpath=[%s]" % path)
 # all paths must end in /
-        fullpath = posixpath.normpath(path) + '/'
+        fullpath = posixpath.normpath(path)
+        if fullpath.endswith('/') is False:
+            fullpath += '/'
         self.logging.info("input fullpath=[%s]" % fullpath)
         bucket,prefix,key = self.path_convert(fullpath)
 # check for existence
