@@ -65,7 +65,9 @@ class parser(cmd.Cmd):
     total_count = 0
     total_bytes = 0
     put_count = 0
+    put_count_total = 0
     put_bytes = 0
+    put_bytes_total = 0
     logging = logging.getLogger('parser')
 
 # --- initial setup 
@@ -632,11 +634,13 @@ class parser(cmd.Cmd):
             self.put_count += 1
             self.put_bytes += bytes_sent
 # progress update report
-        self.print_over("put progress: [%r] files and [%r] bytes" % (self.put_count, self.put_bytes))
+        progress_pc = 100.0 * float(self.put_bytes) / float(self.put_bytes_total)
+        self.print_over("put: uploaded %d/%d files, progress: %3.1f%% " % (self.put_count, self.put_count_total, progress_pc))
 
-# TODO - redo this in same style as get_iter() ... ie walk and return count/size before the subsequent yields ...
 # --
-    def put_iter(self, line, metadata=False):
+    def put_iter(self, line, metadata=False, setup=False):
+        count = 0
+        size = 0
         if os.path.isdir(line):
             self.logging.info("Walking directory tree...")
             line = os.path.abspath(line)
@@ -653,7 +657,11 @@ class parser(cmd.Cmd):
                             ignore = True
                     if ignore is False:
                         fullpath = os.path.normpath(os.path.join(os.getcwd(), root, name))
-                        yield remote_fullpath, fullpath
+                        if setup is False:
+                            yield remote_fullpath, fullpath
+                        else:
+                            count += 1
+                            size += int(os.path.getsize(fullpath))
         else:
             self.logging.info("Building file list... ")
             for name in glob.glob(line):
@@ -663,7 +671,15 @@ class parser(cmd.Cmd):
                     if name.endswith(".meta"):
                         ignore = True
                 if ignore is False:
-                    yield self.cwd, local_fullpath
+                    if setup is False:
+                        yield self.cwd, local_fullpath
+                    else:
+                        count += 1 
+                        size += int(os.path.getsize(local_fullpath))
+
+        if setup is True:
+            yield count
+            yield size
 
 # --
     def do_put(self, line, metadata=False):
@@ -677,7 +693,20 @@ class parser(cmd.Cmd):
             total_count = 0
             start_time = time.time()
 
+# determine size of upload
+            self.print_over("put: analysing local files...")
+            results = self.put_iter(line, metadata=metadata, setup=True)
+            self.put_count_total = next(results)
+            self.put_bytes_total = next(results)
+            self.print_over("put: uploading %d files, total size: %s" % (self.put_count_total, self.human_size(self.put_bytes_total)))
+
+# iterate over upload items
             results = self.put_iter(line, metadata=metadata)
+
+# TODO - report 'in-flight' files for more apparent responsiveness ... ???
+# TODO - S3 has callback functionality that could be used for this ... 
+# TODO - need a generic replacement for cb_put that the specific (mflux/s3) progress cb reports to
+# TODO - in the case of not-implemented ... would just report that the transfer has started (in-flight)
 
             for remote_fullpath, local_fullpath in results:
                 self.logging.info("put remote=[%s] local=[%s]" % (remote_fullpath, local_fullpath))
