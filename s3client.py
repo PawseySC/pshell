@@ -343,11 +343,9 @@ class s3_client(remote.client):
         if len(key_pattern) == 0:
             key_pattern = '*'
 
-
 # NEW - recursive if no key (ie no pattern)
             if prefix != "":
                 delimiter = ""
-
 
 # 1 iterate to compute the size of the match
         paginator = self.s3.get_paginator('list_objects_v2')
@@ -387,12 +385,11 @@ class s3_client(remote.client):
             os.makedirs(local_parent)
 
 # TODO - tweak this? default concurrency is 10
-#config = TransferConfig(max_concurrency=5)
-# Download an S3 object
-#s3 = boto3.client('s3')
-#s3.download_file('BUCKET_NAME', 'OBJECT_NAME', 'FILE_NAME', Config=config)
+        from boto3.s3.transfer import TransferConfig
+        config = TransferConfig(max_concurrency=5)
 
-        self.s3.download_file(str(bucket), str(fullkey), local_filepath)
+#        self.s3.download_file(str(bucket), str(fullkey), local_filepath)
+        self.s3.download_file(str(bucket), str(fullkey), local_filepath, Config=config)
 
         return os.path.getsize(local_filepath)
 
