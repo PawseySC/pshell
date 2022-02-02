@@ -386,19 +386,33 @@ class s3_client(remote.client):
             self.logging.debug("Creating required local folder(s): [%s]" % local_parent)
             os.makedirs(local_parent)
 
+# TODO - tweak this? default concurrency is 10
+#config = TransferConfig(max_concurrency=5)
+# Download an S3 object
+#s3 = boto3.client('s3')
+#s3.download_file('BUCKET_NAME', 'OBJECT_NAME', 'FILE_NAME', Config=config)
+
         self.s3.download_file(str(bucket), str(fullkey), local_filepath)
 
         return os.path.getsize(local_filepath)
 
 #------------------------------------------------------------
     def put(self, remote_path, local_filepath):
-
         bucket,prefix,key = self.path_convert(remote_path+'/')
-
         filename = os.path.basename(local_filepath)
         fullkey = posixpath.join(prefix, filename)
 
-        self.logging.info('remote bucket=[%r] fullkey=[%r]' % (bucket, fullkey))
+# attempt to get remote size (if exists) and then local size for comparison
+        try:
+            response = self.s3.head_object(Bucket=bucket, Key=fullkey)
+            rsize = int(response['ResponseMetadata']['HTTPHeaders']['content-length'])
+            lsize = os.path.getsize(local_filepath)
+            if lsize == rsize:
+                self.logging.info("File of same size already exists, skipping [%s]" % local_filepath)
+                return
+        except Exception as e:
+            # file doesn't exist (or couldn't get size)
+            self.logging.debug(str(e))
 
         self.s3.upload_file(local_filepath, bucket, fullkey)
 
@@ -410,7 +424,7 @@ class s3_client(remote.client):
         size = int(next(results))
 
         if prompt is not None:
-            if prompt("Delete %d objects and %d bytes (y/n)" % (count,size)) is False:
+            if prompt("Delete %d objects, size: %s (y/n)" % (count,self.human_size(size))) is False:
                 return False
 
         for filepath in results:
@@ -465,7 +479,7 @@ class s3_client(remote.client):
                 count = int(next(results))
                 size = int(next(results))
                 if prompt is not None:
-                    if prompt("Delete %d objects, total size: %s (y/n)" % (count, self.human_size(size))) is False:
+                    if prompt("Delete %d objects, size: %s (y/n)" % (count, self.human_size(size))) is False:
                         return False
 
                 for item in results:
@@ -494,6 +508,17 @@ class s3_client(remote.client):
             print("public url = %s" % url)
 
         return(count)
+
+#------------------------------------------------------------
+    def info(self, path):
+        self.logging.info("HEAD on [%s]" % path)
+        bucket,prefix,key = self.path_convert(path)
+        fullkey = posixpath.join(prefix, key)
+        response = self.s3.head_object(Bucket=bucket, Key=fullkey)
+
+        print(response)
+
+        return response['ResponseMetadata']['HTTPHeaders']
 
 #------------------------------------------------------------
     def bucket_usage(self, bucket):

@@ -83,12 +83,6 @@ class parser(cmd.Cmd):
                 print(remote.status)
                 return ""
 
-#            if self.remotes_current in self.remotes:
-#                remote = self.remotes[self.remotes_current]
-#                if "not" in remote.status:
-#                    print(remote.status)
-#                    return ""
-
         return cmd.Cmd.precmd(self, line)
 
 # --- prompt run after 
@@ -324,7 +318,7 @@ class parser(cmd.Cmd):
         fullpath = self.abspath(line)
         remote.info(fullpath)
         for key, value in remote.info(fullpath).items():
-            print("%10s : %s" % (key, value))
+            print("%20s : %s" % (key, value))
 
 #------------------------------------------------------------
     def help_usage(self):
@@ -571,27 +565,23 @@ class parser(cmd.Cmd):
             self.get_count += 1
             self.get_bytes += bytes_recv
 # progress update report
-        self.print_over("get progress: [%r/%r] files and [%r/%r] bytes" % (self.get_count, self.total_count, self.get_bytes, self.total_bytes))
+        progress_pc = 100.0 * float(self.get_bytes) / float(self.total_bytes)
+        self.print_over("get: downloaded %d/%d files, progress: %3.1f%% " % (self.get_count, self.total_count, progress_pc))
 
 # --
     def do_get(self, line):
 # turn input line into a matching file iterator
-
-#        line = self.absolute_remote_filepath(line)
-#        remote = self.remotes_get(line)
-
         remote = self.remote_active()
         abspath = self.abspath(line)
 
         if remote is not None:
-#            results = remote.get_iter(line)
             results = remote.get_iter(abspath)
             self.total_count = int(next(results))
             self.total_bytes = int(next(results))
             self.get_count = 0
             self.get_bytes = 0
             start_time = time.time()
-            self.print_over("Setting up for %d files..." % self.total_count)
+            self.print_over("get: downloading %d files..." % self.total_count)
             try:
                 count = 0
                 for remote_fullpath in results:
@@ -619,7 +609,7 @@ class parser(cmd.Cmd):
             elapsed = time.time() - start_time
             rate = float(self.total_bytes) / float(elapsed)
             rate = rate / 1000000.0
-            self.print_over("Completed get: %d files, total size: %s, speed: %.2f MB/s   \n" % (self.get_count, self.human_size(self.get_bytes), rate))
+            self.print_over("get: completed download of %d files, total size: %s, speed: %.1f MB/s   \n" % (self.get_count, self.human_size(self.get_bytes), rate))
 
 #------------------------------------------------------------
     def help_put(self):
@@ -635,14 +625,14 @@ class parser(cmd.Cmd):
             self.put_bytes += bytes_sent
 # progress update report
         progress_pc = 100.0 * float(self.put_bytes) / float(self.put_bytes_total)
-        self.print_over("put: uploaded %d/%d files, progress: %3.1f%% " % (self.put_count, self.put_count_total, progress_pc))
+        self.print_over("put: uploaded %d/%d files, progress: %3.1f%%     " % (self.put_count, self.put_count_total, progress_pc))
 
 # --
     def put_iter(self, line, metadata=False, setup=False):
         count = 0
         size = 0
         if os.path.isdir(line):
-            self.logging.info("Walking directory tree...")
+            self.logging.info("Analysing directories...")
             line = os.path.abspath(line)
             parent = os.path.normpath(os.path.join(line, ".."))
             for root, directory_list, name_list in os.walk(line):
@@ -694,11 +684,11 @@ class parser(cmd.Cmd):
             start_time = time.time()
 
 # determine size of upload
-            self.print_over("put: analysing local files...")
+            self.print_over("put: analysing...")
             results = self.put_iter(line, metadata=metadata, setup=True)
             self.put_count_total = next(results)
             self.put_bytes_total = next(results)
-            self.print_over("put: uploading %d files, total size: %s" % (self.put_count_total, self.human_size(self.put_bytes_total)))
+            self.print_over("put: uploading %d files, size: %s" % (self.put_count_total, self.human_size(self.put_bytes_total)))
 
 # iterate over upload items
             results = self.put_iter(line, metadata=metadata)
@@ -726,7 +716,7 @@ class parser(cmd.Cmd):
         elapsed = time.time() - start_time
         rate = float(self.put_bytes) / float(elapsed)
         rate = rate / 1000000.0
-        self.print_over("Completed put: %d files, total size: %s, speed: %.2f MB/s   \n" % (self.put_count, self.human_size(self.put_bytes), rate))
+        self.print_over("put: completed upload of %d files, size: %s, speed: %.2f MB/s   \n" % (self.put_count, self.human_size(self.put_bytes), rate))
 
 #------------------------------------------------------------
 # TODO
@@ -804,14 +794,8 @@ class parser(cmd.Cmd):
     def do_rmdir(self, line):
         ns_target = self.abspath(line)
         remote = self.remote_active()
-
         if remote.rmdir(ns_target, prompt=self.ask) is False:
             print("rmdir aborted")
-
-#        if self.ask("Remove folder: %s (y/n) " % ns_target):
-#            remote.rmdir(ns_target)
-#        else:
-#            print("Aborted")
 
 #------------------------------------------------------------
 # --
