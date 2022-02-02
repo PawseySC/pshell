@@ -18,6 +18,7 @@ import remote
 
 try:
     import boto3
+    import botocore
     ok=True
 except:
     ok=False
@@ -66,20 +67,20 @@ class s3_client(remote.client):
 # connection check
         try:
 
+            # pshell threads x boto3 threads cap
+            s3config=botocore.client.Config(max_pool_connections=50)
+
             if 'http' in self.url:
-                print("Assuming url is endpoint")
-                self.s3 = boto3.client('s3', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
-
+                self.logging.info("Assuming url is endpoint")
+                self.s3 = boto3.client('s3', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, config=s3config)
             else:
-                print("Assuming url is region")
-                self.s3 = boto3.client('s3', region_name=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret)
+                self.logging.info("Assuming url is region")
+                self.s3 = boto3.client('s3', region_name=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, config=s3config)
 
-
-# reachability check
+# reachability check ... more for info, probably not really required
 # CURRENT - this works for acacia - URL ... but breaks AWS 
 #            code = urllib.request.urlopen(self.url, timeout=10).getcode()
 #            self.logging.info("connection code: %r" % code)
-
 
         except Exception as e:
             self.logging.error(str(e))
@@ -384,12 +385,12 @@ class s3_client(remote.client):
             self.logging.debug("Creating required local folder(s): [%s]" % local_parent)
             os.makedirs(local_parent)
 
-# TODO - tweak this? default concurrency is 10
-        from boto3.s3.transfer import TransferConfig
-        config = TransferConfig(max_concurrency=5)
+# can tweak this, default concurrency is 10
+#        from boto3.s3.transfer import TransferConfig
+#        config = TransferConfig(max_concurrency=5)
+#        self.s3.download_file(str(bucket), str(fullkey), local_filepath, Config=config)
 
-#        self.s3.download_file(str(bucket), str(fullkey), local_filepath)
-        self.s3.download_file(str(bucket), str(fullkey), local_filepath, Config=config)
+        self.s3.download_file(str(bucket), str(fullkey), local_filepath)
 
         return os.path.getsize(local_filepath)
 

@@ -59,7 +59,7 @@ class parser(cmd.Cmd):
     terminal_height = 20
     script_output = None
     thread_executor = None
-    thread_max = 2
+    thread_max = 3
     get_count = 0
     get_bytes = 0
     total_count = 0
