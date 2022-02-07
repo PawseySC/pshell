@@ -180,16 +180,21 @@ class mf_client():
 # NB: don't use 'actor.self.describe' here as it will give a valid description for a session based on a destroyed token
                     reply = self.aterm_run("system.session.self.describe")
                     elem = reply.find(".//secure-token")
-# TODO - rework so delegate show WHO I'm a delegate for ...
 # I'm a token - get expiry date
                     if elem is not None:
                         reply = self.aterm_run("secure.identity.token.describe :id %s" % elem.text)
                         elem = reply.find(".//validity/to")
-                        identity = "delegate, expiry: %s" % elem.text
+                        if elem is not None:
+                            identity = "delegate, expiry: %s" % elem.text
+                        else:
+                            identity = "?"
                     else:
 # normal session - get user identity
                         elem = reply.find(".//actor")
-                        identity = "%s=%s" % (elem.attrib['type'], elem.text)
+                        if elem is not None:
+                            identity = "%s=%s" % (elem.attrib['type'], elem.text)
+                        else:
+                            identity = "?"
                     self.status = "authenticated to %s as %s" % (url, identity)
                     return True
 
@@ -250,6 +255,7 @@ class mf_client():
         else:
             if token is not None:
                 if len(token) > 0:
+                    logging.info("Secure token login.")
                     reply = self.aterm_run("system.logon :token %s" % token)
                     self.token = token
 # attempt to extract a session
