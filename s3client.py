@@ -546,4 +546,25 @@ class s3_client(remote.client):
                 count, size = self.bucket_usage(bucket)
                 print("[%s] has %d objects, total size: %s" % (bucket, count, self.human_size(size)))
 
+#------------------------------------------------------------
+    def info_iter(self, pattern):
+        bucket,prefix,key = self.path_convert(pattern)
+# bucket and/or prefix request
+        if key == "":
+            if bucket is not None:
+                count, size = self.bucket_usage(bucket)
+                yield "[%s] has %d objects, total size: %s" % (bucket, count, self.human_size(size))
+            else:
+                response = self.s3.list_buckets()
+                for item in response['Buckets']:
+                    bucket = item['Name']
+                    count, size = self.bucket_usage(bucket)
+                    yield "[%s] has %d objects, total size: %s" % (bucket, count, self.human_size(size))
+# exact key request
+        else:
+            fullkey = posixpath.join(prefix, key)
+            response = self.s3.head_object(Bucket=bucket, Key=fullkey)
+
+            for item in response['ResponseMetadata']['HTTPHeaders']:
+                yield "%20s : %s" % (item, response['ResponseMetadata']['HTTPHeaders'][item])
 

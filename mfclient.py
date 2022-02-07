@@ -1030,6 +1030,42 @@ class mf_client():
         return output_dict
 
 #------------------------------------------------------------
+# TODO - fullpath can be a namespace or pattern ...
+    def info_iter(self, fullpath):
+        """
+        information on a named file
+        """
+        self.logging.info("[%s]" % fullpath)
+
+        output_dict = ""
+
+        result = self.aterm_run('asset.get :id "path=%s"' % fullpath)
+        elem = result.find(".//asset")
+        output_dict += " asset ID : %s\n" % elem.attrib['id']
+
+        xpath_list = [".//asset/path", ".//asset/ctime", ".//asset/type", ".//content/size", ".//content/csum"]
+        for xpath in xpath_list:
+            elem = result.find(xpath)
+            if elem is not None:
+                output_dict += "%20s : %s\n" % (elem.tag, elem.text)
+
+# get content status 
+        result = self.aterm_run('asset.content.status :id "path=%s"' % fullpath)
+        elem = result.find(".//asset/state")
+        if elem is not None:
+            output_dict += "%20s : %s\n" % (elem.tag, elem.text)
+
+# published (public URL)
+        result = self.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % fullpath)
+        elem = result.find(".//exists")
+        if elem is not None:
+            if 'true' in elem.text.lower():
+                public_url = '%s://%s/download/%s' % (self.protocol, self.server, urllib.parse.quote(fullpath[10:]))
+                output_dict += " published : %s\n" % public_url
+
+        yield output_dict
+
+#------------------------------------------------------------
     def ls_iter(self, pattern):
         """
         generator for namespace/asset listing
@@ -1383,4 +1419,14 @@ class mf_client():
 
         except Exception as e:
             self.logging.warning("Metadata population failed: %s" % str(e))
+
+
+#------------------------------------------------------------
+    def usage(self, namespace):
+        """
+        Compute usage for the given namespace
+        """
+
+
+
 

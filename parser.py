@@ -309,31 +309,44 @@ class parser(cmd.Cmd):
         sys.stdout.flush()
 
 #------------------------------------------------------------
-    def help_file(self):
-        print("\nReturn metadata information on a remote file\n")
-        print("Usage: file <filename>\n")
-
-    def do_file(self, line):
-        remote = self.remote_active()
-        fullpath = self.abspath(line)
-        remote.info(fullpath)
-        for key, value in remote.info(fullpath).items():
-            print("%20s : %s" % (key, value))
+#    def help_file(self):
+#        print("\nReturn metadata information on a remote file\n")
+#        print("Usage: file <filename>\n")
+#
+#    def do_file(self, line):
+#        remote = self.remote_active()
+#        fullpath = self.abspath(line)
+#        remote.info(fullpath)
+#        for key, value in remote.info(fullpath).items():
+#            print("%20s : %s" % (key, value))
 
 #------------------------------------------------------------
-    def help_usage(self):
-        print("\nReturn usage amounts on a remote storage system\n")
-        print("Usage: usage <path>\n")
+# CURRENT - replaces both file and usage
+    def help_info(self):
+        print("\nReturn information for a remote file or folder\n")
+        print("Usage: file <filename/folder>\n")
 
-    def do_usage(self, line):
+    def do_info(self, line):
         remote = self.remote_active()
         fullpath = self.abspath(line)
-        print("Computing usage on [%s] ..." % fullpath)
-        remote = self.remote_active()
-        try:
-            remote.usage(fullpath)
-        except Exception as e:
-            self.logging.error(str(e))
+        results = remote.info_iter(fullpath)
+        for item in results:
+            print(item)
+
+#------------------------------------------------------------
+#    def help_usage(self):
+#        print("\nReturn usage amounts on a remote storage system\n")
+#        print("Usage: usage <path>\n")
+#
+#    def do_usage(self, line):
+#        remote = self.remote_active()
+#        fullpath = self.abspath(line)
+#        print("Computing usage on [%s] ..." % fullpath)
+#        remote = self.remote_active()
+#        try:
+#            remote.usage(fullpath)
+#        except Exception as e:
+#            self.logging.error(str(e))
 
 #------------------------------------------------------------
     def help_remote(self):
