@@ -1,11 +1,10 @@
 echo "NB: only for intermediate testing - use build_release for artifact publishing"
 
-cp pshell.py __main__.py
-cp data/.mf_config .
-zip pshell.zip __main__.py parser.py mfclient.py s3client.py .mf_config
-echo "#!/usr/bin/env python" > pshell
-cat pshell.zip >> pshell
-chmod u+x pshell
-rm pshell.zip
-rm __main__.py
-rm .mf_config
+cp pshell.py pshell/__main__.py
+cp parser.py pshell/
+cp keystone.py pshell/
+cp remote.py pshell/
+cp mfclient.py pshell/
+cp s3client.py pshell/
+
+python3 -m zipapp -p "/usr/bin/env python3" pshell

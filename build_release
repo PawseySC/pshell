@@ -14,11 +14,3 @@ rm pshell.zip
 rm __main__.py
 rm .mf_config
 
-cp pmount.py __main__.py
-sed -i tmp -e 's/^build.*$/build= "'$d'"/' __main__.py
-zip pmount.zip __main__.py fuse.py mfclient.py 
-echo "#!/usr/bin/env python3" > pmount
-cat pmount.zip >> pmount
-chmod u+x pmount
-#rm pmount.zip
-rm __main__.py

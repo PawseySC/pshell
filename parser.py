@@ -177,12 +177,13 @@ class parser(cmd.Cmd):
 #------------------------------------------------------------
     def remote_add(self, name, endpoint):
         try:
-            self.logging.info("Creating remote name = [%s] type = [%s]" % (name, endpoint['type']))
+            self.logging.info("remote: [%s] endpoint: %r" % (name, endpoint))
 # create client
             if endpoint['type'] == 'mflux':
                 client = mfclient.mf_client.from_endpoint(endpoint)
             elif endpoint['type'] == 's3':
                 client = s3client.s3_client.from_endpoint(endpoint)
+
 # register in parser
             self.remotes[name] = client
 # get connection status

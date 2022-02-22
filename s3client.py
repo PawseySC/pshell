@@ -72,7 +72,14 @@ class s3_client(remote.client):
 
             if 'http' in self.url:
                 self.logging.info("Assuming url is endpoint")
+
+                self.logging.info("%r : %r : %r" % (self.url, self.access, self.secret))
+
                 self.s3 = boto3.client('s3', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, config=s3config)
+
+                self.logging.info("boto3 client ok")
+
+
             else:
                 self.logging.info("Assuming url is region")
                 self.s3 = boto3.client('s3', region_name=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, config=s3config)

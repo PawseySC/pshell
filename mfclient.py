@@ -1210,11 +1210,15 @@ class mf_client():
             for elem in result.findall(".//path"):
                 count += 1
                 yield elem.text
+
+# FIXME - this causes a hang ... but leaving it out seems to fix the problem ... 
+# presumably an exception gets generated trying to read more results past end and that terminates ...
 # iter completed?
-            elem = result.find(".//iterated")
-            if elem is not None:
-                if 'true' in elem.attrib['completed']:
-                    return
+#            elem = result.find(".//iterated")
+#            if elem is not None:
+#                if 'true' in elem.attrib['completed']:
+#                    iterate = False
+#
 
 #------------------------------------------------------------
     def get(self, remote_filepath, local_filepath=None, overwrite=False):
@@ -1247,8 +1251,10 @@ class mf_client():
                 os.makedirs(local_parent)
 
 # online recall - backgrounded
+            self.logging.debug("Migrating [%s] ..." % remote_filepath)
             self.aterm_run('asset.content.migrate :id "path=%s" :destination "online" &' % remote_filepath)
 # download after recall completes
+            self.logging.debug("Downloading [%s] ... " % remote_filepath)
             self.aterm_run('asset.get :id "path=%s" :out %s' % (remote_filepath, local_filepath))
 
 # done
