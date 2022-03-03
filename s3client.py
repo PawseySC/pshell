@@ -331,36 +331,45 @@ class s3_client():
 #------------------------------------------------------------
 # return number, size of objects that match the pattern, followed by the URL to the objects
     def get_iter(self, pattern, delimiter='/'):
+        bucket,prefix,key = self.path_convert(pattern)
+        self.logging.info("bucket=[%s], prefix=[%s], key=[%s]" % (bucket, prefix, key))
 
-        bucket,prefix,key_pattern = self.path_convert(pattern)
+# match everything and recurse if no key supplied (ie get on a folder)
+        if len(key) == 0:
+            # match all keys
+            key = '*'
+            # recursively
+            delimiter = ""
+# build full filename (prefix+key) matching string
+        key_pattern = posixpath.join(prefix, key)
+        self.logging.info("key_pattern=[%s], delimiter=[%s]" % (key_pattern, delimiter))
 
-# TODO - handle get on a bucket only...
+# attempt to compute size of the match
         count = 0
         size = 0
+        try:
+            paginator = self.s3.get_paginator('list_objects_v2')
+            for page in paginator.paginate(Bucket=bucket, Delimiter=delimiter, Prefix=prefix):
+                for item in page.get('Contents'):
+                    if fnmatch.fnmatch(item['Key'], key_pattern):
+                        count += 1
+                        size += item['Size']
+        except Exception as e:
+# failed ... usually means no 'Contents' in page
+            self.logging.debug(str(e))
 
-# match everything if no pattern
-        if len(key_pattern) == 0:
-            key_pattern = '*'
+# nothing found - terminate iterator
+        if count == 0:
+            raise Exception("Could not find a match for [%s]" % pattern)
 
-# NEW - recursive if no key (ie no pattern)
-            if prefix != "":
-                delimiter = ""
-
-# 1 iterate to compute the size of the match
-        paginator = self.s3.get_paginator('list_objects_v2')
-        for page in paginator.paginate(Bucket=bucket, Delimiter=delimiter, Prefix=prefix):
-            for item in page.get('Contents'):
-                if fnmatch.fnmatch(item['Key'], key_pattern):
-                    count += 1
-                    size += item['Size']
+# return the number and size of match
         yield count
         yield size
 
-# 2 iterate to yield the actual objects
+# iterate to yield the actual objects
         paginator = self.s3.get_paginator('list_objects_v2')
         for page in paginator.paginate(Bucket=bucket, Delimiter=delimiter, Prefix=prefix):
             for item in page.get('Contents'):
-#                print(item)
                 if fnmatch.fnmatch(item['Key'], key_pattern):
                     yield "/%s/%s" % (bucket, item['Key'])
 

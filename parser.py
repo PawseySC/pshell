@@ -584,6 +584,9 @@ class parser(cmd.Cmd):
 
 # --
     def do_get(self, line):
+        if len(line) == 0:
+            raise Exception("Nothing specified to get")
+
 # turn input line into a matching file iterator
         remote = self.remote_active()
         abspath = self.abspath(line)
