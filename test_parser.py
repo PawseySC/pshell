@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import parser
-import remote
 import unittest
 
 # global to avoid setup for every test class
