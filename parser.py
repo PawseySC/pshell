@@ -944,13 +944,13 @@ class parser(cmd.Cmd):
     def help_quit(self):
         print("\nExit without terminating the session\n")
     def do_quit(self, line):
-        exit(0)
+        sys.exit(0)
 
 # --
     def help_exit(self):
         print("\nExit without terminating the session\n")
     def do_exit(self, line):
-        exit(0)
+        sys.exit(0)
 
 #------------------------------------------------------------
     def loop_interactively(self):

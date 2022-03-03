@@ -1,4 +1,6 @@
 echo "NB: only for intermediate testing - use build_release for artifact publishing"
+# prerequisite:
+# pip3 install -r requirements.txt --target pshell
 
 cp pshell.py pshell/__main__.py
 cp parser.py pshell/

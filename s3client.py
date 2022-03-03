@@ -14,7 +14,6 @@ import logging
 import pathlib
 # deprec in favour of pathlib?
 import posixpath
-import remote
 
 try:
     import boto3
@@ -27,8 +26,7 @@ except:
 build= "20211015131216"
 
 #------------------------------------------------------------
-
-class s3_client(remote.client):
+class s3_client():
     def __init__(self, url=None, access=None, secret=None):
         self.ok = ok
         self.type = "s3"
@@ -66,20 +64,13 @@ class s3_client(remote.client):
 
 # connection check
         try:
-
             # pshell threads x boto3 threads cap
             s3config=botocore.client.Config(max_pool_connections=50)
-
             if 'http' in self.url:
                 self.logging.info("Assuming url is endpoint")
-
                 self.logging.info("%r : %r : %r" % (self.url, self.access, self.secret))
-
                 self.s3 = boto3.client('s3', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, config=s3config)
-
                 self.logging.info("boto3 client ok")
-
-
             else:
                 self.logging.info("Assuming url is region")
                 self.s3 = boto3.client('s3', region_name=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, config=s3config)
