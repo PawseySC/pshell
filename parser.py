@@ -111,6 +111,9 @@ class parser(cmd.Cmd):
 # ---
     def complete_file(self, text, line, start_index, end_index):
         return self.remote_complete(line[5:end_index], start_index-5)
+# ---
+    def complete_info(self, text, line, start_index, end_index):
+        return self.remote_complete(line[5:end_index], start_index-5)
 
 # ---
     def complete_publish(self, text, line, start_index, end_index):

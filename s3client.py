@@ -127,6 +127,15 @@ class s3_client():
         return "%6s %-2s" % (f, suffixes[rank])
 
 #------------------------------------------------------------
+    def bucket_exists(self, bucket):
+        try:
+            response = self.s3.head_bucket(Bucket=bucket)
+            return True
+        except:
+            pass
+        return False
+
+#------------------------------------------------------------
     def complete_path(self, cwd, partial, start, match_prefix=True, match_object=True):
 
         self.logging.info("cwd=[%s] partial=[%s] start=[%d]" % (cwd, partial, start))
@@ -135,44 +144,40 @@ class s3_client():
             fullpath = posixpath.join(cwd, partial)
             self.logging.info("fullpath=[%s]" % fullpath)
             bucket, key = self.path_split(fullpath)
-
             candidate_list = []
-
-            if key == "":
-                self.logging.info("bucket search")
-
+            if self.bucket_exists(bucket) is False:
+# setup for bucket search
+                self.logging.info("bucket search: partial bucket=[%s]" % bucket)
                 response = self.s3.list_buckets()
                 for item in response['Buckets']:
                     if item['Name'].startswith(partial):
-                        candidate_list.append(item['Name'])
+#                        candidate_list.append(item['Name'])
+                        candidate_list.append(item['Name']+'/')
             else:
-                self.logging.info("prefix search")
-
+# setup for prefix/object search
                 prefix_ix = key.rfind('/')
                 if prefix_ix > 0:
-                    self.logging.info(prefix_ix)
                     prefix = key[:prefix_ix+1]
                 else:
-                    self.logging.info(prefix_ix)
                     prefix = ""
-
-                self.logging.info("bucket=[%s] prefix=[%s] pattern=[%s]" % (bucket, prefix, key))
-
+                self.logging.info("prefix search: bucket=[%s] prefix=[%s] pattern=[%s] start=[%s]" % (bucket, prefix, key, start))
                 response = self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
-#                print(response)
-
+# process folder (prefix) matches
                 if match_prefix is True:
                     if 'CommonPrefixes' in response:
                         for item in response['CommonPrefixes']:
                             if item['Prefix'].startswith(key):
-                                candidate_ix = item['Prefix'].rfind(partial)
-                                candidate_list.append(item['Prefix'][candidate_ix+start:])
-
+                                tail = item['Prefix'][len(key):]
+                                candidate = partial + tail
+                                self.logging.info("tail=[%s] : candidate=[%s]" % (tail, candidate))
+                                candidate_list.append(candidate)
+# process file (object) matches
                 if match_object is True:
                     if 'Contents' in response:
                         for item in response['Contents']:
                             if item['Key'].startswith(key):
                                 # TODO - do we need to do something like the prefix match?
+                                self.logging.info("raw object candidate: [%s]" % item['Key'])
                                 candidate_list.append(item['Key'][start:])
 
         except Exception as e:
@@ -196,7 +201,7 @@ class s3_client():
         self.logging.info("path=[%s]" % path)
 
         if posixpath.isabs(path) is False:
-            self.logging.info("Warning: converting relative path to absolute")
+            self.logging.debug("Warning: converting relative path to absolute")
             path = '/' + path
 
         fullpath = posixpath.normpath(path)
@@ -299,6 +304,8 @@ class s3_client():
     def ls_iter(self, path):
 
         bucket,prefix,key = self.path_convert(path)
+# NEW - trim the input prefix from all returned results (will look more like a normal filesystem)
+        prefix_len = len(prefix)
 
         if bucket is not None:
             paginator = self.s3.get_paginator('list_objects_v2')
@@ -307,22 +314,19 @@ class s3_client():
                 do_match = False
             page_list = paginator.paginate(Bucket=bucket, Delimiter='/', Prefix=prefix)
             for page in page_list:
-#                print(" >>> page: %s\n<<<\n" % page)
                 if 'CommonPrefixes' in page:
                     for item in page.get('CommonPrefixes'):
                         if do_match: 
                             if fnmatch.fnmatch(item['Prefix'], key) is False:
                                 continue
-                        yield "[prefix] %s" % item['Prefix']
+                        yield "[Folder] %s" % item['Prefix'][prefix_len:]
 
                 if 'Contents' in page:
                     for item in page.get('Contents'):
-#                        print("\nitem: %s" % item)
                         if do_match:
                             if fnmatch.fnmatch(item['Key'], key) is False:
                                 continue
-                        yield "%s | %s" % (self.human_size(item['Size']), item['Key'])
-
+                        yield "%s | %s" % (self.human_size(item['Size']), item['Key'][prefix_len:])
         else:
             response = self.s3.list_buckets()
             for item in response['Buckets']:
