@@ -131,15 +131,6 @@ class parser(cmd.Cmd):
     def complete_rmdir(self, text, line, start_index, end_index):
         return self.remote_complete(line[6:end_index], start_index-6, file_search=False)
 
-# ---
-    def complete_remote(self, text, line, start_index, end_index):
-        self.logging.info("text=[%s] line=[%s] start_index=[%d] end_index=[%d]" % (text, line, start_index, end_index))
-        candidates = []
-        for name in self.remotes:
-            if name.startswith(text):
-                candidates.append(name)
-        return candidates
-
 #------------------------------------------------------------
     def remote_active(self):
         if self.remotes_current in self.remotes:
@@ -328,7 +319,7 @@ class parser(cmd.Cmd):
 # CURRENT - replaces both file and usage
     def help_info(self):
         print("\nReturn information for a remote file or folder\n")
-        print("Usage: file <filename/folder>\n")
+        print("Usage: info <filename/folder>\n")
 
     def do_info(self, line):
         remote = self.remote_active()

@@ -457,6 +457,8 @@ class s3_client():
 # create a bucket if top level
                 self.logging.debug("Creating bucket [%s]" % bucket)
                 self.s3.create_bucket(Bucket=bucket)
+# CURRENT ... this does seem to do anything on acacia ... probably overridden by master policy
+#                self.s3.create_bucket(Bucket=bucket, ACL='private')
                 return
             else:
 # create an empty object with / appended to the key to simulate a folder
@@ -519,18 +521,7 @@ class s3_client():
         return(count)
 
 #------------------------------------------------------------
-    def info(self, path):
-        self.logging.info("HEAD on [%s]" % path)
-        bucket,prefix,key = self.path_convert(path)
-        fullkey = posixpath.join(prefix, key)
-        response = self.s3.head_object(Bucket=bucket, Key=fullkey)
-
-        print(response)
-
-        return response['ResponseMetadata']['HTTPHeaders']
-
-#------------------------------------------------------------
-    def bucket_usage(self, bucket):
+    def bucket_size(self, bucket):
         count = 0
         size = 0
         paginator = self.s3.get_paginator('list_objects_v2')
@@ -542,40 +533,50 @@ class s3_client():
         return count, size
 
 #------------------------------------------------------------
-# NEW - experimental ...
-    def usage(self, path, recursive=True):
-
-        bucket,prefix,key = self.path_convert(path)
-
-        if bucket is not None:
-            count, size = self.bucket_usage(bucket)
-            print("[%s] has %d objects, total size: %s" % (bucket, count, self.human_size(size)))
-        else:
-            response = self.s3.list_buckets()
-            for item in response['Buckets']:
-                bucket = item['Name']
-                count, size = self.bucket_usage(bucket)
-                print("[%s] has %d objects, total size: %s" % (bucket, count, self.human_size(size)))
+    def bucket_info(self, bucket):
+        reply = self.s3.get_bucket_acl(Bucket=bucket)
+        return reply['Owner']['DisplayName']
 
 #------------------------------------------------------------
     def info_iter(self, pattern):
         bucket,prefix,key = self.path_convert(pattern)
+
 # bucket and/or prefix request
         if key == "":
-            if bucket is not None:
-                count, size = self.bucket_usage(bucket)
-                yield "[%s] has %d objects, total size: %s" % (bucket, count, self.human_size(size))
+            if prefix == "":
+                if bucket is not None:
+# specific bucket
+                    owner = self.bucket_info(bucket)
+                    count, size = self.bucket_size(bucket)
+                    yield "%20s : %s" % ('info', 'bucket')
+                    yield "%20s : %s" % ('owner', owner)
+                    yield "%20s : %s" % ('objects', count)
+                    yield "%20s : %s" % ('size', self.human_size(size))
+
+                else:
+# nothing specified - project summary
+                    response = self.s3.list_buckets()
+                    total_buckets = 0
+                    total_count = 0
+                    total_size = 0
+                    for item in response['Buckets']:
+                        bucket = item['Name']
+                        count, size = self.bucket_size(bucket)
+                        total_buckets += 1
+                        total_count += count
+                        total_size += size
+                    yield "%20s : %s" % ('info', 'project')
+                    yield "%20s : %s" % ('buckets', total_buckets)
+                    yield "%20s : %s" % ('objects', total_count)
+                    yield "%20s : %s" % ('size', self.human_size(total_size))
             else:
-                response = self.s3.list_buckets()
-                for item in response['Buckets']:
-                    bucket = item['Name']
-                    count, size = self.bucket_usage(bucket)
-                    yield "[%s] has %d objects, total size: %s" % (bucket, count, self.human_size(size))
-# exact key request
+# TODO - summarise usage for this common prefix
+                    yield "%20s : %s" % ('info', 'prefix')
         else:
+# exact key request
             fullkey = posixpath.join(prefix, key)
             response = self.s3.head_object(Bucket=bucket, Key=fullkey)
-
+            yield "%20s : %s" % ('info', 'object')
             for item in response['ResponseMetadata']['HTTPHeaders']:
                 yield "%20s : %s" % (item, response['ResponseMetadata']['HTTPHeaders'][item])
 

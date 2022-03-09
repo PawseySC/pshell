@@ -35,14 +35,14 @@ class parser_standard(unittest.TestCase):
         self.assertEqual(result, '/root/folder/child2/')
 
 # --- remote
-    def test_remote_complete(self):
-        self.parser.remote_add('mfclient', {'type':'mflux', 'protocol':'http', 'server':'localhost', 'port':80})
-        result = self.parser.complete_remote("mf", "mf", 0, 2)
-        if 'mfclient' in result:
-            success = True
-        else:
-            success = False
-        self.assertTrue(success)
+#    def test_remote_complete(self):
+#        self.parser.remote_add('mfclient', {'type':'mflux', 'protocol':'http', 'server':'localhost', 'port':80})
+#        result = self.parser.complete_remote("mf", "mf", 0, 2)
+#        if 'mfclient' in result:
+#            success = True
+#        else:
+#            success = False
+#        self.assertTrue(success)
 
 #------------------------------------------------------------
 
