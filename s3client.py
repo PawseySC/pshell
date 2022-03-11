@@ -52,10 +52,12 @@ class s3_client():
         client = cls()
         if 'url' in endpoint:
             client.url = endpoint['url']
+            client.status = "not connected to: %r" % client.url
         if 'access' in endpoint:
             client.access = endpoint['access']
         if 'secret' in endpoint:
             client.secret = endpoint['secret']
+
         return client
 
 #------------------------------------------------------------

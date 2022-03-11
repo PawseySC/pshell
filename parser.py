@@ -585,6 +585,8 @@ class parser(cmd.Cmd):
         remote = self.remote_active()
         abspath = self.abspath(line)
 
+# TODO - need an isdir (not is object for s3) 
+# TODO - make the same distinction as do_put() below for folders vs files
         if remote is not None:
             results = remote.get_iter(abspath)
             self.total_count = int(next(results))
@@ -604,8 +606,6 @@ class parser(cmd.Cmd):
 
             except Exception as e:
                 self.logging.info("[%s] count = %d" % (str(e), count))
-
-# FIXME - throws exception "completed" when done - but no problem occurred ... 
                 pass
 
 # TODO - control-C -> terminate threads ...
