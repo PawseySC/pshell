@@ -149,11 +149,14 @@ class mf_client():
         Acquire connection status via session or token
         """
 
-        url = "%s://%s:%d" % (self.protocol, self.server, self.port)
+# NEW - added /aterm path to connection test 
+# without this it will be attempting to connect to the web server which may not be configured but doesn't need to be for API access
+        url = "%s://%s:%d/aterm" % (self.protocol, self.server, self.port)
+        self.logging.info("url=[%s]" % url)
 
 # reachability check
         try:
-            code = urllib.request.urlopen(url, timeout=2).getcode()
+            code = urllib.request.urlopen(url, timeout=5).getcode()
             self.logging.info("connection code: %r" % code)
         except Exception as e:
             self.status = "not connected to %s: %s" % (url, str(e))
@@ -163,7 +166,8 @@ class mf_client():
 # fast data channel check
         if self.protocol == 'https' and self.encrypted_data == True:
             try:
-                response = urllib.request.urlopen("http://%s:80" % self.server, timeout=2)
+# updated connection path test
+                response = urllib.request.urlopen("http://%s:80/aterm" % self.server, timeout=5)
                 if response.code == 200:
                     self.logging.info("Setting data channel to http")
                     self.encrypted_data = False
