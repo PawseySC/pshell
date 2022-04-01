@@ -52,7 +52,7 @@ class s3_client():
         client = cls()
         if 'url' in endpoint:
             client.url = endpoint['url']
-            client.status = "not connected to: %r" % client.url
+            client.status = "not connected to: %s" % client.url
         if 'access' in endpoint:
             client.access = endpoint['access']
         if 'secret' in endpoint:
@@ -92,7 +92,7 @@ class s3_client():
 # TODO - check if we're actually authenticated ... resource discovery ... etc
 #            self.s3.get_available_resources()
 #            self.s3.get_caller_identity()
-            self.status = "authenticated to %s as access=%s" % (self.url, self.access)
+            self.status = "authenticated to: %s as access=%s" % (self.url, self.access)
         except Exception as e:
             self.status = "not authenticated to %s: %s" % (self.url, str(e))
 

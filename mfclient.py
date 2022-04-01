@@ -122,6 +122,8 @@ class mf_client():
 
         client = cls(protocol=endpoint['protocol'], server=endpoint['server'], port=endpoint['port'], encrypted_data=encrypt)
 
+        client.status = "not connected to: %s://%s:%d" % (endpoint['protocol'], endpoint['server'], endpoint['port'])
+
         if 'domain' in endpoint:
             client.domain = endpoint['domain']
         if 'session' in endpoint:
@@ -199,7 +201,7 @@ class mf_client():
                             identity = "%s=%s" % (elem.attrib['type'], elem.text)
                         else:
                             identity = "?"
-                    self.status = "authenticated to %s as %s" % (url, identity)
+                    self.status = "authenticated to: %s as %s" % (url, identity)
                     return True
 
             except Exception as e:
@@ -219,7 +221,7 @@ class mf_client():
 # rely on explicit methods, such as delegate off, for a token wipe
                 break
 
-        self.status = "not authenticated to %s" % url
+        self.status = "not authenticated to: %s" % url
         return False
 
 #------------------------------------------------------------
@@ -279,7 +281,7 @@ class mf_client():
         """
         self.aterm_run("system.logoff")
         self.session = ""
-        self.status = "Not authenticated to %s" % self.server
+        self.status = "Not authenticated to: %s" % self.server
 
 
 #------------------------------------------------------------
@@ -493,7 +495,8 @@ class mf_client():
         return text4
 
 #------------------------------------------------------------
-    def aterm_run(self, input_line, background=False, post=True):
+# TODO - convert to background always true
+    def aterm_run(self, input_line, background=False, post=True, show_progress=False):
         """
         Method for parsing aterm's compressed XML syntax and sending to the Mediaflux server
 
@@ -668,27 +671,57 @@ class mf_client():
                     job = elem.text
                     while True:
                         self.logging.debug("background job [%s] poll..." % job)
+                        if show_progress is True:
+                            sys.stdout.write("\rjob id=%s ..." % job)
+                            sys.stdout.flush()
+
 # CURRENT - an issue with calling self in some edge cases?
 # TODO - switch to plain _post ... ?
-                        xml_poll = self.aterm_run("service.background.describe :id %s" % job)
 
-                        elem = xml_poll.find(".//task/state")
-                        item = xml_poll.find(".//task/exec-time")
+                        state = "unknown"
+                        xml_poll = None
+                        try:
+                            xml_poll = self.aterm_run("service.background.describe :id %s" % job)
+                            elem = xml_poll.find(".//task/state")
+                            state = elem.text
 
-# TODO - cleanup - this printing interferes with display of other jobs (eg background downloads)
-#                        text = elem.text + " [ " + item.text + " " + item.attrib['unit'] + "(s) ]"
-                        text = elem.text + " id=" + job + " [ " + item.text + " " + item.attrib['unit'] + "(s) ]"
-                        if "executing" in elem.text:
-#                            sys.stdout.write("\r"+text)
-#                            sys.stdout.flush()
+                            elem = xml_poll.find(".//task/processed")
+                            processed = int(elem.text)
+
+                            elem = xml_poll.find(".//task/failed")
+                            failed = int(elem.text)
+
+                            elem = xml_poll.find(".//task/exec-time")
+                            exec_time = elem.text + " " + elem.attrib['unit'] + "(s)"
+
+                            if failed > 0:
+                                text = "job id=%s, failed=%d, processed=%d " % (job, failed, processed)
+                            else:
+                                text = "job id=%s, processed=%d, elapsed=%s " % (job, processed, exec_time)
+
+                        except Exception as e:
+                            text = "job id=%s, polling error"
+                            self.logging.error(str(e))
+
+# if we can detect an executing state then continue, else break out of polling loop
+                        if "executing" in state:
+                            if show_progress is True:
+                                sys.stdout.write("\r"+text)
+                                sys.stdout.flush()
                             time.sleep(5)
                             continue
                         else:
-#                            print("\r%s    " % text)
+                            if show_progress is True:
+                                print("\r%s    [%s] " % (text, state))
                             break
+
 # NB: it is an exception (error) to get results BEFORE completion
-                    self.logging.debug("background job [%s] complete, getting results" % job)
-                    xml_poll = self.aterm_run("service.background.results.get :id %s" % job)
+                    if "complete" in state:
+                        self.logging.debug("background job [%s] complete, getting results" % job)
+                        xml_poll = self.aterm_run("service.background.results.get :id %s" % job)
+                    else:
+                        self.logging.error("Polling loop failed, returning last poll results")
+
 # NB: mediaflux seems to not return any output if run in background (eg asset.get :id xxxx &)
 # this seems like a bug?
 #                    self.xml_print(xml_poll)
