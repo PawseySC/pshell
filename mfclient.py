@@ -495,7 +495,7 @@ class mf_client():
         return text4
 
 #------------------------------------------------------------
-# TODO - convert to background always true
+# TODO - convert to background always true -> will need to fix :out first (see below)
     def aterm_run(self, input_line, background=False, post=True, show_progress=False):
         """
         Method for parsing aterm's compressed XML syntax and sending to the Mediaflux server
@@ -669,15 +669,12 @@ class mf_client():
                 if background is True:
                     elem = reply.find(".//id")
                     job = elem.text
-                    while True:
+                    done = False
+                    while done is False:
                         self.logging.debug("background job [%s] poll..." % job)
-                        if show_progress is True:
-                            sys.stdout.write("\rjob id=%s ..." % job)
-                            sys.stdout.flush()
 
 # CURRENT - an issue with calling self in some edge cases?
 # TODO - switch to plain _post ... ?
-
                         state = "unknown"
                         xml_poll = None
                         try:
@@ -685,42 +682,53 @@ class mf_client():
                             elem = xml_poll.find(".//task/state")
                             state = elem.text
 
-                            elem = xml_poll.find(".//task/processed")
-                            processed = int(elem.text)
+# get process info from either running (describe) or completed (results.get)
+# NB: need different calls as you get different information, nice one mediaflux ...
+# NB: it is also an exception (error) to attempt to get results BEFORE completion
+                            if "complete" in state:
+                                done = True
+                                xml_poll = self.aterm_run("service.background.results.get :id %s" % job)
 
-                            elem = xml_poll.find(".//task/failed")
-                            failed = int(elem.text)
+                                elem = xml_poll.find(".//imported/count")
+                                count = int(elem.text)
 
-                            elem = xml_poll.find(".//task/exec-time")
-                            exec_time = elem.text + " " + elem.attrib['unit'] + "(s)"
+                                elem = xml_poll.find(".//errors")
+                                failed = int(elem.text)
 
-                            if failed > 0:
-                                text = "job id=%s, failed=%d, processed=%d " % (job, failed, processed)
+                                elem = xml_poll.find(".//duration")
+                                exec_time = elem.text + " (h:m:s)"
                             else:
-                                text = "job id=%s, processed=%d, elapsed=%s " % (job, processed, exec_time)
+                                elem = xml_poll.find(".//task/processed")
+                                count = int(elem.text)
+
+                                elem = xml_poll.find(".//task/failed")
+                                failed = int(elem.text)
+
+                                elem = xml_poll.find(".//task/exec-time")
+                                exec_time = elem.text + " " + elem.attrib['unit'] + "(s)"
+
+# try and build a consistent user report using either wildly different mediaflux reports
+                            text = "job id=%s, " % job
+                            if failed > 0:
+                                text += "failed=%d, " % failed
+                            text += "count=%d, " % count
+                            text += "elapsed=%s    " % exec_time
 
                         except Exception as e:
-                            text = "job id=%s, polling error"
+                            text = "job id=%s, polling error  "
                             self.logging.error(str(e))
+                            done = True
 
-# if we can detect an executing state then continue, else break out of polling loop
-                        if "executing" in state:
-                            if show_progress is True:
-                                sys.stdout.write("\r"+text)
-                                sys.stdout.flush()
+# show progress report, if requested
+                        if show_progress is True:
+                            sys.stdout.write("\r"+text)
+                            sys.stdout.flush()
+                            if done is True:
+                                print(" [%s] " % state)
+
+# if not done, sleep to prevent overloading server with requests
+                        if done is False:
                             time.sleep(5)
-                            continue
-                        else:
-                            if show_progress is True:
-                                print("\r%s    [%s] " % (text, state))
-                            break
-
-# NB: it is an exception (error) to get results BEFORE completion
-                    if "complete" in state:
-                        self.logging.debug("background job [%s] complete, getting results" % job)
-                        xml_poll = self.aterm_run("service.background.results.get :id %s" % job)
-                    else:
-                        self.logging.error("Polling loop failed, returning last poll results")
 
 # NB: mediaflux seems to not return any output if run in background (eg asset.get :id xxxx &)
 # this seems like a bug?
