@@ -572,8 +572,20 @@ class s3_client():
                     yield "%20s : %s" % ('objects', total_count)
                     yield "%20s : %s" % ('size', self.human_size(total_size))
             else:
-# TODO - summarise usage for this common prefix
-                    yield "%20s : %s" % ('info', 'prefix')
+# summarise usage for this common prefix
+# NB: this call will count ALL objects, including the "placeholder" entry for folders
+# ie it will return an object count = number of files + number of intermediate sub-folders that match the input prefix
+                results = self.get_iter(pattern=pattern, delimiter='')
+                count = int(next(results))
+                size = int(next(results))
+# DEBUG
+#                for item in results:
+#                    print(item)
+                yield "%20s : %s" % ('bucket', bucket)
+                yield "%20s : %s" % ('prefix', prefix)
+                yield "%20s : %d" % ('objects', count)
+                yield "%20s : %s" % ('size', self.human_size(size))
+
         else:
 # exact key request
             fullkey = posixpath.join(prefix, key)
