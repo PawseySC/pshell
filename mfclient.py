@@ -205,8 +205,13 @@ class mf_client():
                     return True
 
             except Exception as e:
-                self.logging.debug("session invalid: %s" % str(e))
-                self.session = ""
+                if "maintenance mode" in str(e):
+                    self.logging.error(str(e))
+                    break
+                else:
+                    # usually an expired session
+                    self.session = ""
+                    self.logging.debug("bad session: %s" % str(e))
 
 # session was invalid, try to get a new session via a token and retry
             try:
