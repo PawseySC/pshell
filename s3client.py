@@ -144,11 +144,11 @@ class s3_client():
 
         try:
             fullpath = posixpath.join(cwd, partial)
-            self.logging.info("fullpath=[%s]" % fullpath)
-            bucket, key = self.path_split(fullpath)
+            bucket, prefix, pattern = self.path_convert(fullpath)
+            self.logging.info("bucket=%s, prefix=%s, pattern=%s" % (bucket, prefix, pattern))
             candidate_list = []
             if self.bucket_exists(bucket) is False:
-# setup for bucket search
+# get results for bucket search
                 self.logging.info("bucket search: partial bucket=[%s]" % bucket)
                 response = self.s3.list_buckets()
                 for item in response['Buckets']:
@@ -156,31 +156,42 @@ class s3_client():
 #                        candidate_list.append(item['Name'])
                         candidate_list.append(item['Name']+'/')
             else:
-# setup for prefix/object search
-                prefix_ix = key.rfind('/')
-                if prefix_ix > 0:
-                    prefix = key[:prefix_ix+1]
-                else:
-                    prefix = ""
-                self.logging.info("prefix search: bucket=[%s] prefix=[%s] pattern=[%s] start=[%s]" % (bucket, prefix, key, start))
+# get results for non-bucket searches
                 response = self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
+                prefix_len = len(prefix)
 # process folder (prefix) matches
                 if match_prefix is True:
                     if 'CommonPrefixes' in response:
                         for item in response['CommonPrefixes']:
-                            if item['Prefix'].startswith(key):
-                                tail = item['Prefix'][len(key):]
-                                candidate = partial + tail
-                                self.logging.info("tail=[%s] : candidate=[%s]" % (tail, candidate))
-                                candidate_list.append(candidate)
+                            # strip the base search prefix (if any) off the results so we can pattern match
+                            candidate = item['Prefix'][prefix_len:]
+                            self.logging.info("prefix=%s, candidate=%s" % (item['Prefix'], candidate))
+                            # main search criteria
+                            if candidate.startswith(pattern):
+                                full_candidate = "%s/%s" % (bucket, item['Prefix'])
+                                match_ix = full_candidate.rfind(partial)
+                                self.logging.info("full=%s, match_ix=%d" % (full_candidate, match_ix))
+                                if match_ix >= 0:
+                                    candidate = full_candidate[match_ix:]
+                                    candidate_list.append(candidate[start:])
+                                else:
+                                    self.logging.error("this shouldn't happen")
+
 # process file (object) matches
                 if match_object is True:
                     if 'Contents' in response:
                         for item in response['Contents']:
-                            if item['Key'].startswith(key):
-                                # TODO - do we need to do something like the prefix match?
-                                self.logging.info("raw object candidate: [%s]" % item['Key'])
-                                candidate_list.append(item['Key'][start:])
+                            self.logging.info("key=%s" % item['Key'])
+                            # main search criteria
+                            if item['Key'].startswith(pattern):
+                                full_candidate = "%s/%s" % (bucket, item['Key'])
+                                match_ix = full_candidate.rfind(partial)
+                                self.logging.info("full=%s, match_ix=%d" % (full_candidate, match_ix))
+                                if match_ix >= 0:
+                                    candidate = full_candidate[match_ix:]
+                                    candidate_list.append(candidate[start:])
+                                else:
+                                    self.logging.error("this shouldn't happen")
 
         except Exception as e:
             self.logging.error(str(e))
