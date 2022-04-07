@@ -463,23 +463,25 @@ class s3_client():
 
 #------------------------------------------------------------
     def mkdir(self, path):
-        bucket,prefix,key = self.path_convert(path)
+        bucket,prefix,pattern = self.path_convert(path)
 
         if bucket is not None:
-            if prefix == "":
-# create a bucket if top level
-                self.logging.debug("Creating bucket [%s]" % bucket)
+            if prefix == "" and pattern is None:
+# create a bucket if at top level
+                self.logging.info("Creating bucket [%s]" % bucket)
                 self.s3.create_bucket(Bucket=bucket)
-# CURRENT ... this does seem to do anything on acacia ... probably overridden by master policy
-#                self.s3.create_bucket(Bucket=bucket, ACL='private')
                 return
             else:
-# create an empty object with / appended to the key to simulate a folder
-                self.logging.debug("Creating prefix [%s] in bucket [%s]" % (prefix, bucket))
-                self.s3.put_object(Bucket=bucket, Key=prefix, Body='')
+# build the full prefix
+                folder = posixpath.join(prefix, pattern)
+                if folder.endswith('/') is False:
+                    folder = folder + '/'
+# create an empty object to simulate a folder
+                self.logging.info("Creating folder [%s] in bucket [%s]" % (folder, bucket))
+                self.s3.put_object(Bucket=bucket, Key=folder, Body='')
                 return
 
-        raise Exception("Bad input bucket [%s] or prefix [%s] in folder [%s]" % (bucket, prefix, path))
+        raise Exception("mkdir - bad input path=%s" % path)
 
 #------------------------------------------------------------
     def rmdir(self, path, prompt=None):
