@@ -466,7 +466,7 @@ class s3_client():
         bucket,prefix,pattern = self.path_convert(path)
 
         if bucket is not None:
-            if prefix == "" and pattern is None:
+            if prefix == "" and pattern == "":
 # create a bucket if at top level
                 self.logging.info("Creating bucket [%s]" % bucket)
                 self.s3.create_bucket(Bucket=bucket)
