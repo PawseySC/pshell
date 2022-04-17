@@ -273,6 +273,7 @@ class mf_client():
         try:
             elem = reply.find(".//session")
             self.session = elem.text
+            self.logging.info("Established session: %s" % self.session)
 # refresh connection info
             self.connect()
         except Exception as e:
@@ -500,8 +501,8 @@ class mf_client():
         return text4
 
 #------------------------------------------------------------
-# TODO - convert to background always true -> will need to fix :out first (see below)
-    def aterm_run(self, input_line, background=False, post=True, show_progress=False):
+# TODO - convert to background always true -> will need to fix :out first (see below) and a whole lot of other things
+    def aterm_run(self, input_line, background=False, post=True, description=None, show_progress=False):
         """
         Method for parsing aterm's compressed XML syntax and sending to the Mediaflux server
 
@@ -539,6 +540,7 @@ class mf_client():
 # first token is the service call, the rest are child arguments
         service_call = lexer.get_token()
         token = lexer.get_token()
+
 
 # better handling of deletions to the XML
         xml_unwanted = None
@@ -627,23 +629,27 @@ class mf_client():
             args = ET.SubElement(child, "args")
             for item in xml_root.findall("*"):
                 args.append(item)
+#        elif service_call == 'service.execute':
+#            child.set("name", service_call)
+#            child.set("session", self.session)
+#            args = ET.SubElement(child, "args")
+#            for item in xml_root.findall("*"):
+#                args.append(item)
 
-# special case for calls that are already wrapped in a service.execute 
-        elif service_call == 'service.execute':
-            child.set("name", service_call)
-            child.set("session", self.session)
-            args = ET.SubElement(child, "args")
-            for item in xml_root.findall("*"):
-                args.append(item)
-# FIXME - this should better merge with below so we also cover the case with outputs ...
         else:
 # wrap the service call in a service.execute to allow background execution, if desired 
             child.set("name", "service.execute")
             child.set("session", self.session)
             args = ET.SubElement(child, "args")
+
             if background is True:
                 bg = ET.SubElement(args, "background")
                 bg.text = "True"
+
+            if description is not None:
+                desc = ET.SubElement(args, "description")
+                desc.text = description
+
             call = ET.SubElement(args, "service")
             call.set("name", service_call)
             for item in xml_root.findall("*"):
@@ -670,66 +676,61 @@ class mf_client():
         message = "This shouldn't happen"
         while True:
             try:
+
                 reply = self._post(xml_text)
+
                 if background is True:
                     elem = reply.find(".//id")
                     job = elem.text
                     done = False
                     while done is False:
-                        self.logging.debug("background job [%s] poll..." % job)
+                        self.logging.debug("background task [%s] poll..." % job)
 
 # CURRENT - an issue with calling self in some edge cases?
 # TODO - switch to plain _post ... ?
                         state = "unknown"
+                        description = "unknown"
+
                         xml_poll = None
                         try:
                             xml_poll = self.aterm_run("service.background.describe :id %s" % job)
-                            elem = xml_poll.find(".//task/state")
-                            state = elem.text
 
-# get process info from either running (describe) or completed (results.get)
-# NB: need different calls as you get different information, nice one mediaflux ...
-# NB: it is also an exception (error) to attempt to get results BEFORE completion
-                            if "complete" in state:
-                                done = True
-                                xml_poll = self.aterm_run("service.background.results.get :id %s" % job)
-
-                                elem = xml_poll.find(".//imported/count")
-                                count = int(elem.text)
-
-                                elem = xml_poll.find(".//errors")
-                                failed = int(elem.text)
-
-                                elem = xml_poll.find(".//duration")
-                                exec_time = elem.text + " (h:m:s)"
-                            else:
-                                elem = xml_poll.find(".//task/processed")
-                                count = int(elem.text)
-
-                                elem = xml_poll.find(".//task/failed")
-                                failed = int(elem.text)
-
-                                elem = xml_poll.find(".//task/exec-time")
-                                exec_time = elem.text + " " + elem.attrib['unit'] + "(s)"
-
+#                            self.xml_print(xml_poll)
 # try and build a consistent user report using either wildly different mediaflux reports
-                            text = "job id=%s, " % job
-                            if failed > 0:
-                                text += "failed=%d, " % failed
-                            text += "count=%d, " % count
-                            text += "elapsed=%s    " % exec_time
+                            text = "task id=%s, " % job
+
+                            elem = xml_poll.find(".//task/description")
+                            if elem is not None:
+                                description = elem.text
+                                text += "%s, " % description
+
+                            elem = xml_poll.find(".//task/state")
+                            if elem is not None:
+                                state = elem.text
+                                text += "%s " % state
+
+# set exit flag
+                            if "complete" in state:
+                                xml_poll = self.aterm_run("service.background.results.get :id %s" % job)
+                                done = True
+                            elif "fail" in state:
+                                done = True
+
+# TODO
+#                            text += "elapsed=%s    " % exec_time
 
                         except Exception as e:
-                            text = "job id=%s, polling error  "
+                            text = "task id=%s, polling error  " % job
                             self.logging.error(str(e))
                             done = True
 
 # show progress report, if requested
                         if show_progress is True:
+#                            sys.stdout.write("\r"+text)
                             sys.stdout.write("\r"+text)
                             sys.stdout.flush()
-                            if done is True:
-                                print(" [%s] " % state)
+#                            if done is True:
+#                                print("        ")
 
 # if not done, sleep to prevent overloading server with requests
                         if done is False:
@@ -769,6 +770,8 @@ class mf_client():
                         else:
                             self.logging.debug("missing output data in XML server response")
 # successful
+#                    self.xml_print(reply)
+
                     return reply
 
             except Exception as e:
@@ -1053,6 +1056,7 @@ class mf_client():
 
 #------------------------------------------------------------
 # TODO - return a dict ... leave printing to the caller
+# DEPREC - using info_iter() instead
     def info(self, fullpath):
         """
         information on a named file
@@ -1070,7 +1074,13 @@ class mf_client():
                 output_dict[elem.tag] = elem.text
 
 # get content status 
-        result = self.aterm_run('asset.content.status :id "path=%s"' % fullpath)
+#        result = self.aterm_run('asset.content.status :id "path=%s"' % fullpath)
+
+        print("AAA")
+        result = self.aterm_run('asset.content.status :id "path=%s"' % fullpath, background=True, description="status", show_progress=True)
+
+
+
         elem = result.find(".//asset/state")
         if elem is not None:
             output_dict[elem.tag] = elem.text
@@ -1139,8 +1149,10 @@ class mf_client():
 # yield all matching assets 
         query = self.get_query(pattern)
         result = self.aterm_run('asset.query :where "%s" :as iterator :action get-values :xpath -ename id id :xpath -ename name name :xpath -ename size content/size' % query)
+
         elem = result.find(".//iterator")
         iterator = int(elem.text)
+
         iterate_size = 100
         complete = "false"
         while complete != "true":
@@ -1220,7 +1232,7 @@ class mf_client():
         return 0
 
 #------------------------------------------------------------
-    def get_iter(self, fullpath_pattern):
+    def get_iter(self, fullpath_pattern, recall=True):
         """
         iterator for get candidates based on pattern
         first 2 items = filecount, bytecount (NB: if known)
@@ -1232,7 +1244,14 @@ class mf_client():
 
 # count download results and get total size
         try:
-            reply = self.aterm_run('asset.query :where "%s" :count true :action sum :xpath content/size' % query)
+# CURRENT - move this logic to the get() primitive itself to better avoid edge cases of recalls getting pushed back offline before download triggers
+#            if recall is True:
+#                self.logging.debug("Issuing migrate online call...")
+#                cmd = 'asset.query :where "%s" :action pipe :service -name asset.content.migrate < :destination online >' % query
+#                xml_reply = self.aterm_run(cmd, background=True, show_progress=True)
+
+# get the number of results and total size
+            reply = self.aterm_run('asset.query :where "%s" :count true :action sum :xpath content/size' % query, background=True, show_progress=True)
             elem = reply.find(".//value")
 # must return valid ints (NB: mflux will return empty space rather than 0 if no query match)
             total_bytes = int(elem.text)
@@ -1245,8 +1264,7 @@ class mf_client():
             yield 0
             return
 
-# NEW - just return results ... get() primitive will do the recall ...
-#        result = self.aterm_run('asset.query :where "%s and content online" :as iterator :action get-path' % query)
+# get the file list as an iterator
         result = self.aterm_run('asset.query :where "%s" :as iterator :action get-path' % query)
         elem = result.find(".//iterator")
         iterator = elem.text
@@ -1254,6 +1272,7 @@ class mf_client():
         iterate_size = 100
         iterate = True
         count = 0
+
         while iterate:
 # get file list for this sub-set
             result = self.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
@@ -1268,7 +1287,22 @@ class mf_client():
 #            if elem is not None:
 #                if 'true' in elem.attrib['completed']:
 #                    iterate = False
-#
+
+#------------------------------------------------------------
+    def _wait_until_online(self, remote_filepath):
+        xml_reply = self.aterm_run('asset.content.migrate :destination online :id "path=%s"' % remote_filepath, background=True)
+        while True:
+            try:
+                xml_reply = self.aterm_run('asset.content.status :id "path=%s"' % remote_filepath, background=True)
+                elem = xml_reply.find(".//asset/state")
+                if "online" in elem.text:
+                    return True
+
+            except Exception as e:
+                self.logging.error(str(e))
+                return False
+
+            time.sleep(5)
 
 #------------------------------------------------------------
     def get(self, remote_filepath, local_filepath=None, overwrite=False):
@@ -1300,14 +1334,13 @@ class mf_client():
                 self.logging.debug("Creating required local folder(s): [%s]" % local_parent)
                 os.makedirs(local_parent)
 
-# online recall - backgrounded
-            self.logging.debug("Migrating [%s] ..." % remote_filepath)
-            self.aterm_run('asset.content.migrate :id "path=%s" :destination "online" &' % remote_filepath)
-# download after recall completes
-            self.logging.debug("Downloading [%s] ... " % remote_filepath)
-            self.aterm_run('asset.get :id "path=%s" :out %s' % (remote_filepath, local_filepath))
+# download only when file is online 
+            if self._wait_until_online(remote_filepath) is True:
+                self.logging.debug("Downloading [%s] ... " % remote_filepath)
+                self.aterm_run('asset.get :id "path=%s" :out %s' % (remote_filepath, local_filepath))
+            else:
+                raise Exception("Online recall failed for [%s]" % remote_filepath)
 
-# done
         return os.path.getsize(local_filepath)
 
 #------------------------------------------------------------

@@ -1,16 +1,15 @@
 # TODO - use git rev-parse --short HEAD ... instead of date?
 
-d=$(date +%Y%m%d%H%M%S)
-sed -i tmp -e 's/^build.*$/build= "'$d'"/' mfclient.py
-git tag $d
+#d=$(date +%Y%m%d%H%M%S)
+#sed -i tmp -e 's/^build.*$/build= "'$d'"/' mfclient.py
+#git tag $d
 cp pshell.py __main__.py
-sed -i tmp -e 's/^build.*$/build= "'$d'"/' __main__.py
-cp data/.mf_config .
-zip pshell.zip __main__.py mfclient.py keystone.py s3client.py .mf_config
-echo "#!/usr/bin/env python3" > pshell
+#sed -i tmp -e 's/^build.*$/build= "'$d'"/' __main__.py
+zip pshell.zip __main__.py mfclient.py keystone.py s3client.py parser.py
+
+# NB: escape the ! to avoid bash stupidity
+echo "#\!/usr/bin/env python3" > pshell
 cat pshell.zip >> pshell
 chmod u+x pshell
 rm pshell.zip
 rm __main__.py
-rm .mf_config
-
