@@ -153,8 +153,8 @@ class s3_client():
                 response = self.s3.list_buckets()
                 for item in response['Buckets']:
                     if item['Name'].startswith(partial):
-#                        candidate_list.append(item['Name'])
-                        candidate_list.append(item['Name']+'/')
+                        candidate = item['Name']+'/'
+                        candidate_list.append(candidate[start:])
             else:
 # get results for non-bucket searches
                 response = self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
