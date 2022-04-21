@@ -85,11 +85,11 @@ def main():
         if args.url is None:
 # existing config and no input URL
             if config.has_section(args.current) is True:
-                logging.info("No input URL, reading endpoints from existing config [%s]" % args.current)
+                logging.debug("No input URL, reading endpoints from existing config [%s]" % args.current)
                 endpoints = json.loads(config.get(args.current, 'endpoints'))
             else:
 # 1st time default
-                logging.info("Initialising [%s] config" % args.current)
+                logging.debug("Initialising [%s] config" % args.current)
                 if args.current == 'pawsey':
                     endpoints['portal'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'ivec'}
                     endpoints['public'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'public'}
@@ -105,7 +105,7 @@ def main():
                     raise Exception("No default config available for [%s]" % args.current)
 # URL override
         else:
-            logging.info("Creating custom remote from url: [%s]" % args.url)
+            logging.debug("Creating custom remote from url: [%s]" % args.url)
             remotes_current = 'custom'
             endpoints[remotes_current] = {'type':args.type, 'url':args.url}
 

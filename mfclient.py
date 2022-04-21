@@ -93,11 +93,11 @@ class mf_client():
             self.data_put = "%s:%s" % (server, 80)
 
 # more info
-        self.logging.info("MFCLIENT=%s" % build)
-        self.logging.info("POST=%s" % self.post_url)
-        self.logging.info("GET=%s" % self.data_get)
-        self.logging.info("PUT=%s" % self.data_put)
-        self.logging.info("OpenSSL=%s", ssl.OPENSSL_VERSION)
+        self.logging.debug("MFCLIENT=%s" % build)
+        self.logging.debug("POST=%s" % self.post_url)
+        self.logging.debug("GET=%s" % self.data_get)
+        self.logging.debug("PUT=%s" % self.data_put)
+        self.logging.debug("OpenSSL=%s", ssl.OPENSSL_VERSION)
 
 # --- NEW
     @classmethod

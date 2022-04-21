@@ -40,8 +40,8 @@ class s3_client():
 
 # DEBUG
 #        self.logging.setLevel(logging.DEBUG)
-        self.logging.info("S3CLIENT=%s" % build)
-        self.logging.info("BOTO3=%r" % ok)
+        self.logging.debug("S3CLIENT=%s" % build)
+        self.logging.debug("BOTO3=%r" % ok)
 
 # --- NEW
     @classmethod
@@ -69,12 +69,10 @@ class s3_client():
             # pshell threads x boto3 threads cap
             s3config=botocore.client.Config(max_pool_connections=50)
             if 'http' in self.url:
-                self.logging.info("Assuming url is endpoint")
-                self.logging.info("%r : %r : %r" % (self.url, self.access, self.secret))
+                self.logging.debug("Assuming url is endpoint")
                 self.s3 = boto3.client('s3', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, config=s3config)
-                self.logging.info("boto3 client ok")
             else:
-                self.logging.info("Assuming url is region")
+                self.logging.debug("Assuming url is region")
                 self.s3 = boto3.client('s3', region_name=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, config=s3config)
 
 # reachability check ... more for info, probably not really required
@@ -375,13 +373,13 @@ class s3_client():
 # failed ... usually means no 'Contents' in page
             self.logging.debug(str(e))
 
-# nothing found - terminate iterator
-        if count == 0:
-            raise Exception("Could not find a match for [%s]" % pattern)
-
 # return the number and size of match
         yield count
         yield size
+
+# nothing found - terminate iterator
+        if count == 0:
+            raise Exception("Could not find a match for [%s]" % pattern)
 
 # iterate to yield the actual objects
         paginator = self.s3.get_paginator('list_objects_v2')
@@ -488,35 +486,33 @@ class s3_client():
     def rmdir(self, path, prompt=None):
         bucket,prefix,key = self.path_convert(path)
 
-#        if key != "":
-#            raise Exception("Bad input path [%s], missing / terminating character" % path)
-
         if bucket is not None and key == "":
-            if prefix == "":
-# remove bucket if top level
+# recursive get on objects that match the bucket + prefix
+            results = self.get_iter(path, '')
+            count = int(next(results))
+            size = int(next(results))
+            if (count > 0):
                 if prompt is not None:
-                    if prompt("Delete bucket %s (y/n)" % bucket) is False:
+                    if prompt("Are you sure you want to delete %d objects, size=%s (y/n)" % (count, self.human_size(size))) is False:
                         return False
-                self.logging.debug("Removing bucket [%s]" % bucket)
-                self.s3.delete_bucket(Bucket=bucket)
-                return True
-            else:
-# recursive get on objects if we have a prefix (folder)
-                results = self.get_iter(path, '')
-                count = int(next(results))
-                size = int(next(results))
-                if prompt is not None:
-                    if prompt("Delete %d objects, size: %s (y/n)" % (count, self.human_size(size))) is False:
-                        return False
-
+# delete all matching objects (if any)
                 for item in results:
                     bucket,prefix,key = self.path_convert(item)
                     fullkey = posixpath.join(prefix, key)
                     self.s3.delete_object(Bucket=bucket, Key=fullkey)
+# delete bucket if at root (bucket) level
+            if prefix == "":
+                self.logging.info("Attempting to remove empty bucket [%s]" % bucket)
+                self.s3.delete_bucket(Bucket=bucket)
 
-                return True
+# this fails - no concept of 'resource' in ceph?
+#                bucket_resource = boto3.resource('s3').Bucket(bucket)
+#                bucket_resource.objects.all().delete()
+#                bucket_resource.delete()
 
-        raise Exception("Invalid bucket, prefix, or key specified in folder [%s]" % path)
+            return True
+
+        raise Exception("rmdir: invalid folder [%s]" % path)
 
 #------------------------------------------------------------
     def publish(self, pattern):

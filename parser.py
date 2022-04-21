@@ -171,7 +171,7 @@ class parser(cmd.Cmd):
 #------------------------------------------------------------
     def remote_add(self, name, endpoint):
         try:
-            self.logging.info("remote: [%s] endpoint: %r" % (name, endpoint))
+            self.logging.debug("remote: [%s] endpoint: %r" % (name, endpoint))
 # create client
             if endpoint['type'] == 'mflux':
                 client = mfclient.mf_client.from_endpoint(endpoint)
