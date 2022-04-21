@@ -19,9 +19,7 @@ import platform
 import itertools
 import configparser
 import concurrent.futures
-#from remote import client
 import mfclient
-import keystone
 import s3client
 import parser
 # no readline on windows
@@ -45,7 +43,6 @@ def main():
     p.add_argument("-v", dest='verbose', default=None, help="set verbosity level (0,1,2)")
     p.add_argument("-u", dest='url', default=None, help="Remote endpoint URL")
     p.add_argument("-t", dest='type', default=None, help="Remote endpoint type (eg mflux, s3)")
-    p.add_argument("-k", dest='keystone', default=None, help="A URL to the REST interface for OpenStack Keystone")
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
 
@@ -97,12 +94,9 @@ def main():
                     endpoints['portal'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'ivec'}
                     endpoints['public'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'public'}
 # CURRENT - putting port :8080 at end of the url makes the connection hang ... why? particularly as the port is required for mflux url
-                    endpoints['acacia'] = {'type':'s3', 'url':'https://acacia.pawsey.org.au'}
+                    endpoints['private'] = {'type':'s3', 'url':'https://acacia.pawsey.org.au'}
                     remotes_home = '/projects'
                     remotes_current = 'portal'
-
-                    if args.keystone is None:
-                        args.keystone = 'https://acacia.pawsey.org.au:5000'
 
 # store endpoints in config
                     config[args.current] = {'endpoints':json.dumps(endpoints)}
@@ -145,12 +139,6 @@ def main():
         my_parser.config.set(args.current, 'remotes_home', remotes_home)
     if my_parser.config.has_option(args.current, 'remotes_home'):
         my_parser.cwd = my_parser.config.get(args.current, 'remotes_home')
-
-# add discovery url
-    if args.keystone is not None:
-        my_parser.config.set(args.current, 'keystone', args.keystone)
-    if my_parser.config.has_option(args.current, 'keystone'):
-        my_parser.keystone = keystone.keystone(my_parser.config.get(args.current, 'keystone'))
 
 # add endpoints
     try:

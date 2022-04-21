@@ -5,21 +5,17 @@ s3client.py is a basic S3 client module for Python 3.x
 
 owner: Sean Fleming (sean.fleming@pawsey.org.au)
 
-
 ### How do I get set up? ###
 
-Simply import the mfclient module into your Python code.
+Install python >= 3.6 on the platform of your choice.
 
+Invoke pshell.py or the prepackaged binary distribution.
+
+Note that you will need to install (eg via pip3) boto3 if you want to use the S3 capabilities.
 
 ### How do I run the tests? ###
 
-Run test_mfclient.py
-
-### Is there a reference document? ###
-
-To generate an API reference document, run:
-
-    python3 -m pydoc mfclient
+Run test_all
 
 ### Command line client ###
 
@@ -31,8 +27,4 @@ It features:
 * Tab completion
 * Basic support for passthru commands
 
-
-### FUSE filesystem client ###
-
-pmount.py - FUSE filesystem implementation for mounting a mediaflux namespace as a local folder.
 

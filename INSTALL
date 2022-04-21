@@ -1,33 +1,15 @@
 
-### Create binary installer for windows (tested against miniconda)
 
-python setup.py bdist --formats=wininst
+### Current
 
-dist/pshell-1.0.macosx-10.6-intel.exe 
+Just use build_release -> zip source bundle and require users to install >= python 3.6 on whatever platform they're on
 
-FIXME - this works, but does not connect to a python installation (if python is missing)
+Users will separately have to install boto3 if they want the S3 functionality.
 
-pyinstaller in a docker container might be the way to go ...
+Can't bundle boto3 in a python zip: https://github.com/boto/boto3/issues/1770
 
+This should then work:
 
-
-### Testing
-
-
-Removing pshell from installed software doesn't stop pshell running ... arrgh - FIXME - removing miniconda as well to totally nuke the system
-
-
-Setup
-
-1. get miniconda -> 64 bit windows installer -> defaults
-
-2. run pshell-dist.exe installer
-
-3. menu -> all apps -> Anaconda -> Anaconda prompt
-
-c:\> python -m pshell
-
-c:\> pawsey:offline>
-
+python3 pshell
 
 

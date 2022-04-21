@@ -6,6 +6,5 @@ setup(name='pshell',
       author_email='sean.fleming@pawsey.org.au',
       url='https://bitbucket.org/datapawsey/mfclient',
       packages=['data'],
-      py_modules=['pshell','mfclient'],
-      package_data={'data': ['.mf_config'],},
+      py_modules=['pshell','parser', 'mfclient', 's3client'],
       )

@@ -252,8 +252,7 @@ class parser(cmd.Cmd):
 
 #------------------------------------------------------------
     def requires_auth(self, line):
-# FIXME - adding ec2 even though it's not local ... but it doesnt behave like a "remote" so it shouldnt get prevented
-        local_commands = ["login", "help", "lls", "lcd", "lpwd", "processes", "remote", "exit", "quit", "ec2"]
+        local_commands = ["login", "help", "lls", "lcd", "lpwd", "processes", "remote", "exit", "quit"]
         try:
             primary = line.strip()
             for item in local_commands:
@@ -380,69 +379,6 @@ class parser(cmd.Cmd):
             # show all remotes
             for name, client in self.remotes.items():
                 print("%-20s %s" % (name, client.status))
-
-#------------------------------------------------------------
-    def help_ec2(self):
-        print("\nInformation about ec2 credentials from keystone \n")
-        print("Usage: ec2 <login/list/create/delete>\n")
-
-# ---
-    def do_ec2(self, line):
-        args = line.split()
-        nargs = len(args)
-# do stuff like:
-# info https://nimbus.pawsey.org.au:5000 -> projects (eg magenta-storage)
-# info https://nimbus.pawsey.org.au:5000/magenta-storage/credentials
-# TODO map to ls https://nimbus etc
-#https://stackoverflow.com/questions/44751574/uploading-to-amazon-s3-via-curl-route/44751929
-# list ec2 credentials (per project or for all if no project specified)
-
-        if self.keystone is None:
-            raise Exception("Missing keystone url.")
-
-        if 'login' in line:
-            self.logging.info("Attempting discovery via: [%s]" % self.keystone)
-# use mfclient as SSO for keystone auth - deprec
-#            remote = self.remotes[self.remotes_current]
-#            endpoint = remote.endpoint()
-#            if endpoint['type'] == 'mflux':
-#                self.logging.info("Attempting SSO via: [%r]" % remote)
-#            else:
-#                raise Exception("No valid SSO client found")
-
-            try:
-#                self.keystone.connect(remote)
-                self.keystone.connect()
-                endpoint = self.keystone.discover_s3_endpoint()
-                self.remote_add(endpoint['name'], endpoint)
-                self.remotes_config_save()
-            except Exception as e:
-                self.logging.info(str(e))
-# probably no boto3 - may have still got credentials though
-                print("Discovery incomplete")
-            return
-
-        if 'list' in line:
-            self.keystone.credentials_print()
-            return
-
-        if 'create' in line:
-            if nargs > 1:
-                access = self.keystone.credentials_create(args[1])
-                print("Created access: %s" % access)
-            else:
-                raise Exception("Error: missing project reference")
-            return
-
-        if 'delete' in line:
-            if nargs > 1:
-                result = self.keystone.credentials_delete(args[1])
-                print(result)
-            else:
-                raise Exception("Error: missing access reference")
-            return
-
-        print("keystone=%s" % self.keystone.url)
 
 #------------------------------------------------------------
 # immediately return any key pressed as a character
