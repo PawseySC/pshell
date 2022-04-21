@@ -476,6 +476,7 @@ class s3_client():
                 folder = posixpath.join(prefix, pattern)
                 if folder.endswith('/') is False:
                     folder = folder + '/'
+
 # create an empty object to simulate a folder
                 self.logging.info("Creating folder [%s] in bucket [%s]" % (folder, bucket))
                 self.s3.put_object(Bucket=bucket, Key=folder, Body='')

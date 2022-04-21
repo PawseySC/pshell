@@ -541,7 +541,6 @@ class mf_client():
         service_call = lexer.get_token()
         token = lexer.get_token()
 
-
 # better handling of deletions to the XML
         xml_unwanted = None
         try:
@@ -625,17 +624,18 @@ class mf_client():
 
 # special case for "system.login" as it does not work when wrapped with "service.execute" - which requires a valid session
         if service_call == "system.logon":
+# the case where the call can't be wrapped in a service.execute
             child.set("name", service_call)
             args = ET.SubElement(child, "args")
             for item in xml_root.findall("*"):
                 args.append(item)
-#        elif service_call == 'service.execute':
-#            child.set("name", service_call)
-#            child.set("session", self.session)
-#            args = ET.SubElement(child, "args")
-#            for item in xml_root.findall("*"):
-#                args.append(item)
-
+        elif service_call == 'service.execute':
+# the case where the call is already wrapped in a service.execute
+            child.set("name", service_call)
+            child.set("session", self.session)
+            args = ET.SubElement(child, "args")
+            for item in xml_root.findall("*"):
+                args.append(item)
         else:
 # wrap the service call in a service.execute to allow background execution, if desired 
             child.set("name", "service.execute")
