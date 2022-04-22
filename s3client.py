@@ -534,15 +534,20 @@ class s3_client():
         paginator = self.s3.get_paginator('list_objects_v2')
         for page in paginator.paginate(Bucket=bucket):
             if 'Contents' in page:
+                count += page['KeyCount']
                 for item in page.get('Contents'):
-                    count += 1
                     size += item['Size']
         return count, size
 
 #------------------------------------------------------------
-    def bucket_info(self, bucket):
-        reply = self.s3.get_bucket_acl(Bucket=bucket)
-        return reply['Owner']['DisplayName']
+    def bucket_owner(self, bucket):
+        try:
+            reply = self.s3.get_bucket_acl(Bucket=bucket)
+            owner = reply['Owner']['DisplayName']
+        except Exception as e:
+            self.logging.error(str(e))
+            owner = 'unknown'
+        return owner
 
 #------------------------------------------------------------
     def info_iter(self, pattern):
@@ -553,7 +558,7 @@ class s3_client():
             if prefix == "":
                 if bucket is not None:
 # specific bucket
-                    owner = self.bucket_info(bucket)
+                    owner = self.bucket_owner(bucket)
                     count, size = self.bucket_size(bucket)
                     yield "%20s : %s" % ('bucket', bucket)
                     yield "%20s : %s" % ('owner', owner)
