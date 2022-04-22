@@ -139,11 +139,10 @@ class s3_client():
     def complete_path(self, cwd, partial, start, match_prefix=True, match_object=True):
 
         self.logging.info("cwd=[%s] partial=[%s] start=[%d]" % (cwd, partial, start))
-
         try:
             fullpath = posixpath.join(cwd, partial)
             bucket, prefix, pattern = self.path_convert(fullpath)
-            self.logging.info("bucket=%s, prefix=%s, pattern=%s" % (bucket, prefix, pattern))
+            self.logging.info("fullpath=%s, bucket=%s, prefix=%s, pattern=%s" % (fullpath, bucket, prefix, pattern))
             candidate_list = []
             if self.bucket_exists(bucket) is False:
 # get results for bucket search
@@ -163,39 +162,35 @@ class s3_client():
                         for item in response['CommonPrefixes']:
                             # strip the base search prefix (if any) off the results so we can pattern match
                             candidate = item['Prefix'][prefix_len:]
-                            self.logging.info("prefix=%s, candidate=%s" % (item['Prefix'], candidate))
+                            self.logging.debug("prefix=%s, candidate=%s" % (item['Prefix'], candidate))
                             # main search criteria
                             if candidate.startswith(pattern):
                                 full_candidate = "%s/%s" % (bucket, item['Prefix'])
                                 match_ix = full_candidate.rfind(partial)
-                                self.logging.info("full=%s, match_ix=%d" % (full_candidate, match_ix))
+                                self.logging.info("MATCH index=%d, full=%s" % (match_ix, full_candidate))
                                 if match_ix >= 0:
                                     candidate = full_candidate[match_ix:]
                                     candidate_list.append(candidate[start:])
-                                else:
-                                    self.logging.error("this shouldn't happen")
 
 # process file (object) matches
                 if match_object is True:
                     if 'Contents' in response:
                         for item in response['Contents']:
-                            self.logging.info("key=%s" % item['Key'])
                             # main search criteria
-                            if item['Key'].startswith(pattern):
-                                full_candidate = "%s/%s" % (bucket, item['Key'])
+                            full_candidate = "/%s/%s" % (bucket, item['Key'])
+                            self.logging.debug("key=%s, full=%s" % (item['Key'], full_candidate))
+                            if full_candidate.startswith(fullpath):
                                 match_ix = full_candidate.rfind(partial)
-                                self.logging.info("full=%s, match_ix=%d" % (full_candidate, match_ix))
+                                self.logging.info("MATCH index=%d, full=%s" % (match_ix, full_candidate))
                                 if match_ix >= 0:
                                     candidate = full_candidate[match_ix:]
                                     candidate_list.append(candidate[start:])
-                                else:
-                                    self.logging.error("this shouldn't happen")
 
         except Exception as e:
             self.logging.error(str(e))
 
+# done
         self.logging.info(candidate_list)
-
         return candidate_list
 
 #------------------------------------------------------------
@@ -209,7 +204,7 @@ class s3_client():
 #------------------------------------------------------------
 # NEW - convert fullpath to bucket, commonprefix, and key (which might contain wildcards)
     def path_convert(self, path):
-        self.logging.info("path=[%s]" % path)
+        self.logging.debug("path=[%s]" % path)
 
         if posixpath.isabs(path) is False:
             self.logging.debug("Warning: converting relative path to absolute")
@@ -238,7 +233,7 @@ class s3_client():
         else:
             bucket = None
 
-        self.logging.info("bucket=[%r] prefix=[%r] key=[%s]" % (bucket, prefix, key))
+        self.logging.debug("bucket=[%r] prefix=[%r] key=[%s]" % (bucket, prefix, key))
 
         return bucket, prefix, key
 

@@ -228,7 +228,7 @@ class parser(cmd.Cmd):
 #------------------------------------------------------------
     def abspath(self, line):
 
-        self.logging.info("in: [%s]" % line)
+        self.logging.debug("in: [%s]" % line)
 
         if line.startswith('"') and line.endswith('"'):
             line = line[1:-1]
@@ -246,7 +246,7 @@ class parser(cmd.Cmd):
             if path.endswith('/') is False:
                 path = path+'/'
 
-        self.logging.info("out: [%s]" % path)
+        self.logging.debug("out: [%s]" % path)
 
         return path
 
