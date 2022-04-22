@@ -12,6 +12,8 @@ class parser_standard(unittest.TestCase):
         global parser
         self.parser = myparser
         self.parser.cwd = "/root"
+        self.parser.remotes = {}
+        self.parser.remotes['remote'] = "dummy"
 
 # --- abspath
     def test_abspath_empty(self):
@@ -33,6 +35,12 @@ class parser_standard(unittest.TestCase):
     def test_abspath_prefix_resolve(self):
         result = self.parser.abspath("folder/child1/../child2/")
         self.assertEqual(result, '/root/folder/child2/')
+
+    def test_split_remote_copy(self):
+        a,b,c = self.parser.split_remote_copy("myfolder/ remote:/mydest/remote/path")
+        self.assertEqual(a, 'myfolder/')
+        self.assertEqual(b, 'remote')
+        self.assertEqual(c, '/mydest/remote/path')
 
 # --- remote
 #    def test_remote_complete(self):

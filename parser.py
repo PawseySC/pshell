@@ -639,31 +639,47 @@ class parser(cmd.Cmd):
         self.print_over("put: completed upload of %d files, size: %s, speed: %.2f MB/s   \n" % (self.put_count, self.human_size(self.put_bytes), rate))
 
 #------------------------------------------------------------
-# TODO
-#    def do_copy(self, line):
-#        self.logging.info("in: %s" % line)
+    def split_remote_copy(self, line):
+        src_name=None
+        dest_remote=None
+        dest_fullpath=None
+        for name, client in self.remotes.items():
+            tmp = line.split(name+':')
+            count = len(tmp)
+            if count == 2:
+                src_name = tmp[0].strip()
+                dest_remote = name
+                dest_fullpath = tmp[1].strip()
 
+        return src_name, dest_remote, dest_fullpath
+
+#------------------------------------------------------------
+# TODO 
+# use:  copy file/folder remote2:/abs/path
+#    def do_export(self, line):
+#        print("CURRENT - export...")
+#
+#        src_remote = self.remote_active()
+#
+#        src_name,dest_remote,dest_fullpath = self.split_remote_copy(line)
+#
+#        if src_name is None or dest_remote is None or dest_fullpath is None:
+#            self.logging.error("src_name=%r, dest_remote=%r, dest_fullpath=%r" % (src_name, dest_remote, dest_fullpath))
+#            raise Exception("Bad input format for export, TODO - type help export for more info")
+#
+#        src_fullpath = self.abspath(src_name)
+#
+#        print("export [%s][%s] -> [%s][%s]" % (src_remote.type, src_fullpath, dest_remote, dest_fullpath))
+#
+#        try:
+#            src_remote.copy(src_fullpath, dest_remote, dest_fullpath, prompt=self.ask)
+#        except Exception as e:
+#            self.logging.error(str(e))
+#            print("Failed or not implemented")
 # TODO - options for metadata copy as well (IF src = mflux)
 #        option_list, tail = getopt.getopt(line, "r")
 #        self.logging.info("options: %r" % option_list)
 #        self.logging.info("tail: %r" % tail)
-
-#        try:
-#            path_list = shlex.split(line, posix=True)
-#            self.logging.info("copy [%r]" % path_list)
-#
-#        except Exception as e:
-#            self.logging.debug(str(e))
-#
-#        if len(path_list) != 2:
-#            raise Exception("Expected exactly two path arguments: source and destination")
-
-# source location is the remote client that controls the copy
-#        from_abspath = self.absolute_remote_filepath(path_list[0])
-#        to_abspath = self.absolute_remote_filepath(path_list[1])
-#        source = self.remotes_get(from_abspath)
-#        destination = self.remotes_get(to_abspath)
-#        source.copy(from_abspath, to_abspath, destination, prompt=self.ask)
 
 #------------------------------------------------------------
     def help_cd(self):
