@@ -1,10 +1,12 @@
 # TODO - use git rev-parse --short HEAD ... instead of date?
 
 #d=$(date +%Y%m%d%H%M%S)
-#sed -i tmp -e 's/^build.*$/build= "'$d'"/' mfclient.py
-#git tag $d
+set d = `date +%Y%m%d%H%M%S`
+
+sed -i tmp -e 's/^build.*$/build= "'$d'"/' mfclient.py
+git tag $d
 cp pshell.py __main__.py
-#sed -i tmp -e 's/^build.*$/build= "'$d'"/' __main__.py
+sed -i tmp -e 's/^build.*$/build= "'$d'"/' __main__.py
 zip pshell.zip __main__.py parser.py mfclient.py s3client.py
 
 # NB: escape the ! to avoid bash stupidity

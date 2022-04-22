@@ -560,11 +560,10 @@ class s3_client():
 # specific bucket
                     owner = self.bucket_info(bucket)
                     count, size = self.bucket_size(bucket)
-                    yield "%20s : %s" % ('info', 'bucket')
+                    yield "%20s : %s" % ('bucket', bucket)
                     yield "%20s : %s" % ('owner', owner)
                     yield "%20s : %s" % ('objects', count)
                     yield "%20s : %s" % ('size', self.human_size(size))
-
                 else:
 # nothing specified - project summary
                     response = self.s3.list_buckets()
@@ -577,7 +576,7 @@ class s3_client():
                         total_buckets += 1
                         total_count += count
                         total_size += size
-                    yield "%20s : %s" % ('info', 'project')
+                    yield "%20s : %s" % ('type', 'project')
                     yield "%20s : %s" % ('buckets', total_buckets)
                     yield "%20s : %s" % ('objects', total_count)
                     yield "%20s : %s" % ('size', self.human_size(total_size))
@@ -588,19 +587,14 @@ class s3_client():
                 results = self.get_iter(pattern=pattern, delimiter='')
                 count = int(next(results))
                 size = int(next(results))
-# DEBUG
-#                for item in results:
-#                    print(item)
-                yield "%20s : %s" % ('bucket', bucket)
-                yield "%20s : %s" % ('prefix', prefix)
+                yield "%20s : %s" % ('prefix', pattern)
                 yield "%20s : %d" % ('objects', count)
                 yield "%20s : %s" % ('size', self.human_size(size))
-
         else:
 # exact key request
             fullkey = posixpath.join(prefix, key)
             response = self.s3.head_object(Bucket=bucket, Key=fullkey)
-            yield "%20s : %s" % ('info', 'object')
+            yield "%20s : %s" % ('object', pattern)
             for item in response['ResponseMetadata']['HTTPHeaders']:
                 yield "%20s : %s" % (item, response['ResponseMetadata']['HTTPHeaders'][item])
 

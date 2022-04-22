@@ -27,7 +27,7 @@ import xml.etree.ElementTree as ET
 import urllib.request, urllib.error, urllib.parse
 
 # auto
-build= "20210923131216"
+build= "20220421162722"
 
 #------------------------------------------------------------
 class mf_client():
@@ -1055,81 +1055,71 @@ class mf_client():
         return True
 
 #------------------------------------------------------------
-# TODO - return a dict ... leave printing to the caller
-# DEPREC - using info_iter() instead
-    def info(self, fullpath):
-        """
-        information on a named file
-        """
-        self.logging.info("[%s]" % fullpath)
-        output_dict = {}
-        result = self.aterm_run('asset.get :id "path=%s"' % fullpath)
-        elem = result.find(".//asset")
-        output_dict['asset ID'] = elem.attrib['id']
-
-        xpath_list = [".//asset/path", ".//asset/ctime", ".//asset/type", ".//content/size", ".//content/csum"]
-        for xpath in xpath_list:
-            elem = result.find(xpath)
-            if elem is not None:
-                output_dict[elem.tag] = elem.text
-
-# get content status 
-#        result = self.aterm_run('asset.content.status :id "path=%s"' % fullpath)
-
-        print("AAA")
-        result = self.aterm_run('asset.content.status :id "path=%s"' % fullpath, background=True, description="status", show_progress=True)
-
-
-
-        elem = result.find(".//asset/state")
-        if elem is not None:
-            output_dict[elem.tag] = elem.text
-
-# published (public URL)
-        result = self.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % fullpath)
-        elem = result.find(".//exists")
-        if elem is not None:
-            if 'true' in elem.text.lower():
-                public_url = '%s://%s/download/%s' % (self.protocol, self.server, urllib.parse.quote(fullpath[10:]))
-                output_dict['published'] = public_url
-
-        return output_dict
-
-#------------------------------------------------------------
 # TODO - fullpath can be a namespace or pattern ...
     def info_iter(self, fullpath):
         """
-        information on a named file
+        information on a named file or folder
         """
         self.logging.info("[%s]" % fullpath)
 
-        output_dict = ""
-
-        result = self.aterm_run('asset.get :id "path=%s"' % fullpath)
-        elem = result.find(".//asset")
-        output_dict += " asset ID : %s\n" % elem.attrib['id']
-
-        xpath_list = [".//asset/path", ".//asset/ctime", ".//asset/type", ".//content/size", ".//content/csum"]
-        for xpath in xpath_list:
-            elem = result.find(xpath)
+        if self.namespace_exists(fullpath):
+            self.logging.info("Namespace exists")
+            yield "%20s : %s" % ('namespace', fullpath) 
+            xml_reply = self.aterm_run('asset.namespace.describe :namespace %s' % fullpath, background=True)
+            elem = xml_reply.find(".//namespace/ctime")
             if elem is not None:
-                output_dict += "%20s : %s\n" % (elem.tag, elem.text)
+                yield "%20s : %s" % ('ctime', elem.text) 
+# at project level, can report quota/usage
+            elem = xml_reply.find(".//quota/allocation")
+            if elem is not None:
+                yield "%20s : %s" % ('quota', self.human_size(elem.text))
+                elem = xml_reply.find(".//quota/used")
+                yield "%20s : %s" % ('usage', self.human_size(elem.text))
+                elem = xml_reply.find(".//quota/count")
+                yield "%20s : %s" % ('count', elem.text) 
+            else:
+# all other namespaces, have to query for the info
+                query = "namespace>='%s'" % fullpath
+                xml_reply = self.aterm_run('asset.query :where "%s" :count true :action sum :xpath content/size' % query, background=True)
+                elem = xml_reply.find(".//value")
+                if elem is not None:
+                    yield "%20s : %s" % ('usage', self.human_size(elem.text))
+                    yield "%20s : %s" % ('count', elem.attrib['nbe']) 
+        else:
+            try:
+# get asset information, if it exists
+                result = self.aterm_run('asset.get :id "path=%s"' % fullpath)
+                elem = result.find(".//asset")
+                yield "%20s : %s" % ('asset', elem.attrib['id'])
+                xpath_list = [".//asset/path", ".//asset/ctime", ".//asset/type", ".//content/csum"]
+                for xpath in xpath_list:
+                    elem = result.find(xpath)
+                    if elem is not None:
+                        yield "%20s : %s" % (elem.tag, elem.text)
+# content size
+                elem = result.find(".//asset/content/size")
+                if elem is not None:
+                    yield "%20s : %s" % ('size', self.human_size(elem.text))
 
 # get content status 
-        result = self.aterm_run('asset.content.status :id "path=%s"' % fullpath)
-        elem = result.find(".//asset/state")
-        if elem is not None:
-            output_dict += "%20s : %s\n" % (elem.tag, elem.text)
+                result = self.aterm_run('asset.content.status :id "path=%s"' % fullpath)
+                elem = result.find(".//asset/state")
+                if elem is not None:
+                    yield "%20s : %s" % (elem.tag, elem.text)
 
 # published (public URL)
-        result = self.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % fullpath)
-        elem = result.find(".//exists")
-        if elem is not None:
-            if 'true' in elem.text.lower():
-                public_url = '%s://%s/download/%s' % (self.protocol, self.server, urllib.parse.quote(fullpath[10:]))
-                output_dict += " published : %s\n" % public_url
+                if fullpath.startswith('/projects/'):
+                    result = self.aterm_run('asset.label.exists :id "path=%s" :label PUBLISHED' % fullpath)
+                    elem = result.find(".//exists")
+                    if elem is not None:
+                        if 'true' in elem.text.lower():
+# NB: download path will be wrong if we're looking anywhere other than /project, eg in www/ 
+                            public_url = '%s://%s/download/%s' % (self.protocol, self.server, urllib.parse.quote(fullpath[10:]))
+                            yield "%20s : %s" % ('published', public_url)
 
-        yield output_dict
+            except Exception as e:
+                self.logging.debug(str(e))
+                raise Exception("No such file or folder")
 
 #------------------------------------------------------------
     def ls_iter(self, pattern):
