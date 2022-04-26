@@ -493,20 +493,19 @@ class parser(cmd.Cmd):
         remote = self.remote_active()
         abspath = self.abspath(line)
 
-# TODO - need an isdir (not is object for s3) 
-# TODO - make the same distinction as do_put() below for folders vs files
         if remote is not None:
-            self.print_over("get: preparing...")
+            self.print_over("get: preparing... ")
             results = remote.get_iter(abspath)
             self.total_count = int(next(results))
             self.total_bytes = int(next(results))
             self.get_count = 0
             self.get_bytes = 0
             start_time = time.time()
-            self.print_over("get: preparing %d files..." % self.total_count)
+            self.print_over("get: preparing %d files... " % self.total_count)
             try:
                 count = 0
                 for remote_fullpath in results:
+# TODO - this needs a tweak so we don't get the intermediate directories ...
                     remote_relpath = posixpath.relpath(path=remote_fullpath, start=self.cwd)
                     local_filepath = os.path.join(os.getcwd(), remote_relpath)
                     future = self.thread_executor.submit(jump_get, remote, remote_fullpath, local_filepath)
