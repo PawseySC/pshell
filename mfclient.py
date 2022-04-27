@@ -27,7 +27,7 @@ import xml.etree.ElementTree as ET
 import urllib.request, urllib.error, urllib.parse
 
 # auto
-build= "20220422142550"
+build= "20220427110641"
 
 #------------------------------------------------------------
 class mf_client():
