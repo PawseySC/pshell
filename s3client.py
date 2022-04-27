@@ -507,7 +507,7 @@ class s3_client():
 
             return True
 
-        raise Exception("rmdir: invalid folder [%s]" % path)
+        raise Exception("rmdir: invalid folder name [%s]" % path)
 
 #------------------------------------------------------------
     def publish(self, pattern):

@@ -191,7 +191,7 @@ def main():
         for item in input_list:
             line = item.strip()
             try:
-                print("%s:%s> %s" % (args.current, my_parser.cwd, line))
+                print("%s:%s> %s" % (my_parser.remotes_current, my_parser.cwd, line))
                 my_parser.onecmd(line)
             except KeyboardInterrupt:
                 print(" Interrupted by user")
