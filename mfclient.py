@@ -27,7 +27,7 @@ import xml.etree.ElementTree as ET
 import urllib.request, urllib.error, urllib.parse
 
 # auto
-build= "20220429130926"
+build= "20220429150527"
 
 #------------------------------------------------------------
 class mf_client():
@@ -1287,9 +1287,12 @@ class mf_client():
                 elem = xml_reply.find(".//asset/state")
                 if "online" in elem.text:
                     return True
+
 # external (Versity) S3 workaround - we can't see the state or make a recall (S3 proto) all we can do is proceed and let it trigger a recall
-# TODO - this will probably result in more timeouts ...
                 if "reachable" in elem.text:
+# try grabbing some bytes in the background ... when it returns it should be ready 
+                    xml_reply = self.aterm_run('asset.content.hexdump :id "path=%s" :length 1' % remote_filepath, background=True)
+
                     return True
 
             except Exception as e:
@@ -1508,14 +1511,5 @@ class mf_client():
 
         except Exception as e:
             self.logging.warning("Metadata population failed: %s" % str(e))
-
-
-#------------------------------------------------------------
-    def usage(self, namespace):
-        """
-        Compute usage for the given namespace
-        """
-
-
 
 
