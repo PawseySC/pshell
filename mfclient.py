@@ -27,7 +27,7 @@ import xml.etree.ElementTree as ET
 import urllib.request, urllib.error, urllib.parse
 
 # auto
-build= "20220429150527"
+build= "20220429185749"
 
 #------------------------------------------------------------
 class mf_client():
@@ -188,12 +188,20 @@ class mf_client():
                     elem = reply.find(".//secure-token")
 # I'm a token - get expiry date
                     if elem is not None:
-                        reply = self.aterm_run("secure.identity.token.describe :id %s" % elem.text)
-                        elem = reply.find(".//validity/to")
+# gah - Arcitecta changed something here ... now no perms to describe my own token ... wtf?
+#                        reply = self.aterm_run("secure.identity.token.describe :id %s" % elem.text)
+#                        elem = reply.find(".//validity/to")
+#                        if elem is not None:
+#                            identity = "delegate, expiry: %s" % elem.text
+#                        else:
+#                            identity = "?"
+# FIXME - get expiry date
+                        elem = reply.find(".//user")
                         if elem is not None:
-                            identity = "delegate, expiry: %s" % elem.text
+                            identity = "delegate for %s" % elem.text
                         else:
                             identity = "?"
+
                     else:
 # normal session - get user identity
                         elem = reply.find(".//actor")
