@@ -27,7 +27,7 @@ import xml.etree.ElementTree as ET
 import urllib.request, urllib.error, urllib.parse
 
 # auto
-build= "20220427110641"
+build= "20220429130926"
 
 #------------------------------------------------------------
 class mf_client():
@@ -1286,6 +1286,10 @@ class mf_client():
                 xml_reply = self.aterm_run('asset.content.status :id "path=%s"' % remote_filepath, background=True)
                 elem = xml_reply.find(".//asset/state")
                 if "online" in elem.text:
+                    return True
+# external (Versity) S3 workaround - we can't see the state or make a recall (S3 proto) all we can do is proceed and let it trigger a recall
+# TODO - this will probably result in more timeouts ...
+                if "reachable" in elem.text:
                     return True
 
             except Exception as e:
