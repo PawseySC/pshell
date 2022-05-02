@@ -232,8 +232,6 @@ class mf_client():
             An error if authentication fails
         """
 
-        print("login() start")
-
 # security check
         if self.protocol != "https":
             self.logging.debug("Permitting unencrypted login; I hope you know what you're doing.")
@@ -281,7 +279,6 @@ class mf_client():
         self.aterm_run("system.logoff")
         self.session = ""
         self.status = "Not authenticated to: %s" % self.server
-
 
 #------------------------------------------------------------
     def delegate(self, line):
