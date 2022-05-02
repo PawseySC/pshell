@@ -480,9 +480,8 @@ class parser(cmd.Cmd):
         with threading.Lock():
             self.get_count += 1
             self.get_bytes += bytes_recv
-# progress update report
-        progress_pc = 100.0 * float(self.get_bytes) / float(self.total_bytes)
-        self.print_over("get: downloaded %d/%d files, progress: %3.1f%% " % (self.get_count, self.total_count, progress_pc))
+            progress_pc = 100.0 * float(self.get_bytes) / float(self.total_bytes)
+            self.print_over("get: downloaded %d/%d files, progress: %3.1f%% " % (self.get_count, self.total_count, progress_pc))
 
 # --
     def do_get(self, line):
@@ -516,11 +515,12 @@ class parser(cmd.Cmd):
                 self.logging.info("[%s] count = %d" % (str(e), count))
                 pass
 
-# TODO - control-C -> terminate threads ...
-#self.thread_executor.shutdown(wait=True, cancel_futures=True)
+# FIXME - sometimes get_iter() returns the wrong number of files ... I think it's an mflux eccentricity for files with no content
+# HACK - just set what we expect to download equal to the number of files actually submitted
+            self.total_count = count
 
 # wait until completed (cb_get does progress updates)
-            self.logging.info("Waiting for thread executor...")
+            self.logging.info("Waiting for background downloads...")
             while self.get_count < self.total_count:
                 time.sleep(3)
 

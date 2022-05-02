@@ -534,7 +534,6 @@ class mf_client():
 # better handling of deletions to the XML
         xml_unwanted = None
         try:
-#            while token:
             while token is not None:
                 if token[0] == ':':
                     child = ET.SubElement(xml_node, '%s' % token[1:])
@@ -557,9 +556,13 @@ class mf_client():
 # -other => it's an XML attribute/property
                         key = token[1:]
                         value = lexer.get_token()
-                        if value.startswith('"') and value.endswith('"'):
-                            value = value[1:-1]
-                        child.set(key, value)
+                        if value is not None:
+                            if value.startswith('"') and value.endswith('"'):
+                                value = value[1:-1]
+                            child.set(key, value)
+                        else:
+# someone put in something silly, I think...
+                            raise Exception ("Malformed input command")
                 else:
 
                     if child is not None:
@@ -586,7 +589,6 @@ class mf_client():
                             data_out_min = 1
 # schedule for deletion but don't delete yet due to potentially multiple passthroughs 
                             xml_unwanted = child
-
 
 # don't treat quotes as special characters in password string
                 if "password" in token:
@@ -1285,6 +1287,11 @@ class mf_client():
             try:
                 xml_reply = self.aterm_run('asset.content.status :id "path=%s"' % remote_filepath, background=True)
                 elem = xml_reply.find(".//asset/state")
+
+                if elem is None:
+                    self.logging.error("No content found for asset")
+                    return False
+
                 if "online" in elem.text:
                     return True
 
@@ -1292,7 +1299,6 @@ class mf_client():
                 if "reachable" in elem.text:
 # try grabbing some bytes in the background ... when it returns it should be ready 
                     xml_reply = self.aterm_run('asset.content.hexdump :id "path=%s" :length 1' % remote_filepath, background=True)
-
                     return True
 
             except Exception as e:
