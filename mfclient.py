@@ -179,15 +179,11 @@ class mf_client():
             except Exception as e:
                 self.logging.debug(str(e))
 
-        for i in range(0,1):
 # convert session into a connection description
-            try:
-                if self.session != "":
-# NB: don't use 'actor.self.describe' here as it will give a valid description for a session based on a destroyed token
-                    reply = self.aterm_run("system.session.self.describe")
-                    elem = reply.find(".//secure-token")
-# I'm a token - get expiry date
-                    if elem is not None:
+        try:
+            reply = self.aterm_run("system.session.self.describe")
+            elem = reply.find(".//secure-token")
+            if elem is not None:
 # gah - Arcitecta changed something here ... now no perms to describe my own token ... wtf?
 #                        reply = self.aterm_run("secure.identity.token.describe :id %s" % elem.text)
 #                        elem = reply.find(".//validity/to")
@@ -196,43 +192,29 @@ class mf_client():
 #                        else:
 #                            identity = "?"
 # FIXME - get expiry date
-                        elem = reply.find(".//user")
-                        if elem is not None:
-                            identity = "delegate for %s" % elem.text
-                        else:
-                            identity = "?"
-
-                    else:
-# normal session - get user identity
-                        elem = reply.find(".//actor")
-                        if elem is not None:
-                            identity = "%s=%s" % (elem.attrib['type'], elem.text)
-                        else:
-                            identity = "?"
-                    self.status = "authenticated to: %s as %s" % (url, identity)
-                    return True
-
-            except Exception as e:
-                if "maintenance mode" in str(e):
-                    self.logging.error(str(e))
-                    break
+                elem = reply.find(".//user")
+                if elem is not None:
+                    identity = "delegate for %s" % elem.text
                 else:
-                    # usually an expired session
-                    self.session = ""
-                    self.logging.debug("bad session: %s" % str(e))
+                    identity = "?"
+            else:
+# normal session - get user identity
+                elem = reply.find(".//actor")
+                if elem is not None:
+                    identity = "%s=%s" % (elem.attrib['type'], elem.text)
+                else:
+                    identity = "?"
 
-# session was invalid, try to get a new session via a token and retry
-            try:
-                if self.token != "":
-                    self.login(token=self.token)
-                    self.logging.info("token ok")
-                    return True
+            self.status = "authenticated to: %s as %s" % (url, identity)
+            return True
 
-            except Exception as e:
-                self.logging.warning("token invalid: %s" % str(e))
-# don't wipe token as there may be another cause (eg server down) for the connection failure
-# rely on explicit methods, such as delegate off, for a token wipe
-                break
+        except Exception as e:
+            message = str(e)
+            self.logging.debug(message)
+            if "maintenance mode" in message:
+                print(message)
+                self.status = "not authenticated to: %s, system is in maintenance mode" % url
+                return False
 
         self.status = "not authenticated to: %s" % url
         return False
@@ -249,6 +231,9 @@ class mf_client():
         Raises:
             An error if authentication fails
         """
+
+        print("login() start")
+
 # security check
         if self.protocol != "https":
             self.logging.debug("Permitting unencrypted login; I hope you know what you're doing.")
@@ -682,11 +667,18 @@ class mf_client():
 
 # send the service call and see what happens ...
         message = "This shouldn't happen"
-        while True:
+#        while True:
+# CURRENT - only 2 tries - 1st ... possibly second if session has expired (and we can regen with token) ... after that - done
+
+        post_count = 0
+        post_retry = True
+
+        while post_retry is True:
+            self.logging.debug("loop: post_count=%d, post_retry=%r" % (post_count, post_retry))
+            post_count += 1
+            post_retry = False
             try:
-
                 reply = self._post(xml_text)
-
                 if background is True:
                     elem = reply.find(".//id")
                     job = elem.text
@@ -778,29 +770,37 @@ class mf_client():
                         else:
                             self.logging.debug("missing output data in XML server response")
 # successful
-#                    self.xml_print(reply)
-
+                    self.logging.debug("aterm_run(): success")
                     return reply
 
             except Exception as e:
                 message = str(e)
                 self.logging.debug(message)
+# only flag a retry if the session was invalid and we have a token
                 if "session is not valid" in message:
-# restart the session if token exists
-#                    if self.token is not None:
                     if len(self.token) > 0:
-                        self.logging.debug("attempting login with token")
-                        # FIXME - need to put this in a separate exception handling ...
-                        self.login(token=self.token)
+                        if post_count == 1:
+                            post_retry = True
 
+            if post_retry is True:
+# use raw post here ... not a recursive aterm_run() as this may get stuck in a re-try loop
+                self.logging.info("Attempting to restore session with token")
+                try:
+                    xml_raw = '<request><service name="system.logon"><args><token>%s</token></args></service></request>' % self.token
+                    xml_retry = self._post(xml_raw.encode())
+                    elem = xml_retry.find(".//session")
+                    self.session = elem.text
 # PYTHON3 - due to the strings vs bytes change (ie xml_text is bytes rather than string) 
-#                        xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text)
-                        xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text.decode()).encode()
-                        self.logging.debug("session restored, retrying command")
-                        continue
-                break
+                    xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text.decode()).encode()
 
-# couldn't post without an error - give up
+                except Exception as e:
+# no point continuing with to retry - couldn't regenerate a valid session
+                    message = str(e)
+                    self.logging.error(message)
+                    self.session = ""
+                    post_retry = False
+
+# give up with the most recent error message
         raise Exception(message)
 
 #------------------------------------------------------------
@@ -871,17 +871,12 @@ class mf_client():
 
 #------------------------------------------------------------
 # completion helper ...
-#    def absolute_namespace(self, cwd, path):
     def abspath(self, cwd, path):
         """
         enforce absolute remote namespace path
         """
 
         self.logging.debug("cwd = [%s] input = [%s]" % (cwd, path))
-
-#        if line.startswith('"') and line.endswith('"'):
-#            line = line[1:-1]
-
         if not posixpath.isabs(path):
             fullpath = posixpath.normpath(posixpath.join(cwd, path))
         else:
