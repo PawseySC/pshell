@@ -519,23 +519,28 @@ class parser(cmd.Cmd):
                 count = 0
 
 # TODO - get to the bottom of "error executing service [idx=0] asset.query.iterate: call to service 'asset.query.iterate' failed: The session does not have an iterator (id): 4] count = 37"
-
 # TODO - better if we submitted in batches ... and waited ... ie this will become our polling loop
+# define batch limit
+                batch_size = self.thread_max * 2 - 1
 
 # CURRENT - I think the final iterate on this will generate an exception -> no more items
                 for remote_fullpath in results:
 # TODO - this needs a tweak so we don't get the intermediate directories ...
                     remote_relpath = posixpath.relpath(path=remote_fullpath, start=self.cwd)
                     local_filepath = os.path.join(os.getcwd(), remote_relpath)
-
 #                    future = self.thread_executor.submit(jump_get, remote, remote_fullpath, local_filepath)
                     future = self.thread_executor.submit(remote.get, remote_fullpath, local_filepath)
-
                     future.add_done_callback(self.cb_get)
                     count += 1
 
+# NEW - don't submit any more than the batch size - this allows for faster cleanup of threads
+                    submitted = count - self.get_count
+                    while submitted > batch_size:
+                        time.sleep(5)
+                        submitted = count - self.get_count
+
             except Exception as e:
-                self.logging.info("[%s] count = %d" % (str(e), count))
+                self.logging.error("[%s] count = %d" % (str(e), count))
                 pass
 
 # FIXME - sometimes get_iter() returns the wrong number of files ... I think it's an mflux eccentricity for files with no content
@@ -908,17 +913,14 @@ class parser(cmd.Cmd):
                 self.cmdloop()
 
             except KeyboardInterrupt:
-                print(" Interrupted by the user")
-
-# signal running threads to terminate ...
+                print(" Interrupted. Cleaning up, please wait... ")
                 remote = self.remote_active()
-                self.logging.info("Cleaning up threads...")
-# CURRENT - this slowly (too slowly) cleans up ... 
-# FIXME - main issue is that PENDING jobs aren't auto cancelled -> they have to run before hitting the polling disable
+# signal running threads to terminate ...
                 remote.polling(False)
+# wait until threads have terminated
                 self.thread_executor.shutdown()
+# start thread machinery back up
                 self.thread_executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_max)
-# resume allowing threads to run...
                 remote.polling(True)
 
 # NB: here's where all command failures are caught

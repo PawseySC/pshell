@@ -1284,14 +1284,11 @@ class mf_client():
             for elem in result.findall(".//path"):
                 count += 1
                 yield elem.text
-
-# FIXME - this causes a hang ... but leaving it out seems to fix the problem ... 
-# presumably an exception gets generated trying to read more results past end and that terminates ...
-# iter completed?
-#            elem = result.find(".//iterated")
-#            if elem is not None:
-#                if 'true' in elem.attrib['completed']:
-#                    iterate = False
+# terminate when we get complete=True in the results
+            elem = result.find(".//iterated")
+            if elem is not None:
+                if 'true' in elem.attrib['complete']:
+                    iterate = False
 
 #------------------------------------------------------------
     def _wait_until_online(self, remote_filepath):
