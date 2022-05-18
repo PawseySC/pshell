@@ -914,6 +914,8 @@ class parser(cmd.Cmd):
 
             except KeyboardInterrupt:
                 print(" Interrupted. Cleaning up, please wait... ")
+# FIXME - this works, but, as we can't (easily) kill active threads it can take a very long time waiting for it to finish 
+# NB: sys.exit() termination is also delayed as it will also wait for the threads to finish
                 remote = self.remote_active()
 # signal running threads to terminate ...
                 remote.polling(False)
