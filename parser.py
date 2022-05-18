@@ -19,6 +19,7 @@ import mfclient
 import s3client
 
 #------------------------------------------------------------
+# TODO - deprec in favour of direct calls ...
 # picklable get()
 def jump_get(remote, remote_filepath, local_filepath):
     try:
@@ -61,10 +62,12 @@ class parser(cmd.Cmd):
     thread_executor = None
     thread_max = 3
     get_count = 0
+    get_errors = 0
     get_bytes = 0
     total_count = 0
     total_bytes = 0
     put_count = 0
+    put_errors = 0
     put_count_total = 0
     put_bytes = 0
     put_bytes_total = 0
@@ -476,12 +479,22 @@ class parser(cmd.Cmd):
 
 # --
     def cb_get(self, future):
-        bytes_recv = int(future.result())
+
+        try:
+            bytes_recv = int(future.result())
+            error = 0
+        except Exception as e:
+            self.logging.error(str(e))
+            error = 1
+            bytes_recv = 0
+
         with threading.Lock():
+            self.get_errors += error
             self.get_count += 1
             self.get_bytes += bytes_recv
-            progress_pc = 100.0 * float(self.get_bytes) / float(self.total_bytes)
-            self.print_over("get: downloaded %d/%d files, progress: %3.1f%% " % (self.get_count, self.total_count, progress_pc))
+
+        progress_pc = 100.0 * float(self.get_bytes) / float(self.total_bytes)
+        self.print_over("get: %d/%d files, errors=%d, progress=%3.1f%% " % (self.get_count-self.get_errors, self.total_count, self.get_errors, progress_pc))
 
 # --
     def do_get(self, line):
@@ -499,15 +512,25 @@ class parser(cmd.Cmd):
             self.total_bytes = int(next(results))
             self.get_count = 0
             self.get_bytes = 0
+            self.get_errors = 0
             start_time = time.time()
             self.print_over("get: preparing %d files... " % self.total_count)
             try:
                 count = 0
+
+# TODO - get to the bottom of "error executing service [idx=0] asset.query.iterate: call to service 'asset.query.iterate' failed: The session does not have an iterator (id): 4] count = 37"
+
+# TODO - better if we submitted in batches ... and waited ... ie this will become our polling loop
+
+# CURRENT - I think the final iterate on this will generate an exception -> no more items
                 for remote_fullpath in results:
 # TODO - this needs a tweak so we don't get the intermediate directories ...
                     remote_relpath = posixpath.relpath(path=remote_fullpath, start=self.cwd)
                     local_filepath = os.path.join(os.getcwd(), remote_relpath)
-                    future = self.thread_executor.submit(jump_get, remote, remote_fullpath, local_filepath)
+
+#                    future = self.thread_executor.submit(jump_get, remote, remote_fullpath, local_filepath)
+                    future = self.thread_executor.submit(remote.get, remote_fullpath, local_filepath)
+
                     future.add_done_callback(self.cb_get)
                     count += 1
 
@@ -528,7 +551,12 @@ class parser(cmd.Cmd):
             elapsed = time.time() - start_time
             rate = float(self.total_bytes) / float(elapsed)
             rate = rate / 1000000.0
-            self.print_over("get: completed download of %d files, total size: %s, speed: %.1f MB/s   \n" % (self.get_count, self.human_size(self.get_bytes), rate))
+
+            self.print_over("get: %d files, total size: %s, speed: %.1f MB/s   \n" % (self.get_count-self.get_errors, self.human_size(self.get_bytes), rate))
+
+# non-zero exit code on termination if there were any errors
+            if self.get_errors > 0:
+                raise Exception("get: download failed for %d file(s)" % self.get_errors)
 
 #------------------------------------------------------------
     def help_put(self):
@@ -880,7 +908,18 @@ class parser(cmd.Cmd):
                 self.cmdloop()
 
             except KeyboardInterrupt:
-                print(" Interrupted by user")
+                print(" Interrupted by the user")
+
+# signal running threads to terminate ...
+                remote = self.remote_active()
+                self.logging.info("Cleaning up threads...")
+# CURRENT - this slowly (too slowly) cleans up ... 
+# FIXME - main issue is that PENDING jobs aren't auto cancelled -> they have to run before hitting the polling disable
+                remote.polling(False)
+                self.thread_executor.shutdown()
+                self.thread_executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_max)
+# resume allowing threads to run...
+                remote.polling(True)
 
 # NB: here's where all command failures are caught
             except SyntaxError:

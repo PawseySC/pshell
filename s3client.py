@@ -35,6 +35,7 @@ class s3_client():
         self.secret = secret
         self.s3 = None
         self.status = "not connected"
+        self.enable_polling = True
         self.logging = logging.getLogger('s3client')
         global build
 
@@ -104,6 +105,13 @@ class s3_client():
 #------------------------------------------------------------
     def endpoint(self):
         return { 'type':self.type, 'url':self.url, 'access':self.access, 'secret':self.secret }
+
+#------------------------------------------------------------
+    def polling(self, polling_state=True):
+        """
+        Set the current polling state, intended for terminating threads
+        """
+        self.enable_polling = polling_state
 
 #------------------------------------------------------------
     def human_size(self, nbytes):

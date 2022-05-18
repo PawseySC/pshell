@@ -21,6 +21,7 @@ import datetime
 import platform
 import mimetypes
 import posixpath
+import threading
 import http.client
 import configparser
 import xml.etree.ElementTree as ET
@@ -74,6 +75,9 @@ class mf_client():
         self.put_buffer = 8192
 # XML pretty print hack
         self.indent = 0
+
+# NEW
+        self.enable_polling = True
 
 # POST URL
         self.post_url = "%s://%s/__mflux_svc__" % (protocol, server)
@@ -270,6 +274,15 @@ class mf_client():
         except Exception as e:
             self.logging.error(str(e))
             raise Exception("Invalid login call")
+
+#------------------------------------------------------------
+    def polling(self, polling_state=True):
+        """
+        Set the current polling state, intended for terminating threads
+        """
+        self.logging.info("Set polling: %r" % polling_state)
+        with threading.Lock():
+            self.enable_polling = polling_state
 
 #------------------------------------------------------------
     def logout(self):
@@ -1283,7 +1296,8 @@ class mf_client():
 #------------------------------------------------------------
     def _wait_until_online(self, remote_filepath):
         xml_reply = self.aterm_run('asset.content.migrate :destination online :id "path=%s"' % remote_filepath, background=True)
-        while True:
+
+        while self.enable_polling:
             try:
                 xml_reply = self.aterm_run('asset.content.status :id "path=%s"' % remote_filepath, background=True)
                 elem = xml_reply.find(".//asset/state")
@@ -1307,6 +1321,8 @@ class mf_client():
 
             time.sleep(5)
 
+        return False
+
 #------------------------------------------------------------
     def get(self, remote_filepath, local_filepath=None, overwrite=False):
         """
@@ -1315,6 +1331,9 @@ class mf_client():
         Args:
             filepath: a STRING representing the full path and filename of the remote file
             overwrite: a BOOLEAN indicating action if local copy exists
+
+        Returns:
+            The byte size of the file, even if skipped due to already existing locally
 
         Raises:
             An error on failure

@@ -193,7 +193,7 @@ def main():
                 print("%s:%s> %s" % (my_parser.remotes_current, my_parser.cwd, line))
                 my_parser.onecmd(line)
             except KeyboardInterrupt:
-                print(" Interrupted by user")
+                print(" Interrupted")
                 sys.exit(-1)
             except SyntaxError:
                 print(" Syntax error: for more information on commands type 'help'")
