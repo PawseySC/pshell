@@ -388,7 +388,7 @@ class s3_client():
                     yield "/%s/%s" % (bucket, item['Key'])
 
 #------------------------------------------------------------
-    def get(self, remote_filepath, local_filepath=None):
+    def get(self, remote_filepath, local_filepath=None, cb_progress=None):
 
         bucket,prefix,key = self.path_convert(remote_filepath)
         fullkey = posixpath.join(prefix, key)

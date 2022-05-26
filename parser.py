@@ -477,9 +477,22 @@ class parser(cmd.Cmd):
         print("\nDownload remote files to the current local folder\n")
         print("Usage: get <remote files or folders>\n")
 
-# --
-    def cb_get(self, future):
 
+# --
+    def cb_get_progress_display(self, elapsed=None):
+
+        if elapsed is not None:
+            rate = float(self.total_bytes) / float(elapsed)
+            rate = rate / 1000000.0
+            speed = "at %.1f MB/s" % rate
+        else:
+            speed = "                                   "
+
+        progress_pc = 100.0 * float(self.get_bytes) / float(self.total_bytes)
+        self.print_over("get: %d/%d files, errors=%d, progress=%3.1f%% %s" % (self.get_count-self.get_errors, self.total_count, self.get_errors, progress_pc, speed))
+
+# --
+    def cb_get_done(self, future):
         try:
             bytes_recv = int(future.result())
             error = 0
@@ -491,10 +504,12 @@ class parser(cmd.Cmd):
         with threading.Lock():
             self.get_errors += error
             self.get_count += 1
-            self.get_bytes += bytes_recv
 
-        progress_pc = 100.0 * float(self.get_bytes) / float(self.total_bytes)
-        self.print_over("get: %d/%d files, errors=%d, progress=%3.1f%% " % (self.get_count-self.get_errors, self.total_count, self.get_errors, progress_pc))
+# --
+    def cb_get_progress(self, chunk):
+        with threading.Lock():
+            self.get_bytes += int(chunk)
+
 
 # --
     def do_get(self, line):
@@ -529,8 +544,8 @@ class parser(cmd.Cmd):
                     remote_relpath = posixpath.relpath(path=remote_fullpath, start=self.cwd)
                     local_filepath = os.path.join(os.getcwd(), remote_relpath)
 #                    future = self.thread_executor.submit(jump_get, remote, remote_fullpath, local_filepath)
-                    future = self.thread_executor.submit(remote.get, remote_fullpath, local_filepath)
-                    future.add_done_callback(self.cb_get)
+                    future = self.thread_executor.submit(remote.get, remote_fullpath, local_filepath, self.cb_get_progress)
+                    future.add_done_callback(self.cb_get_done)
                     count += 1
 
 # NEW - don't submit any more than the batch size - this allows for faster cleanup of threads
@@ -538,6 +553,10 @@ class parser(cmd.Cmd):
                     while submitted > batch_size:
                         time.sleep(5)
                         submitted = count - self.get_count
+                        # CURRENT
+                        elapsed = time.time() - start_time
+                        self.cb_get_progress_display(elapsed)
+
 
             except Exception as e:
                 self.logging.error("[%s] count = %d" % (str(e), count))
@@ -550,14 +569,17 @@ class parser(cmd.Cmd):
 # wait until completed (cb_get does progress updates)
             self.logging.info("Waiting for background downloads...")
             while self.get_count < self.total_count:
-                time.sleep(3)
+                time.sleep(5)
+                # CURRENT
+                elapsed = time.time() - start_time
+                self.cb_get_progress_display(elapsed)
 
 # print summary and return
-            elapsed = time.time() - start_time
-            rate = float(self.total_bytes) / float(elapsed)
-            rate = rate / 1000000.0
-
-            self.print_over("get: %d files, total size: %s, speed: %.1f MB/s   \n" % (self.get_count-self.get_errors, self.human_size(self.get_bytes), rate))
+#            elapsed = time.time() - start_time
+#            rate = float(self.total_bytes) / float(elapsed)
+#            rate = rate / 1000000.0
+#            self.print_over("get: %d files, total size: %s, speed: %.1f MB/s   \n" % (self.get_count-self.get_errors, self.human_size(self.get_bytes), rate))
+            print("")
 
 # non-zero exit code on termination if there were any errors
             if self.get_errors > 0:
