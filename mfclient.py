@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 """
 This module is a Python 3.x (standard lib only) implementation of a mediaflux client

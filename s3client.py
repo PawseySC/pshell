@@ -66,6 +66,7 @@ class s3_client():
         self.logging.info('endpoint=%s using acess=%s' % (self.url, self.access))
 
 # connection check
+        emsg = "unknown error"
         try:
             # pshell threads x boto3 threads cap
             s3config=botocore.client.Config(max_pool_connections=50)
@@ -75,25 +76,20 @@ class s3_client():
             else:
                 self.logging.debug("Assuming url is region")
                 self.s3 = boto3.client('s3', region_name=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, config=s3config)
-
-# reachability check ... more for info, probably not really required
-# CURRENT - this works for acacia - URL ... but breaks AWS 
-#            code = urllib.request.urlopen(self.url, timeout=10).getcode()
-#            self.logging.info("connection code: %r" % code)
-
-        except Exception as e:
-            self.logging.error(str(e))
-            self.status = "not connected to %s: %s" % (self.url, str(e))
+# authenticated user check - test the client
+            self.s3.list_buckets()
+            self.status = "authenticated to: %s as access=%s" % (self.url, self.access)
             return
 
-# authenticated user check
-        try:
-# TODO - check if we're actually authenticated ... resource discovery ... etc
-#            self.s3.get_available_resources()
-#            self.s3.get_caller_identity()
-            self.status = "authenticated to: %s as access=%s" % (self.url, self.access)
         except Exception as e:
-            self.status = "not authenticated to %s: %s" % (self.url, str(e))
+            emsg = str(e)
+            self.logging.error(emsg)
+            if "InvalidAccessKeyId" in emsg:
+                emsg = "access=%s and secret were invalid" % self.access
+            self.status = "not connected to %s: %s" % (self.url, emsg)
+
+# we didn't get a verified connection
+        raise Exception("Failed to connect: %s" % emsg)
 
 #------------------------------------------------------------
     def login(self, access=None, secret=None):
