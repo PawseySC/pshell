@@ -1332,7 +1332,7 @@ class mf_client():
             overwrite: a BOOLEAN indicating the action to take if a local copy already exists
 
         Returns:
-            The byte size of the file, even if skipped due to already existing locally
+            0 on success or -1 if the file was skipped 
 
         Raises:
             An error on failure
@@ -1344,10 +1344,8 @@ class mf_client():
 
         if os.path.isfile(local_filepath) and not overwrite:
             self.logging.debug("Local file of that name already exists, skipping.")
-            # NEW
             cb_progress(os.path.getsize(local_filepath))
-            return(0)
-
+            return(-1)
         else:
 # Windows path names and the posix lexer in aterm_run() are not good friends
             if "Windows" in platform.system():
@@ -1362,13 +1360,11 @@ class mf_client():
 # download only when file is online 
             if self._wait_until_online(remote_filepath) is True:
                 self.logging.debug("Downloading [%s] ... " % remote_filepath)
-
 #                self.aterm_run('asset.get :id "path=%s" :out %s' % (remote_filepath, local_filepath))
                 xml_reply = self.aterm_run('asset.get :id "path=%s"' % remote_filepath)
                 elem = xml_reply.find(".//asset")
                 asset_id = elem.attrib['id']
 #                print("asset id = %r" % asset_id)
-
 
 # NEW - progress enabled ...
                 url = self.data_get + "?_skey={0}&id={1}".format(self.session, asset_id)
@@ -1377,29 +1373,20 @@ class mf_client():
 
 # buffered write to open file
                 with open(local_filepath, 'wb') as output:
-#                    while True:
-
 # NEW
                     while self.enable_polling:
-                    
-
                         data = response.read(self.get_buffer)
                         if data:
                             output.write(data)
                             if cb_progress is not None:
                                 cb_progress(len(data))
                         else:
-#                            break
                             return(0)
-
-
             else:
                 raise Exception("Online recall failed for: %s" % remote_filepath)
 
 # NEW - should only occur if polling was turned off
         raise Exception("Download failed for: %s" % remote_filepath)
-
-        return os.path.getsize(local_filepath)
 
 #------------------------------------------------------------
     def put(self, namespace, filepath, overwrite=True):

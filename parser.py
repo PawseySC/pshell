@@ -63,11 +63,13 @@ class parser(cmd.Cmd):
     thread_max = 3
     get_count = 0
     get_errors = 0
+    get_skipped = 0
     get_bytes = 0
     total_count = 0
     total_bytes = 0
     put_count = 0
     put_errors = 0
+    put_skipped = 0
     put_count_total = 0
     put_bytes = 0
     put_bytes_total = 0
@@ -477,8 +479,7 @@ class parser(cmd.Cmd):
         print("\nDownload remote files to the current local folder\n")
         print("Usage: get <remote files or folders>\n")
 
-
-# --
+# -- 
     def cb_get_progress_display(self, elapsed=None):
 
         if elapsed is not None:
@@ -489,13 +490,19 @@ class parser(cmd.Cmd):
             speed = "                                   "
 
         progress_pc = 100.0 * float(self.get_bytes) / float(self.total_bytes)
-        self.print_over("get: %d/%d files, errors=%d, progress=%3.1f%% %s" % (self.get_count-self.get_errors, self.total_count, self.get_errors, progress_pc, speed))
+        self.print_over("get: %d/%d files, errors=%d, skipped=%d, progress=%3.1f%% %s" % (self.get_count-self.get_errors, self.total_count, self.get_errors, self.get_skipped, progress_pc, speed))
 
 # --
     def cb_get_done(self, future):
         try:
             bytes_recv = int(future.result())
             error = 0
+# NEW - flag skipped (ie already exist) files via -1 return
+            if bytes_recv < 0:
+                skip = 1
+            else:
+                skip = 0
+
         except Exception as e:
             self.logging.error(str(e))
             error = 1
@@ -503,13 +510,13 @@ class parser(cmd.Cmd):
 
         with threading.Lock():
             self.get_errors += error
+            self.get_skipped += skip
             self.get_count += 1
 
 # --
     def cb_get_progress(self, chunk):
         with threading.Lock():
             self.get_bytes += int(chunk)
-
 
 # --
     def do_get(self, line):
@@ -528,6 +535,7 @@ class parser(cmd.Cmd):
             self.get_count = 0
             self.get_bytes = 0
             self.get_errors = 0
+            self.get_skipped = 0
             start_time = time.time()
             self.print_over("get: preparing %d files... " % self.total_count)
             try:
@@ -574,11 +582,7 @@ class parser(cmd.Cmd):
                 elapsed = time.time() - start_time
                 self.cb_get_progress_display(elapsed)
 
-# print summary and return
-#            elapsed = time.time() - start_time
-#            rate = float(self.total_bytes) / float(elapsed)
-#            rate = rate / 1000000.0
-#            self.print_over("get: %d files, total size: %s, speed: %.1f MB/s   \n" % (self.get_count-self.get_errors, self.human_size(self.get_bytes), rate))
+# newline
             print("")
 
 # non-zero exit code on termination if there were any errors

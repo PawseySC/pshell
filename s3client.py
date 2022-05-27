@@ -413,7 +413,7 @@ class s3_client():
 
         self.s3.download_file(str(bucket), str(fullkey), local_filepath, Callback=cb_progress)
 
-        return os.path.getsize(local_filepath)
+        return(0)
 
 #------------------------------------------------------------
     def put(self, remote_path, local_filepath):
