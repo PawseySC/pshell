@@ -1344,6 +1344,10 @@ class mf_client():
 
         if os.path.isfile(local_filepath) and not overwrite:
             self.logging.debug("Local file of that name already exists, skipping.")
+            # NEW
+            cb_progress(os.path.getsize(local_filepath))
+            return(0)
+
         else:
 # Windows path names and the posix lexer in aterm_run() are not good friends
             if "Windows" in platform.system():
@@ -1373,18 +1377,27 @@ class mf_client():
 
 # buffered write to open file
                 with open(local_filepath, 'wb') as output:
-                    while True:
+#                    while True:
+
+# NEW
+                    while self.enable_polling:
+                    
+
                         data = response.read(self.get_buffer)
                         if data:
                             output.write(data)
                             if cb_progress is not None:
                                 cb_progress(len(data))
                         else:
-                            break
+#                            break
+                            return(0)
 
 
             else:
-                raise Exception("Online recall failed for [%s]" % remote_filepath)
+                raise Exception("Online recall failed for: %s" % remote_filepath)
+
+# NEW - should only occur if polling was turned off
+        raise Exception("Download failed for: %s" % remote_filepath)
 
         return os.path.getsize(local_filepath)
 
