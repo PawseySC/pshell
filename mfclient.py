@@ -1389,7 +1389,7 @@ class mf_client():
         raise Exception("Download failed for: %s" % remote_filepath)
 
 #------------------------------------------------------------
-    def put(self, namespace, filepath, overwrite=True):
+    def put(self, namespace, filepath, cb_progress=None, overwrite=True):
         """
         Creates a new asset on the Mediaflux server and uploads from a local filepath to supply its content
 

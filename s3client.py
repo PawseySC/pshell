@@ -416,7 +416,7 @@ class s3_client():
         return(0)
 
 #------------------------------------------------------------
-    def put(self, remote_path, local_filepath):
+    def put(self, remote_path, local_filepath, cb_progress=None):
         bucket,prefix,key = self.path_convert(remote_path+'/')
         filename = os.path.basename(local_filepath)
         fullkey = posixpath.join(prefix, filename)
@@ -433,7 +433,7 @@ class s3_client():
             # file doesn't exist (or couldn't get size)
             self.logging.debug(str(e))
 
-        self.s3.upload_file(local_filepath, bucket, fullkey)
+        self.s3.upload_file(local_filepath, bucket, fullkey, Callback=cb_progress)
 
 #------------------------------------------------------------
     def rm(self, pattern, prompt=None):

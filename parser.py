@@ -19,8 +19,6 @@ import mfclient
 import s3client
 
 #------------------------------------------------------------
-# TODO - deprec in favour of direct calls ...
-# picklable get()
 def jump_get(remote, remote_filepath, local_filepath):
     try:
         size = remote.get(remote_filepath, local_filepath)
@@ -31,11 +29,10 @@ def jump_get(remote, remote_filepath, local_filepath):
     return size
 
 #------------------------------------------------------------
-# picklable put()
-def jump_put(remote, remote_fullpath, local_fullpath, metadata=False):
+def jump_put(remote, remote_fullpath, local_fullpath, metadata=False, cb_progress=None):
     try:
-# FIXME - should be generic ... bit too MFLUX specific
-        asset_id = remote.put(remote_fullpath, local_fullpath)
+# FIXME - should be generic ... asset_id is a bit too MFLUX specific
+        asset_id = remote.put(remote_fullpath, local_fullpath, cb_progress=cb_progress)
         size = os.path.getsize(local_fullpath)
 # import metadata if required
         if metadata:
@@ -495,10 +492,10 @@ class parser(cmd.Cmd):
 # --
     def cb_get_done(self, future):
         try:
-            bytes_recv = int(future.result())
+            code = int(future.result())
             error = 0
 # NEW - flag skipped (ie already exist) files via -1 return
-            if bytes_recv < 0:
+            if code < 0:
                 skip = 1
             else:
                 skip = 0
@@ -506,7 +503,6 @@ class parser(cmd.Cmd):
         except Exception as e:
             self.logging.error(str(e))
             error = 1
-            bytes_recv = 0
 
         with threading.Lock():
             self.get_errors += error
@@ -594,16 +590,45 @@ class parser(cmd.Cmd):
         print("\nUpload local files or folders to the current folder on the remote server\n")
         print("Usage: put <file or folder>\n")
 
-# --
-    def cb_put(self, future):
 
-        bytes_sent = int(future.result())
-        with threading.Lock():
-            self.put_count += 1
-            self.put_bytes += bytes_sent
-# progress update report
+# --
+    def cb_put_progress_display(self, elapsed=None):
+
+        if elapsed is not None:
+            rate = float(self.put_bytes) / float(elapsed)
+            rate = rate / 1000000.0
+            speed = "at %.2f MB/s            " % rate
+        else:
+            speed = "                                   "
+
         progress_pc = 100.0 * float(self.put_bytes) / float(self.put_bytes_total)
-        self.print_over("put: uploaded %d/%d files, progress: %3.1f%%     " % (self.put_count, self.put_count_total, progress_pc))
+        self.print_over("put: %d/%d files, errors=%d, skipped=%d, progress: %3.1f%% %s" % (self.put_count-self.put_errors, self.put_count_total, self.put_errors, self.put_skipped, progress_pc, speed))
+
+# --
+    def cb_put_done(self, future):
+
+        try:
+            code = int(future.result())
+            error = 0
+            if code < 0:
+                skip = 1
+            else:
+                skip = 0
+
+        except Exception as e:
+            self.logging.error(str(e))
+            error = 1
+
+        with threading.Lock():
+            self.put_errors += error
+            self.put_skipped += skip
+            self.put_count += 1
+
+# --
+    def cb_put_progress(self, chunk):
+        with threading.Lock():
+            self.put_bytes += int(chunk)
+
 
 # --
     def put_iter(self, line, metadata=False, setup=False):
@@ -658,7 +683,6 @@ class parser(cmd.Cmd):
         try:
             self.put_count = 0
             self.put_bytes = 0
-            total_count = 0
             start_time = time.time()
 
 # determine size of upload
@@ -671,30 +695,41 @@ class parser(cmd.Cmd):
 # iterate over upload items
             results = self.put_iter(line, metadata=metadata)
 
-# TODO - report 'in-flight' files for more apparent responsiveness ... ???
-# TODO - S3 has callback functionality that could be used for this ... 
-# TODO - need a generic replacement for cb_put that the specific (mflux/s3) progress cb reports to
-# TODO - in the case of not-implemented ... would just report that the transfer has started (in-flight)
+            count = 0
+            batch_size = self.thread_max * 2 - 1
 
             for remote_fullpath, local_fullpath in results:
                 self.logging.info("put remote=[%s] local=[%s]" % (remote_fullpath, local_fullpath))
-                future = self.thread_executor.submit(jump_put, remote, remote_fullpath, local_fullpath, metadata=metadata)
-                future.add_done_callback(self.cb_put)
-                total_count += 1
+                future = self.thread_executor.submit(jump_put, remote, remote_fullpath, local_fullpath, metadata=metadata, cb_progress=self.cb_put_progress)
+                future.add_done_callback(self.cb_put_done)
+                count += 1
+
+                submitted = count - self.put_count
+
+                while submitted > batch_size:
+                    time.sleep(5)
+                    submitted = count - self.put_count
+                    elapsed = time.time() - start_time
+                    self.cb_put_progress_display(elapsed)
+
 
         except Exception as e:
             self.logging.error(str(e))
             pass
 
-# wait until completed (cb_put does progress updates)
-        while self.put_count < total_count:
-            time.sleep(3)
 
-# print summary and return
-        elapsed = time.time() - start_time
-        rate = float(self.put_bytes) / float(elapsed)
-        rate = rate / 1000000.0
-        self.print_over("put: completed upload of %d files, size: %s, speed: %.2f MB/s   \n" % (self.put_count, self.human_size(self.put_bytes), rate))
+# wait until completed (cb_put does progress updates)
+        while self.put_count < count:
+            time.sleep(5)
+            elapsed = time.time() - start_time
+            self.cb_put_progress_display(elapsed)
+
+
+        print("")
+
+        if self.put_errors > 0:
+            raise Exception("put: upload failed for %d file(s)" % self.put_errors)
+
 
 #------------------------------------------------------------
     def split_remote_copy(self, line):
