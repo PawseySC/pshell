@@ -482,9 +482,9 @@ class parser(cmd.Cmd):
     def cb_get_progress_display(self, elapsed=None):
 
         if elapsed is not None:
-            rate = float(self.total_bytes) / float(elapsed)
+            rate = float(self.get_bytes) / float(elapsed)
             rate = rate / 1000000.0
-            speed = "at %.1f MB/s" % rate
+            speed = "at %.1f MB/s            " % rate
         else:
             speed = "                                   "
 

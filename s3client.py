@@ -411,7 +411,7 @@ class s3_client():
 #        config = TransferConfig(max_concurrency=5)
 #        self.s3.download_file(str(bucket), str(fullkey), local_filepath, Config=config)
 
-        self.s3.download_file(str(bucket), str(fullkey), local_filepath)
+        self.s3.download_file(str(bucket), str(fullkey), local_filepath, Callback=cb_progress)
 
         return os.path.getsize(local_filepath)
 
