@@ -392,7 +392,7 @@ class mf_client():
         return tree
 
 #------------------------------------------------------------
-    def _post_multipart_buffered(self, xml, filepath):
+    def _post_multipart_buffered(self, xml, filepath, cb_progress=None):
         """
         Primitive for doing buffered upload on a single file. Used by the put() method
         Sends a multipart POST to the server; consisting of the initial XML, followed by a streamed, buffered read of the file contents
@@ -444,6 +444,7 @@ class mf_client():
 # start sending the file
         conn.send(body.encode())
         with open(filepath, 'rb') as infile:
+# TODO - we *could* allow ctrl-C interruption here via enable_polling state, but could create a mess on the server
             while True:
 # trap disk IO issues
                 try:
@@ -456,6 +457,8 @@ class mf_client():
 # trap network IO issues
                 try:
                     conn.send(chunk)
+                    if cb_progress is not None:
+                        cb_progress(len(chunk))
                 except Exception as e:
                     raise Exception("Network send error: %s" % str(e))
 
@@ -1400,6 +1403,7 @@ class mf_client():
 
         Returns:
             asset_id: an INTEGER representing the mediaflux asset ID
+            CURRENT -> this should be 0 on success and -1 on skip ... but it may break a few things
 
         Raises:
             An error message if unsuccessful
@@ -1430,7 +1434,7 @@ class mf_client():
             local_size = int(os.path.getsize(filepath))
             if remote_size == local_size:
                 self.logging.debug("Match; skipping [%s] -> [%s]" % (filepath, remotepath))
-                overwrite = False
+                return(-1)
             else:
                 self.logging.debug("Mismatch; local=%r -> remote=%r" % (local_size, remote_size))
 
@@ -1440,9 +1444,9 @@ class mf_client():
             self.logging.debug("Uploading asset=%d: [%s] -> [%s]" % (asset_id, filepath, remotepath))
             xml_string = '<request><service name="service.execute" session="%s"><args><service name="asset.set">' % self.session
             xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
-            asset_id = self._post_multipart_buffered(xml_string, filepath)
+            asset_id = self._post_multipart_buffered(xml_string, filepath, cb_progress=cb_progress)
 
-        return asset_id
+        return(0)
 
 #------------------------------------------------------------
     def copy(self, from_pattern, to_path, remote, prompt=None):
@@ -1511,12 +1515,22 @@ class mf_client():
         return result
 
 #------------------------------------------------------------
-    def import_metadata(self, asset_id, filepath):
+# TODO - verify this still works with the changed argument
+#    def import_metadata(self, asset_id, filepath):
+    def import_metadata(self, remote_filepath, filepath):
         """
         populate metadata for an asset using INI style file
         the section is the xml document namespace and options are flat element node + values
         """
-        self.logging.debug("import_metadata() [%s] : [%s]" % (asset_id, filepath))
+        self.logging.debug("import_metadata() [%s] : [%s]" % (remote_filepath, filepath))
+
+# get asset_id from remote_filepath
+        xml_reply = self.aterm_run('asset.get :id "path=%s"' % remote_filepath)
+        elem = xml_reply.find(".//asset")
+        asset_id = int(elem.attrib['id'])
+
+#        print("asset id = %r" % asset_id)
+
         try:
             config = configparser.ConfigParser()
             config.read(filepath)
@@ -1543,7 +1557,7 @@ class mf_client():
 #            self.mf_client.xml_print(xml_root)
 
 # construct the command
-            xml_command = 'asset.set :id %r' % asset_id
+            xml_command = 'asset.set :id %d' % asset_id
             for xml_child in xml_root:
                 if xml_child.tag == 'asset':
                     for xml_arg in xml_child:

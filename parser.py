@@ -30,19 +30,15 @@ def jump_get(remote, remote_filepath, local_filepath):
 
 #------------------------------------------------------------
 def jump_put(remote, remote_fullpath, local_fullpath, metadata=False, cb_progress=None):
-    try:
-# FIXME - should be generic ... asset_id is a bit too MFLUX specific
-        asset_id = remote.put(remote_fullpath, local_fullpath, cb_progress=cb_progress)
-        size = os.path.getsize(local_fullpath)
-# import metadata if required
-        if metadata:
-            metadata_filepath = local_fullpath+".meta"
-            if os.path.isfile(metadata_filepath):
-                remote.import_metadata(asset_id, metadata_filepath)
-    except Exception as e:
-        logging.error(str(e))
-        size = 0
-    return size
+
+    code = remote.put(remote_fullpath, local_fullpath, cb_progress=cb_progress)
+
+    if metadata:
+        metadata_filepath = local_fullpath+".meta"
+        if os.path.isfile(metadata_filepath):
+            remote.import_metadata(remote_fullpath, metadata_filepath)
+
+    return code
 
 #------------------------------------------------------------
 class parser(cmd.Cmd):
@@ -683,6 +679,8 @@ class parser(cmd.Cmd):
         try:
             self.put_count = 0
             self.put_bytes = 0
+            self.put_errors = 0
+            self.put_skipped = 0
             start_time = time.time()
 
 # determine size of upload
