@@ -487,15 +487,12 @@ class parser(cmd.Cmd):
 
 # --
     def cb_get_done(self, future):
+        error = 0
+        skip = 0
         try:
             code = int(future.result())
-            error = 0
-# NEW - flag skipped (ie already exist) files via -1 return
             if code < 0:
                 skip = 1
-            else:
-                skip = 0
-
         except Exception as e:
             self.logging.error(str(e))
             error = 1
