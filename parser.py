@@ -474,7 +474,6 @@ class parser(cmd.Cmd):
 
 # -- 
     def cb_get_progress_display(self, elapsed=None):
-
         if elapsed is not None:
             rate = float(self.get_bytes) / float(elapsed)
             rate = rate / 1000000.0
@@ -586,7 +585,6 @@ class parser(cmd.Cmd):
 
 # --
     def cb_put_progress_display(self, elapsed=None):
-
         if elapsed is not None:
             rate = float(self.put_bytes) / float(elapsed)
             rate = rate / 1000000.0
@@ -599,15 +597,12 @@ class parser(cmd.Cmd):
 
 # --
     def cb_put_done(self, future):
-
+        error = 0
+        skip = 0
         try:
             code = int(future.result())
-            error = 0
             if code < 0:
                 skip = 1
-            else:
-                skip = 0
-
         except Exception as e:
             self.logging.error(str(e))
             error = 1
