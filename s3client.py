@@ -79,17 +79,20 @@ class s3_client():
 # authenticated user check - test the client
             self.s3.list_buckets()
             self.status = "authenticated to: %s as access=%s" % (self.url, self.access)
-            return
 
         except Exception as e:
             emsg = str(e)
             self.logging.error(emsg)
             if "InvalidAccessKeyId" in emsg:
                 emsg = "access=%s and secret were invalid" % self.access
+            if "Unable to locate credentials" in emsg:
+                emsg = "no access/secret" 
             self.status = "not connected to %s: %s" % (self.url, emsg)
 
+# CURRENT - don't raise exception - this will prevent the remote from being set ... and so can't even login
+
 # we didn't get a verified connection
-        raise Exception("Failed to connect: %s" % emsg)
+#        raise Exception("Failed to connect: %s" % emsg)
 
 #------------------------------------------------------------
     def login(self, access=None, secret=None):
