@@ -945,6 +945,18 @@ class parser(cmd.Cmd):
         count = remote.unpublish(fullpath)
         print("Unpublished %d files" % count)
 
+
+#------------------------------------------------------------
+    def help_whoami(self):
+        print("\nReport the current authenticated user or delegate and associated roles\n")
+        print("Usage: whoami\n")
+
+# --
+    def do_whoami(self, line):
+        remote = self.remote_active()
+        for line in remote.whoami():
+            print(line)
+
 #------------------------------------------------------------
     def help_quit(self):
         print("\nExit without terminating the session\n")

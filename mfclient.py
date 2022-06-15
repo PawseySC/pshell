@@ -340,6 +340,34 @@ class mf_client():
         return False
 
 #------------------------------------------------------------
+    def whoami(self):
+        xml_reply = self.aterm_run("actor.self.describe")
+        result = []
+# main identity
+        for elem in xml_reply.iter('actor'):
+            user_name = elem.attrib['name']
+            user_type = elem.attrib['type']
+            if 'identity' in user_type:
+# MFLUX BUG - can run a describe ... but if specify an id - even for a token I own - it generates a permission error
+# workaround - run and search for the right token to get it's validity
+                xml_expiry = self.aterm_run("secure.identity.token.describe")
+                expiry = "Never"
+                for elem_id in xml_expiry.findall(".//identity"):
+                    elem_actor = elem_id.find(".//actor")
+                    if elem_actor is not None:
+                        if user_name in elem_actor.text:
+                            elem_valid = elem_id.find(".//validity/to")
+                            expiry = elem_valid.text
+                result.append("user = delegate (expires %s)" % expiry)
+            else:
+                result.append("%s = %s" % (user_type, user_name))
+# associated roles
+        for elem in xml_reply.iter('role'):
+            result.append("  role = %s" % elem.text)
+
+        return result
+
+#------------------------------------------------------------
     @staticmethod
     def _xml_succint_error(xml):
         """

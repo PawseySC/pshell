@@ -557,6 +557,10 @@ class s3_client():
         return owner
 
 #------------------------------------------------------------
+    def whoami(self):
+        return(["access=%s" % self.access])
+
+#------------------------------------------------------------
     def info_iter(self, pattern):
         bucket,prefix,key = self.path_convert(pattern)
 
