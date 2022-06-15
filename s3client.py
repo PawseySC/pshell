@@ -431,12 +431,13 @@ class s3_client():
             lsize = os.path.getsize(local_filepath)
             if lsize == rsize:
                 self.logging.info("File of same size already exists, skipping [%s]" % local_filepath)
-                return
+                return(-1)
         except Exception as e:
             # file doesn't exist (or couldn't get size)
             self.logging.debug(str(e))
 
         self.s3.upload_file(local_filepath, bucket, fullkey, Callback=cb_progress)
+        return(0)
 
 #------------------------------------------------------------
     def rm(self, pattern, prompt=None):
