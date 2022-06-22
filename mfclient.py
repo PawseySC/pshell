@@ -870,7 +870,7 @@ class mf_client():
         text += '\n'
 
         self.indent += 4
-        for child in elem.getchildren():
+        for child in list(elem):
             text = self._xml_recurse(child, text)
         self.indent -= 4
 
