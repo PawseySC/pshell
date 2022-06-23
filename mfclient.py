@@ -188,14 +188,6 @@ class mf_client():
             reply = self.aterm_run("system.session.self.describe")
             elem = reply.find(".//secure-token")
             if elem is not None:
-# gah - Arcitecta changed something here ... now no perms to describe my own token ... wtf?
-#                        reply = self.aterm_run("secure.identity.token.describe :id %s" % elem.text)
-#                        elem = reply.find(".//validity/to")
-#                        if elem is not None:
-#                            identity = "delegate, expiry: %s" % elem.text
-#                        else:
-#                            identity = "?"
-# FIXME - get expiry date
                 elem = reply.find(".//user")
                 if elem is not None:
                     identity = "delegate for %s" % elem.text

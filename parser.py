@@ -45,7 +45,6 @@ class parser(cmd.Cmd):
     config = None
     config_name = None
     config_filepath = None
-    keystone = None
     remotes_current = None
     remotes = {}
     cwd = '/'
@@ -196,7 +195,7 @@ class parser(cmd.Cmd):
     def remote_del(self, name):
         try:
 # remove remote entry
-# FIXME - this logic is a bit convoluted ... can we merge self.remotes[] and endpoints in some way?
+# TODO - logic is a bit convoluted ... merge self.remotes[] and endpoints in some way?
             del self.remotes[name]
             self.logging.info("Deleted remote [%s]" % name)
             endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
@@ -553,12 +552,11 @@ class parser(cmd.Cmd):
                         elapsed = time.time() - start_time
                         self.cb_get_progress_display(elapsed)
 
-
             except Exception as e:
                 self.logging.error("[%s] count = %d" % (str(e), count))
                 pass
 
-# FIXME - sometimes get_iter() returns the wrong number of files ... I think it's an mflux eccentricity for files with no content
+# NB: sometimes remote.get_iter() returns the wrong number for total_count ... I think it's an mflux eccentricity for files with no content
 # HACK - just set what we expect to download equal to the number of files actually submitted
             self.total_count = count
 
@@ -977,8 +975,6 @@ class parser(cmd.Cmd):
 
             except KeyboardInterrupt:
                 print(" Interrupted. Cleaning up, please wait... ")
-# FIXME - this works, but, as we can't (easily) kill active threads it can take a very long time waiting for it to finish 
-# NB: sys.exit() termination is also delayed as it will also wait for the threads to finish
                 remote = self.remote_active()
 # signal running threads to terminate ...
                 remote.polling(False)

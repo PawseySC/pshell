@@ -5,6 +5,8 @@ This module is a Python 3.x (standard lib only) implementation of a simple keyst
 Author: Sean Fleming
 """
 
+# deprec - use origin instead
+
 import json
 import urllib.request
 import getpass
@@ -27,7 +29,7 @@ class keystone:
                 A keystone object
 
         Raises:
-                Error if service appears to be unreachable - TODO
+                Error if service appears to be unreachable 
         """
 
         self.url = url
@@ -106,7 +108,6 @@ class keystone:
         password = getpass.getpass("Password: ")
         if wallet_recreate is True:
             mfclient.aterm_run("secure.wallet.recreate :password %s" % password)
-# TODO - encrypt so it's not plain text 
         mfclient.aterm_run("secure.wallet.set :key ldap :value %s" % password)
         self.get_auth_token(user, password)
 
@@ -145,7 +146,6 @@ class keystone:
 #------------------------------------------------------------
     def discover_s3_endpoint(self):
 # HACK - change the port on the keystone URL to get the s3 gateway
-# FIXME - make this a bit more robust
         s3url = self.url[:-4] + "8080"
         endpoint = {'name':'s3project', 'type':'s3', 'url':s3url}
         for project_name in self.project_dict:
@@ -181,7 +181,6 @@ class keystone:
 # NB: project name has to be *exactly* right ... even a space in front of the project id string will bollocks it
 #        print("create credential: [%s]" % project)
 
-# TODO - this the correct/safe way to construct json payload?
         data = json.dumps({ "tenant_id": project_id })
         headers = {"Accept": "application/json", "Content-type": "application/json", "X-Auth-Token": self.token }
         url = "%s/v3/users/%s/credentials/OS-EC2" % (self.url, self.user)
