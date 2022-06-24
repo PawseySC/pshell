@@ -74,6 +74,7 @@ class s3_client():
 # authenticated user check - test the client
             self.s3.list_buckets()
             self.status = "authenticated to: %s as access=%s" % (self.url, self.access)
+            return True
 
         except Exception as e:
             emsg = str(e)
@@ -83,11 +84,8 @@ class s3_client():
             if "Unable to locate credentials" in emsg:
                 emsg = "no access/secret" 
             self.status = "not connected to %s: %s" % (self.url, emsg)
-
-# CURRENT - don't raise exception - this will prevent the remote from being set ... and so can't even login
-
-# we didn't get a verified connection
-#        raise Exception("Failed to connect: %s" % emsg)
+# failed to establish a verified connection
+        return False
 
 #------------------------------------------------------------
     def login(self, access=None, secret=None):
@@ -139,7 +137,6 @@ class s3_client():
 
 #------------------------------------------------------------
     def complete_path(self, cwd, partial, start, match_prefix=True, match_object=True):
-
         self.logging.info("cwd=[%s] partial=[%s] start=[%d]" % (cwd, partial, start))
         try:
             fullpath = posixpath.join(cwd, partial)
@@ -204,7 +201,6 @@ class s3_client():
         return self.complete_path(cwd, partial, start, match_prefix=True, match_object=True)
 
 #------------------------------------------------------------
-# NEW - convert fullpath to bucket, commonprefix, and key (which might contain wildcards)
     def path_convert(self, path):
         self.logging.debug("path=[%s]" % path)
 
@@ -238,34 +234,6 @@ class s3_client():
         self.logging.debug("bucket=[%r] prefix=[%r] key=[%s]" % (bucket, prefix, key))
 
         return bucket, prefix, key
-
-#------------------------------------------------------------
-# TODO - rework complete_path() and get rid of this (superceeded by path_convert)
-# convert fullpath to bucket, and full object key
-    def path_split(self, path):
-        self.logging.info("path=[%s]" % path)
-        fullpath = posixpath.normpath(path)
-# we only accept absolute paths for s3
-        if posixpath.isabs(fullpath) is False:
-            self.logging.info("Warning: converting relative path to absolute")
-            fullpath = '/'+fullpath
-        mypath = pathlib.PurePosixPath(fullpath)
-        bucket = None 
-        key = ""
-        count = len(mypath.parts)
-        if count > 1:
-            bucket = mypath.parts[1]
-            head = "%s%s" % (mypath.parts[0], mypath.parts[1])
-            key = fullpath[1+len(head):]
-
-# normpath will remove trailing slash, but this is meaningful for navigation if we have non-empty key
-        if bucket is not None:
-            if path.endswith('/') and len(key) > 0:
-                key = key + '/'
-
-        self.logging.info("bucket=[%r] key=[%s]" % (bucket, key))
-
-        return bucket, key
 
 #------------------------------------------------------------
     def cd(self, path):
@@ -310,7 +278,6 @@ class s3_client():
 
 #------------------------------------------------------------
     def ls_iter(self, path):
-
         bucket,prefix,key = self.path_convert(path)
 # NEW - trim the input prefix from all returned results (will look more like a normal filesystem)
         prefix_len = len(prefix)
@@ -436,7 +403,6 @@ class s3_client():
 
 #------------------------------------------------------------
     def rm(self, pattern, prompt=None):
-
         results = self.get_iter(pattern)
         count = int(next(results))
         size = int(next(results))
@@ -603,4 +569,11 @@ class s3_client():
             yield "%20s : %s" % ('object', pattern)
             for item in response['ResponseMetadata']['HTTPHeaders']:
                 yield "%20s : %s" % (item, response['ResponseMetadata']['HTTPHeaders'][item])
+
+#------------------------------------------------------------
+    def command(self, text):
+        """
+        Default passthrough method
+        """
+        raise Exception("Unsupported S3 command: %s" % text)
 
