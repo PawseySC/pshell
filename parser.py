@@ -640,10 +640,11 @@ class parser(cmd.Cmd):
 
 # --
     def do_put(self, line, metadata=False):
+        if len(line) == 0:
+            raise Exception("Nothing specified to put")
 
         self.logging.info("[%s]" % line)
         remote = self.remote_active()
-
         try:
             self.put_count = 0
             self.put_bytes = 0
@@ -858,7 +859,7 @@ class parser(cmd.Cmd):
             self.thread_executor.shutdown()
             self.thread_executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_max)
         except Exception as e:
-            self.logging.info(str(e))
+            self.logging.debug(str(e))
             pass
         print("Current number of processes: %r" % self.thread_max)
 

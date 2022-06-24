@@ -489,12 +489,16 @@ class s3_client():
             bucket,prefix,key = self.path_convert(filepath)
             fullkey = posixpath.join(prefix, key)
 
-# try different expiry times ... no limit?
+# try different expiry times ... no limit? ... or 7 days max?
 #            url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': key}, ExpiresIn=3600)
             url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': fullkey}, ExpiresIn=3600000)
             print("public url = %s" % url)
 
         return(count)
+
+#------------------------------------------------------------
+    def unpublish(self, pattern):
+        raise Exception("Not implemented")
 
 #------------------------------------------------------------
     def bucket_size(self, bucket):
@@ -517,6 +521,10 @@ class s3_client():
             self.logging.error(str(e))
             owner = 'unknown'
         return owner
+
+#------------------------------------------------------------
+    def delegate(self, line):
+        raise Exception("Not implemented") 
 
 #------------------------------------------------------------
     def whoami(self):
