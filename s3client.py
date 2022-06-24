@@ -570,26 +570,25 @@ class s3_client():
             if prefix == "":
                 if bucket is not None:
 # specific bucket
-                    owner = self.bucket_owner(bucket)
-                    count, size = self.bucket_size(bucket)
                     yield "%20s : %s" % ('bucket', bucket)
+                    owner = self.bucket_owner(bucket)
                     yield "%20s : %s" % ('owner', owner)
+                    count, size = self.bucket_size(bucket)
                     yield "%20s : %s" % ('objects', count)
                     yield "%20s : %s" % ('size', self.human_size(size))
                 else:
 # nothing specified - project summary
+                    yield "%20s : %s" % ('type', 'project')
                     response = self.s3.list_buckets()
-                    total_buckets = 0
+                    total_buckets = len(response['Buckets'])
+                    yield "%20s : %s" % ('buckets', total_buckets)
                     total_count = 0
                     total_size = 0
                     for item in response['Buckets']:
                         bucket = item['Name']
                         count, size = self.bucket_size(bucket)
-                        total_buckets += 1
                         total_count += count
                         total_size += size
-                    yield "%20s : %s" % ('type', 'project')
-                    yield "%20s : %s" % ('buckets', total_buckets)
                     yield "%20s : %s" % ('objects', total_count)
                     yield "%20s : %s" % ('size', self.human_size(total_size))
             else:

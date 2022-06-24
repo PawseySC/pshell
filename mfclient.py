@@ -109,7 +109,6 @@ class mf_client():
         """
         Create mfclient using an endpoint description
         """
-
         if 'url' in endpoint:
             url = urllib.parse.urlparse(endpoint['url'])
 #            p = '(?:http.*://)?(?P<host>[^:/ ]+).?(?P<port>[0-9]*).*'
@@ -154,7 +153,6 @@ class mf_client():
         """
         Acquire connection status via session or token
         """
-
 # NEW - added /aterm path to connection test 
 # without this it will be attempting to connect to the web server which may not be configured but doesn't need to be for API access
         url = "%s://%s:%d/aterm" % (self.protocol, self.server, self.port)
@@ -333,6 +331,9 @@ class mf_client():
 
 #------------------------------------------------------------
     def whoami(self):
+        """
+        Display information about the authenticated identity
+        """
         xml_reply = self.aterm_run("actor.self.describe")
         result = []
 # main identity
@@ -387,7 +388,6 @@ class mf_client():
         """
         Primitive for sending an XML message to the Mediaflux server
         """
-
 # NB: timeout exception if server is unreachable
         elem=None
         try:
@@ -910,7 +910,6 @@ class mf_client():
         """
         enforce absolute remote namespace path
         """
-
         self.logging.debug("cwd = [%s] input = [%s]" % (cwd, path))
         if not posixpath.isabs(path):
             fullpath = posixpath.normpath(posixpath.join(cwd, path))
@@ -1026,6 +1025,9 @@ class mf_client():
 
 #------------------------------------------------------------
     def human_size(self, nbytes):
+        """
+        Produce a human readable version for an input number of bytes
+        """
         suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
 
         try:
@@ -1205,6 +1207,9 @@ class mf_client():
 
 #------------------------------------------------------------
     def get_local_checksum(self, filepath):
+        """
+        Compute crc32 checksum for a local file
+        """
         current = 0
         with open(filepath, 'rb') as fd:
             while True:
@@ -1217,7 +1222,9 @@ class mf_client():
 
 #------------------------------------------------------------
     def get_query(self, fullpath_pattern, recurse=False):
-
+        """
+        Query helper function
+        """
         if self.namespace_exists(fullpath_pattern):
             if recurse is True:
                 query = "namespace>='%s'" % fullpath_pattern
@@ -1260,11 +1267,17 @@ class mf_client():
         return 0
 
 #------------------------------------------------------------
-    def get_iter(self, fullpath_pattern, recall=True):
+    def get_iter(self, fullpath_pattern):
         """
-        iterator for get candidates based on pattern
-        first 2 items = filecount, bytecount (NB: if known)
-        subsequent = candidates for get()
+        Creates an iterator for get() file candidates based on an input pattern
+
+        Args:
+            fullpath_pattern: a STRING giving the search pattern for files
+
+        Returns:
+            First - the total file count that matched the pattern
+            Second - the total bytes of all the files that were matched
+            Thereafter - the file names of all the matches
         """
 
         query = self.get_query(fullpath_pattern, recurse=True)
@@ -1272,12 +1285,6 @@ class mf_client():
 
 # count download results and get total size
         try:
-# CURRENT - move this logic to the get() primitive itself to better avoid edge cases of recalls getting pushed back offline before download triggers
-#            if recall is True:
-#                self.logging.debug("Issuing migrate online call...")
-#                cmd = 'asset.query :where "%s" :action pipe :service -name asset.content.migrate < :destination online >' % query
-#                xml_reply = self.aterm_run(cmd, background=True, show_progress=True)
-
 # get the number of results and total size
             reply = self.aterm_run('asset.query :where "%s" :count true :action sum :xpath content/size' % query, background=True, show_progress=True)
             elem = reply.find(".//value")
@@ -1351,7 +1358,7 @@ class mf_client():
         Args:
             filepath: a STRING representing the full path and filename of the remote file
             local_filepath: a STRING representing the local destination for the download
-            cb_progress: a function called with a single INTEGER argument to indicate progress in bytes
+            cb_progress: a FUNCTION which may be repeatedly called with a single argument for the number of bytes (non-cummulative) successfully recieved 
             overwrite: a BOOLEAN indicating the action to take if a local copy already exists
 
         Returns:
@@ -1419,11 +1426,11 @@ class mf_client():
         Args:
             namespace: a STRING representing the remote destination in which to create the asset
              filepath: a STRING giving the absolute path and name of the local file
+          cb_progress: a FUNCTION which may be repeatedly called with a single argument for the number of bytes (non-cummulative) successfully sent 
             overwrite: a BOOLEAN indicating action if remote copy exists
 
         Returns:
-            asset_id: an INTEGER representing the mediaflux asset ID
-            CURRENT -> this should be 0 on success and -1 on skip ... but it may break a few things
+            0 on success or -1 if the file was skipped 
 
         Raises:
             An error message if unsuccessful
@@ -1470,6 +1477,9 @@ class mf_client():
 
 #------------------------------------------------------------
     def copy(self, from_pattern, to_path, remote, prompt=None):
+        """
+        Not implemented yet...
+        """
 
         print("copy: [%s] -> [%s] with destination client = [%r]" % (from_pattern, to_path, remote))
 

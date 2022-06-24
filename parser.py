@@ -19,25 +19,13 @@ import mfclient
 import s3client
 
 #------------------------------------------------------------
-def jump_get(remote, remote_filepath, local_filepath):
-    try:
-        size = remote.get(remote_filepath, local_filepath)
-        logging.info("Local file size (bytes) = %r" % size)
-    except Exception as e:
-        logging.error(str(e))
-        size = 0
-    return size
-
-#------------------------------------------------------------
+# CURRENT - this can't be replaced by a direct call yet due to the metadata stuff
 def jump_put(remote, remote_fullpath, local_fullpath, metadata=False, cb_progress=None):
-
     code = remote.put(remote_fullpath, local_fullpath, cb_progress=cb_progress)
-
     if metadata:
         metadata_filepath = local_fullpath+".meta"
         if os.path.isfile(metadata_filepath):
             remote.import_metadata(remote_fullpath, metadata_filepath)
-
     return code
 
 #------------------------------------------------------------
@@ -527,22 +515,15 @@ class parser(cmd.Cmd):
             self.print_over("get: preparing %d files... " % self.total_count)
             try:
                 count = 0
-
-# TODO - get to the bottom of "error executing service [idx=0] asset.query.iterate: call to service 'asset.query.iterate' failed: The session does not have an iterator (id): 4] count = 37"
-# TODO - better if we submitted in batches ... and waited ... ie this will become our polling loop
 # define batch limit
                 batch_size = self.thread_max * 2 - 1
-
-# CURRENT - I think the final iterate on this will generate an exception -> no more items
                 for remote_fullpath in results:
 # TODO - this needs a tweak so we don't get the intermediate directories ...
                     remote_relpath = posixpath.relpath(path=remote_fullpath, start=self.cwd)
                     local_filepath = os.path.join(os.getcwd(), remote_relpath)
-#                    future = self.thread_executor.submit(jump_get, remote, remote_fullpath, local_filepath)
                     future = self.thread_executor.submit(remote.get, remote_fullpath, local_filepath, self.cb_get_progress)
                     future.add_done_callback(self.cb_get_done)
                     count += 1
-
 # NEW - don't submit any more than the batch size - this allows for faster cleanup of threads
                     submitted = count - self.get_count
                     while submitted > batch_size:
@@ -551,7 +532,6 @@ class parser(cmd.Cmd):
                         # CURRENT
                         elapsed = time.time() - start_time
                         self.cb_get_progress_display(elapsed)
-
             except Exception as e:
                 self.logging.error("[%s] count = %d" % (str(e), count))
                 pass
@@ -567,7 +547,6 @@ class parser(cmd.Cmd):
                 # CURRENT
                 elapsed = time.time() - start_time
                 self.cb_get_progress_display(elapsed)
-
 # newline
             print("")
 
@@ -579,7 +558,6 @@ class parser(cmd.Cmd):
     def help_put(self):
         print("\nUpload local files or folders to the current folder on the remote server\n")
         print("Usage: put <file or folder>\n")
-
 
 # --
     def cb_put_progress_display(self, elapsed=None):
