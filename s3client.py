@@ -22,9 +22,6 @@ try:
 except:
     ok=False
 
-# auto 
-build= "20211015131216"
-
 #------------------------------------------------------------
 class s3_client():
     def __init__(self, url=None, access=None, secret=None):
@@ -37,11 +34,9 @@ class s3_client():
         self.status = "not connected"
         self.enable_polling = True
         self.logging = logging.getLogger('s3client')
-        global build
 
 # DEBUG
 #        self.logging.setLevel(logging.DEBUG)
-        self.logging.debug("S3CLIENT=%s" % build)
         self.logging.debug("BOTO3=%r" % ok)
 
 # --- NEW

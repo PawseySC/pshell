@@ -1,17 +1,32 @@
-# TODO - use git rev-parse --short HEAD ... instead of date?
+#!/bin/bash
 
-#d=$(date +%Y%m%d%H%M%S)
-set d = `date +%Y%m%d%H%M%S`
+# release dir
+mkdir -p release
+cp pshell.py release/__main__.py
+cp parser.py release/parser.py
+cp mfclient.py release/mfclient.py
+cp s3client.py release/s3client.py
 
-sed -i tmp -e 's/^build.*$/build= "'$d'"/' mfclient.py
-git tag $d
-cp pshell.py __main__.py
-sed -i tmp -e 's/^build.*$/build= "'$d'"/' __main__.py
+# stamp
+# METHOD 1 - today's date (preferred as really want an overall build indicator)
+d=$(date +%Y%m%d%H%M%S)
+# METHOD 2 - could use last modified date of a source file
+#d=$(date -r pshell.py +"%Y%m%d%H%M%S")
+
+cd release
+sed -i tmp -e 's/^build.*$/build="'$d'"/' __main__.py
+
+# build
 zip pshell.zip __main__.py parser.py mfclient.py s3client.py
-
-# NB: escape the ! to avoid bash stupidity
-echo "#\!/usr/bin/env python3" > pshell
+echo "#!/usr/bin/env python3" > pshell
 cat pshell.zip >> pshell
 chmod u+x pshell
+
+# cleanup
 rm pshell.zip
 rm __main__.py
+rm parser.py
+rm mfclient.py
+rm s3client.py
+rm *.pytmp
+

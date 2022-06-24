@@ -27,9 +27,6 @@ import configparser
 import xml.etree.ElementTree as ET
 import urllib.request, urllib.error, urllib.parse
 
-# auto
-build= "20220622112419"
-
 #------------------------------------------------------------
 class mf_client():
     """
@@ -68,7 +65,6 @@ class mf_client():
         self.session = ""
         self.token = ""
         self.logging = logging.getLogger('mfclient')
-        global build
 
 # download/upload buffers
         self.get_buffer = 8192
@@ -97,7 +93,6 @@ class mf_client():
             self.data_put = "%s:%s" % (server, 80)
 
 # more info
-        self.logging.debug("MFCLIENT=%s" % build)
         self.logging.debug("POST=%s" % self.post_url)
         self.logging.debug("GET=%s" % self.data_get)
         self.logging.debug("PUT=%s" % self.data_put)

@@ -4,8 +4,6 @@ echo "NB: only for intermediate testing - use build_release for artifact publish
 
 cp pshell.py pshell/__main__.py
 cp parser.py pshell/
-cp keystone.py pshell/
-cp remote.py pshell/
 cp mfclient.py pshell/
 cp s3client.py pshell/
 
