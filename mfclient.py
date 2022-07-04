@@ -699,7 +699,6 @@ class mf_client():
         message = "This shouldn't happen"
 #        while True:
 # CURRENT - only 2 tries - 1st ... possibly second if session has expired (and we can regen with token) ... after that - done
-
         post_count = 0
         post_retry = True
 
@@ -708,6 +707,9 @@ class mf_client():
             post_count += 1
             post_retry = False
             try:
+# NEW - INFO on timing for mflux service calls
+                start_time = time.time()
+# main POST to server
                 reply = self._post(xml_text)
                 if background is True:
                     elem = reply.find(".//id")
@@ -766,14 +768,19 @@ class mf_client():
                         if done is False:
                             time.sleep(5)
 
+# successful
 # NB: mediaflux seems to not return any output if run in background (eg asset.get :id xxxx &)
 # this seems like a bug?
 #                    self.xml_print(xml_poll)
+                    elapsed = time.time() - start_time
+                    self.logging.debug("completed: %s, elapsed: %r" % (service_call, elapsed))
                     return xml_poll
+
                 else:
-# CURRENT - process reply for any output
-# NB - can only cope with 1 output
+# CASE 2 - not run in background
                     if data_out_name is not None:
+# output field specified (eg download file)
+# FIXME - can only cope with 1 output
                         self.logging.debug("output filename [%s]" % data_out_name)
                         elem_output = reply.find(".//outputs")
                         if elem_output is not None:
@@ -800,7 +807,8 @@ class mf_client():
                         else:
                             self.logging.debug("missing output data in XML server response")
 # successful
-                    self.logging.debug("aterm_run(): success")
+                    elapsed = time.time() - start_time
+                    self.logging.debug("completed: %s, elapsed: %r" % (service_call, elapsed))
                     return reply
 
             except Exception as e:
