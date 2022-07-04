@@ -1103,8 +1103,6 @@ class mf_client():
         """
         information on a named file or folder
         """
-        self.logging.info("[%s]" % fullpath)
-
         if self.namespace_exists(fullpath):
             self.logging.info("Namespace exists")
             yield "%20s : %s" % ('namespace', fullpath) 
@@ -1280,12 +1278,9 @@ class mf_client():
             Second - the total bytes of all the files that were matched
             Thereafter - the file names of all the matches
         """
-
-        query = self.get_query(fullpath_pattern, recurse=True)
-        self.logging.info("[%s] -> [%s]" % (fullpath_pattern, query))
-
-# count download results and get total size
         try:
+# count download results and get total size
+            query = self.get_query(fullpath_pattern, recurse=True)
 # get the number of results and total size
             reply = self.aterm_run('asset.query :where "%s" :count true :action sum :xpath content/size' % query, background=True, show_progress=True)
             elem = reply.find(".//value")
