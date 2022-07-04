@@ -1169,8 +1169,6 @@ class mf_client():
         """
         generator for namespace/asset listing
         """
-        self.logging.info("[%s]" % pattern)
-
 # yield folders first (only if pattern is a folder)
 # NB: mediaflux quirk - can't pattern match against namespaces (only assets/files)
         if self.namespace_exists(pattern):
