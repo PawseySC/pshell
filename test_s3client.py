@@ -94,6 +94,10 @@ class s3client_standard(unittest.TestCase):
         reply = self.s3_client.completion_match("/bucket/child1/", "../c", 3, "child2/")
         self.assertEqual(reply, "child2/")
 
+# TODO - not used yet
+    def test_completion_bucket(self):
+        reply = self.s3_client.completion_match("/", "buc", 0, "bucket1")
+        self.assertEqual(reply, "bucket1")
 
 #------------------------------------------------------------
 class s3client_new(unittest.TestCase):

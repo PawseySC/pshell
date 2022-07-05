@@ -139,6 +139,7 @@ class s3_client():
 
 #------------------------------------------------------------
 # given a candidate determine if it matches the cwd/partial and return the [start] based section of the match if so, else none
+# TODO - can we adapt this to match objects and buckets in complete_path() -> probably have to use cwd somehow...
     def completion_match(self, cwd, partial, start, candidate):
         self.logging.debug("cwd=%s, partial=%s, start=%d, candidate=%s" % (cwd, partial, start, candidate))
 
@@ -149,13 +150,13 @@ class s3_client():
 
 # greedy search for an intersecting match of candidate with partial
         clen=len(candidate)
-        minlen = min(clen, plen)
-        greedy_match=-1
-        for i in range(1, minlen):
-            if candidate.startswith(partial[plen-i:]):
+        for i in range(0, plen):
+            self.logging.debug("compare [%s] <==> [%s]" % (candidate, partial[i:]))
+            if candidate.startswith(partial[i:]):
                 greedy_match=i
-        if greedy_match > 0:
-            return partial[start:plen-greedy_match] + candidate
+                self.logging.debug("greedy match = %d" % greedy_match)
+                match = partial[:i] + candidate
+                return match[start:]
 
 # non-greedy concatenation return if partial is itself a complete prefix
         if partial.endswith('/'):
@@ -195,25 +196,10 @@ class s3_client():
                 if match_prefix is True:
                     if 'CommonPrefixes' in response:
                         for item in response['CommonPrefixes']:
-
-                            # strip the base search prefix (if any) off the results so we can pattern match
-#                            candidate = item['Prefix'][prefix_len:]
-#                            self.logging.debug("prefix=%s, candidate=%s" % (item['Prefix'], candidate))
-#                            if candidate.startswith(pattern):
-#                                full_candidate = "%s/%s" % (bucket, item['Prefix'])
-#                                match_ix = full_candidate.rfind(partial)
-#                                self.logging.info("MATCH index=%d, full=%s" % (match_ix, full_candidate))
-#                                if match_ix >= 0:
-#                                    candidate = full_candidate[match_ix:]
-#                                    candidate_list.append(candidate[start:])
-
 # NEW - enable test driven approach to this whole mess
                             candidate = self.completion_match(cwd, partial, start, item['Prefix'])
                             if candidate is not None:
                                 candidate_list.append(candidate)
-
-
-
 # process file (object) matches
                 if match_object is True:
                     if 'Contents' in response:
