@@ -18,13 +18,15 @@ import posixpath
 try:
     import boto3
     import botocore
+    logging.getLogger('boto3').setLevel(logging.WARNING)
+    logging.getLogger('botocore').setLevel(logging.WARNING)
     ok=True
 except:
     ok=False
 
 #------------------------------------------------------------
 class s3_client():
-    def __init__(self, url=None, access=None, secret=None):
+    def __init__(self, url=None, access=None, secret=None, log_level=None):
         self.ok = ok
         self.type = "s3"
         self.url = url
@@ -34,12 +36,12 @@ class s3_client():
         self.status = "not connected"
         self.enable_polling = True
         self.logging = logging.getLogger('s3client')
-
-# DEBUG
-#        self.logging.setLevel(logging.DEBUG)
+# NEW - test invoke - standalone
+        if log_level is not None:
+            logging.basicConfig(format='%(levelname)9s %(asctime)-15s >>> %(module)s.%(funcName)s(): %(message)s', level=log_level)
         self.logging.debug("BOTO3=%r" % ok)
 
-# --- NEW
+# --- NEW - main (pshell) invoke
     @classmethod
     def from_endpoint(cls, endpoint):
         """
@@ -136,21 +138,55 @@ class s3_client():
         return False
 
 #------------------------------------------------------------
+# given a candidate determine if it matches the cwd/partial and return the [start] based section of the match if so, else none
+    def completion_match(self, cwd, partial, start, candidate):
+        self.logging.debug("cwd=%s, partial=%s, start=%d, candidate=%s" % (cwd, partial, start, candidate))
+
+# no partial pattern, just return the candidate
+        plen=len(partial)
+        if plen == 0:
+            return candidate
+
+# greedy search for an intersecting match of candidate with partial
+        clen=len(candidate)
+        minlen = min(clen, plen)
+        greedy_match=-1
+        for i in range(1, minlen):
+            if candidate.startswith(partial[plen-i:]):
+                greedy_match=i
+        if greedy_match > 0:
+            return partial[start:plen-greedy_match] + candidate
+
+# non-greedy concatenation return if partial is itself a complete prefix
+        if partial.endswith('/'):
+            return partial[start:] + candidate
+
+# no valid match
+        return None
+
+#------------------------------------------------------------
     def complete_path(self, cwd, partial, start, match_prefix=True, match_object=True):
-        self.logging.info("cwd=[%s] partial=[%s] start=[%d]" % (cwd, partial, start))
+        # return list of completed candidates that substitute at partial[start:] 
+        self.logging.debug("cwd=[%s] partial=[%s] start=[%d]" % (cwd, partial, start))
         try:
             fullpath = posixpath.join(cwd, partial)
             bucket, prefix, pattern = self.path_convert(fullpath)
-            self.logging.info("fullpath=%s, bucket=%s, prefix=%s, pattern=%s" % (fullpath, bucket, prefix, pattern))
+            self.logging.debug("fullpath=%s, bucket=%s, prefix=%s, pattern=%s" % (fullpath, bucket, prefix, pattern))
             candidate_list = []
             if self.bucket_exists(bucket) is False:
 # get results for bucket search
-                self.logging.info("bucket search: partial bucket=[%s]" % bucket)
+                self.logging.debug("bucket search: partial bucket=[%s]" % bucket)
                 response = self.s3.list_buckets()
                 for item in response['Buckets']:
-                    if item['Name'].startswith(partial):
-                        candidate = item['Name']+'/'
-                        candidate_list.append(candidate[start:])
+                    if bucket is not None:
+                        lb = len(bucket)
+                        if item['Name'].startswith(bucket) is False:
+                            continue
+                    else:
+                        lb = 0
+                    bname = item['Name']+'/'
+                    candidate = partial + bname[lb:]
+                    candidate_list.append(candidate[start:])
             else:
 # get results for non-bucket searches
                 response = self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
@@ -159,17 +195,24 @@ class s3_client():
                 if match_prefix is True:
                     if 'CommonPrefixes' in response:
                         for item in response['CommonPrefixes']:
+
                             # strip the base search prefix (if any) off the results so we can pattern match
-                            candidate = item['Prefix'][prefix_len:]
-                            self.logging.debug("prefix=%s, candidate=%s" % (item['Prefix'], candidate))
-                            # main search criteria
-                            if candidate.startswith(pattern):
-                                full_candidate = "%s/%s" % (bucket, item['Prefix'])
-                                match_ix = full_candidate.rfind(partial)
-                                self.logging.info("MATCH index=%d, full=%s" % (match_ix, full_candidate))
-                                if match_ix >= 0:
-                                    candidate = full_candidate[match_ix:]
-                                    candidate_list.append(candidate[start:])
+#                            candidate = item['Prefix'][prefix_len:]
+#                            self.logging.debug("prefix=%s, candidate=%s" % (item['Prefix'], candidate))
+#                            if candidate.startswith(pattern):
+#                                full_candidate = "%s/%s" % (bucket, item['Prefix'])
+#                                match_ix = full_candidate.rfind(partial)
+#                                self.logging.info("MATCH index=%d, full=%s" % (match_ix, full_candidate))
+#                                if match_ix >= 0:
+#                                    candidate = full_candidate[match_ix:]
+#                                    candidate_list.append(candidate[start:])
+
+# NEW - enable test driven approach to this whole mess
+                            candidate = self.completion_match(cwd, partial, start, item['Prefix'])
+                            if candidate is not None:
+                                candidate_list.append(candidate)
+
+
 
 # process file (object) matches
                 if match_object is True:
@@ -180,7 +223,7 @@ class s3_client():
                             self.logging.debug("key=%s, full=%s" % (item['Key'], full_candidate))
                             if full_candidate.startswith(fullpath):
                                 match_ix = full_candidate.rfind(partial)
-                                self.logging.info("MATCH index=%d, full=%s" % (match_ix, full_candidate))
+                                self.logging.debug("MATCH index=%d, full=%s" % (match_ix, full_candidate))
                                 if match_ix >= 0:
                                     candidate = full_candidate[match_ix:]
                                     candidate_list.append(candidate[start:])

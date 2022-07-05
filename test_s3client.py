@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import logging
 import s3client
 import unittest
 
@@ -54,6 +55,44 @@ class s3client_standard(unittest.TestCase):
         self.assertEqual(reply[0], "bucket")
         self.assertEqual(reply[1], "prefix1/prefix3/")
         self.assertEqual(reply[2], "key")
+    def test_convert_bucket_normpath(self):
+        reply = self.s3_client.path_convert("/bucket/../new")
+        self.assertEqual(reply[0], "new")
+        self.assertEqual(reply[1], "")
+        self.assertEqual(reply[2], "")
+    def test_completion_match_no_candidate(self):
+        reply = self.s3_client.completion_match("/bucket/child1/", "partial", 0, "match/")
+        self.assertEqual(reply, None)
+    def test_completion_match_nongreedy(self):
+        reply = self.s3_client.completion_match("/", "bucket/child1/", 0, "child1/child2/")
+        self.assertEqual(reply, "bucket/child1/child2/")
+    def test_completion_match_empty_prefix1(self):
+        reply = self.s3_client.completion_match("/bucket/child1/", "", 0, "child2/")
+        self.assertEqual(reply, "child2/")
+    def test_completion_match_empty_prefix2(self):
+        reply = self.s3_client.completion_match("/bucket/child1/", "", 0, "object1")
+        self.assertEqual(reply, "object1")
+    def test_completion_match_normpath(self):
+        reply = self.s3_client.completion_match("/bucket1/", "../chil", 0, "child1/child2/")
+        self.assertEqual(reply, "../child1/child2/")
+    def test_completion_match_normpath_no_candidate(self):
+        reply = self.s3_client.completion_match("/bucket1/", "../bucket2/child1/partial", 0, "child1/child2/")
+        self.assertEqual(reply, None)
+    def test_completion_match_normpath_greedy_prefix(self):
+        reply = self.s3_client.completion_match("/bucket1/", "../bucket2/child1/chil", 0, "child1/child2/")
+        self.assertEqual(reply, "../bucket2/child1/child2/")
+    def test_completion_normpath_nongreedy(self):
+        reply = self.s3_client.completion_match("/bucket/child1/", "../", 0, "child2/")
+        self.assertEqual(reply, "../child2/")
+    def test_completion_normpath_nongreedy_offset(self):
+        reply = self.s3_client.completion_match("/bucket/child1/", "../", 3, "child2/")
+        self.assertEqual(reply, "child2/")
+    def test_completion_normpath_partial(self):
+        reply = self.s3_client.completion_match("/bucket/child1/", "../c", 0, "child2/")
+        self.assertEqual(reply, "../child2/")
+    def test_completion_normpath_partial_offset(self):
+        reply = self.s3_client.completion_match("/bucket/child1/", "../c", 3, "child2/")
+        self.assertEqual(reply, "child2/")
 
 
 #------------------------------------------------------------
@@ -63,7 +102,8 @@ class s3client_new(unittest.TestCase):
         global s3_client
         self.s3_client = s3_client
 
-
+    def test_somestuff(self):
+        return
 
 #------------------------------------------------------------
 if __name__ == '__main__':
@@ -71,6 +111,7 @@ if __name__ == '__main__':
 # acquire a dummy client instance
     try:
         s3_client = s3client.s3_client()
+#        s3_client = s3client.s3_client(log_level=logging.DEBUG)
 
         print("\n----------------------------------------------------------------------")
         print("Running tests for: s3client module")
@@ -78,6 +119,7 @@ if __name__ == '__main__':
     except Exception as e:
         print(str(e))
         exit(-1)
+
 
 # classes to test
     test_class_list = [s3client_standard]
