@@ -218,7 +218,7 @@ class s3_client():
             self.logging.error(str(e))
 
 # done
-        self.logging.info(candidate_list)
+        self.logging.debug(candidate_list)
         return candidate_list
 
 #------------------------------------------------------------
@@ -270,7 +270,7 @@ class s3_client():
         fullpath = posixpath.normpath(path)
         if fullpath.endswith('/') is False:
             fullpath += '/'
-        self.logging.info("input fullpath=[%s]" % fullpath)
+        self.logging.debug("input fullpath=[%s]" % fullpath)
         bucket,prefix,key = self.path_convert(fullpath)
 # check for existence
         exists = False
@@ -287,7 +287,7 @@ class s3_client():
                             exists = True
 # prefix (subdir) levels
                 else:
-                    self.logging.info("bucket=[%s] prefix=[%s]" % (bucket, prefix))
+                    self.logging.debug("bucket=[%s] prefix=[%s]" % (bucket, prefix))
                     response = self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
 # if the path contains objects or prefixes then it is valid
                     if 'Contents' in response:
@@ -300,7 +300,7 @@ class s3_client():
 
 # return path (for setting cwd) if exists
         if exists is True:
-            self.logging.info("output fullpath=[%s]" % fullpath)
+            self.logging.debug("output fullpath=[%s]" % fullpath)
             return fullpath
 
         raise Exception("Could not find remote path: [%s]" % fullpath)
@@ -340,7 +340,7 @@ class s3_client():
 # return number, size of objects that match the pattern, followed by the URL to the objects
     def get_iter(self, pattern, delimiter='/'):
         bucket,prefix,key = self.path_convert(pattern)
-        self.logging.info("bucket=[%s], prefix=[%s], key=[%s]" % (bucket, prefix, key))
+        self.logging.debug("bucket=[%s], prefix=[%s], key=[%s]" % (bucket, prefix, key))
 
 # match everything and recurse if no key supplied (ie get on a folder)
         if len(key) == 0:
@@ -350,7 +350,7 @@ class s3_client():
             delimiter = ""
 # build full filename (prefix+key) matching string
         key_pattern = posixpath.join(prefix, key)
-        self.logging.info("key_pattern=[%s], delimiter=[%s]" % (key_pattern, delimiter))
+        self.logging.debug("key_pattern=[%s], delimiter=[%s]" % (key_pattern, delimiter))
 
 # attempt to compute size of the match
         count = 0
@@ -386,18 +386,16 @@ class s3_client():
 
         bucket,prefix,key = self.path_convert(remote_filepath)
         fullkey = posixpath.join(prefix, key)
-
-        self.logging.info('remote bucket=[%r] fullkey=[%r] : local_filepath=[%r]' % (bucket, fullkey, local_filepath))
+        self.logging.debug('remote bucket=[%r] fullkey=[%r] : local_filepath=[%r]' % (bucket, fullkey, local_filepath))
 
         if local_filepath is None:
             local_filepath = os.path.normpath(os.path.join(os.getcwd(), posixpath.basename(fullkey)))
-
-        self.logging.info('Downloading to [%s]' % local_filepath)
+        self.logging.debug('Downloading to [%s]' % local_filepath)
 
 # make any intermediate folders required ...
         local_parent = os.path.dirname(local_filepath)
         if os.path.exists(local_parent) is False:
-            self.logging.debug("Creating required local folder(s): [%s]" % local_parent)
+            self.logging.info("Creating required local folder(s): [%s]" % local_parent)
             os.makedirs(local_parent)
 
 # can tweak this, default concurrency is 10
@@ -514,7 +512,7 @@ class s3_client():
         size = int(next(results))
         print("Publishing %d files..." % count)
         for filepath in results:
-            self.logging.info("s3 publish: %s" % filepath)
+            self.logging.debug("s3 publish: %s" % filepath)
             bucket,prefix,key = self.path_convert(filepath)
             fullkey = posixpath.join(prefix, key)
 
