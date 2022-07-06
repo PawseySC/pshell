@@ -156,7 +156,7 @@ class mf_client():
 # reachability check
         try:
             code = urllib.request.urlopen(url, timeout=5).getcode()
-            self.logging.info("connection code: %r" % code)
+            self.logging.info("connection code=%r" % code)
         except Exception as e:
             self.status = "not connected to %s: %s" % (url, str(e))
             self.logging.error(str(e))

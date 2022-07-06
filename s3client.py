@@ -76,6 +76,7 @@ class s3_client():
 # authenticated user check - test the client
             self.s3.list_buckets()
             self.status = "authenticated to: %s as access=%s" % (self.url, self.access)
+            self.logging.info('success')
             return True
 
         except Exception as e:
