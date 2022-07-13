@@ -1483,27 +1483,48 @@ class mf_client():
 
         return(0)
 
-
 #------------------------------------------------------------
-    def copy(self, from_fullpath, to_host, to_fullpath):
+    def copy(self, from_fullpath, to_host, to_fullpath, cb_progress=None):
 
-        print("TODO: copy [%s] -> s3 [%s] : [%s]" % (from_fullpath, to_host, to_fullpath))
-
-# TODO - wrap the asset.export in an asset.preparation.request.create -> migrate=online
-
-# CURRENT - implement ...
-#asset.export :id 89817913 :include-namespaces False :url -create True s3://datateam/gok/gdis.zip
+        print("copy [%s] -> s3 [%s] : [%s]" % (from_fullpath, to_host, to_fullpath))
 
 # TODO - when arcitecta implement the new BUCKET argument in the S3 URL ... have to rework slightly ... with tests
         to_url = 's3://%s/%s' % (to_host, to_fullpath)
 
-        cmd = 'asset.export :id "path=%s" :include-namespaces False :url -create True %s' % (from_fullpath, to_url)
+# ordinary copy
+#        cmd = 'asset.export :id "path=%s" :include-namespaces False :url -create True %s' % (from_fullpath, to_url)
+# recall first, then copy
+        cmd = 'asset.preparation.request.create :id "path=%s" :migrate online :asset-service -name asset.export < :include-namespaces False :url -create True %s >' % (from_fullpath, to_url)
 
-        print("CMD: [%s]" % cmd)
+#        print("CMD: [%s]" % cmd)
 
-        self.aterm_run(cmd)
+# main call (async)
+        xml = self.aterm_run(cmd)
+        elem = xml.find(".//id")
+        prep_id = int(elem.text)
 
-        return
+# wait until complete ...
+        self.logging.debug("Polling asset preparation request id=%d" % prep_id)
+        try:
+            while True:
+                xml = self.aterm_run('asset.preparation.request.describe :id %d' % prep_id)
+                time.sleep(5)
+        except Exception as e:
+# NB: it's an error (exception) when the task is done, since it no longer exists ... even though it isn't really
+            pass
+
+
+# update byte progress to indicate we completed the whole thing 
+# FIXME - better way than just telling it the source file size???
+        if cb_progress is not None:
+            xml = self.aterm_run('asset.get :id "path=%s" :xpath -ename size content/size' % from_fullpath)
+            elem = xml.find(".//size")
+            if elem is not None:
+                size = int(elem.text)
+                cb_progress(size)
+
+
+        return(0)
 
 
 #------------------------------------------------------------

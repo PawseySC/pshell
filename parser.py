@@ -728,14 +728,61 @@ class parser(cmd.Cmd):
         results = remote.copy_iter(src, to_root)
         self.total_count = int(next(results))
         self.total_bytes = int(next(results))
+
         if (self.total_count == 0):
             raise Exception("No files to copy")
         if (self.total_bytes == 0):
             raise Exception("No data to copy")
 
-# TODO - threaded queueing+progress reporting - same as put implementation probably ...
-        for src, dest in results:
-            remote.copy(src, to[0], dest)
+
+# FIXME - reusing get() parameters ...
+
+        self.get_count = 0
+        self.get_bytes = 0
+        self.get_errors = 0
+        self.get_skipped = 0
+        start_time = time.time()
+        self.print_over("copy: preparing %d files... " % self.total_count)
+
+        try:
+            count = 0
+# define batch limit
+            batch_size = self.thread_max * 2 - 1
+
+            for src, dest in results:
+                future = self.thread_executor.submit(remote.copy, src, to[0], dest, cb_progress=self.cb_get_progress)
+                future.add_done_callback(self.cb_get_done)
+                count += 1
+# NEW - don't submit any more than the batch size - this allows for faster cleanup of threads
+                submitted = count - self.get_count
+                while submitted > batch_size:
+                    time.sleep(5)
+                    submitted = count - self.get_count
+                    elapsed = time.time() - start_time
+                    self.cb_get_progress_display(elapsed)
+
+        except Exception as e:
+            self.logging.error("[%s] count = %d" % (str(e), count))
+            pass
+
+# NB: sometimes remote.get_iter() returns the wrong number for total_count ... I think it's an mflux eccentricity for files with no content
+# HACK - just set what we expect to download equal to the number of files actually submitted
+        self.total_count = count
+
+# wait until completed (cb_get does progress updates)
+        self.logging.info("Waiting for background downloads...")
+        while self.get_count < self.total_count:
+            time.sleep(5)
+            elapsed = time.time() - start_time
+            self.cb_get_progress_display(elapsed)
+# newline
+        print("")
+
+# non-zero exit code on termination if there were any errors
+        if self.get_errors > 0:
+            raise Exception("copy: failed for %d file(s)" % self.get_errors)
+
+
 
 #------------------------------------------------------------
     def help_cd(self):
