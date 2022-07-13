@@ -36,12 +36,6 @@ class parser_standard(unittest.TestCase):
         result = self.parser.abspath("folder/child1/../child2/")
         self.assertEqual(result, '/root/folder/child2/')
 
-    def test_split_remote_copy(self):
-        a,b,c = self.parser.split_remote_copy("myfolder/ remote:/mydest/remote/path")
-        self.assertEqual(a, 'myfolder/')
-        self.assertEqual(b, 'remote')
-        self.assertEqual(c, '/mydest/remote/path')
-
 # --- remote
 #    def test_remote_complete(self):
 #        self.parser.remote_add('mfclient', {'type':'mflux', 'protocol':'http', 'server':'localhost', 'port':80})

@@ -19,7 +19,7 @@ mf_client = None
 ################################################
 # serverless aterm style XML serialisation tests
 ################################################
-class mfclient_syntax(unittest.TestCase):
+class mfclient_main(unittest.TestCase):
 
     def setUp(self):
         global mf_client
@@ -159,10 +159,23 @@ class mfclient_features(unittest.TestCase):
         global mf_client
         self.mf_client = mf_client
 
-# by default lexer silently drops any text starting with # (comment)
-    def test_get_iter(self):
-        reply = self.mf_client.get_iter("/projects/Data Team/")
-        print(reply)
+    def test_copy_file(self):
+        reply = self.mf_client.copy_fullpath_get('/project/folder/file', '/project/folder/file', '/remote')
+        self.assertEqual(reply, '/remote')
+
+    def test_copy_folder(self):
+        reply = self.mf_client.copy_fullpath_get('/project/folder/', '/project/folder/file', '/remote')
+        self.assertEqual(reply, '/remote/folder')
+
+    def test_copy_root(self):
+        reply = self.mf_client.copy_fullpath_get('/', '/project/folder/file', '/remote')
+        self.assertEqual(reply, '/remote/project/folder')
+
+    def test_copy_wildcard(self):
+        reply = self.mf_client.copy_fullpath_get('/project/folder/*', '/project/folder/file', '/remote')
+        self.assertEqual(reply, '/remote')
+
+
 
 
 ######
@@ -183,8 +196,8 @@ if __name__ == '__main__':
 
 
 # classes to test
-#    test_class_list = [mfclient_features]
-    test_class_list = [mfclient_syntax]
+#    test_class_list = [mfclient_main]
+    test_class_list = [mfclient_features]
 #    test_class_list = [mfclient_bugs]
 
 

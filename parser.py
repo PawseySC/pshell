@@ -679,11 +679,9 @@ class parser(cmd.Cmd):
                     elapsed = time.time() - start_time
                     self.cb_put_progress_display(elapsed)
 
-
         except Exception as e:
             self.logging.error(str(e))
             pass
-
 
 # wait until completed (cb_put does progress updates)
         while self.put_count < count:
@@ -691,55 +689,53 @@ class parser(cmd.Cmd):
             elapsed = time.time() - start_time
             self.cb_put_progress_display(elapsed)
 
-
         print("")
 
         if self.put_errors > 0:
             raise Exception("put: upload failed for %d file(s)" % self.put_errors)
 
-
 #------------------------------------------------------------
-    def split_remote_copy(self, line):
-        src_name=None
-        dest_remote=None
-        dest_fullpath=None
-        for name, client in self.remotes.items():
-            tmp = line.split(name+':')
-            count = len(tmp)
-            if count == 2:
-                src_name = tmp[0].strip()
-                dest_remote = name
-                dest_fullpath = tmp[1].strip()
-
-        return src_name, dest_remote, dest_fullpath
-
-#------------------------------------------------------------
-# TODO 
 # use:  copy file/folder remote2:/abs/path
-#    def do_export(self, line):
-#        print("CURRENT - export...")
-#
-#        src_remote = self.remote_active()
-#
-#        src_name,dest_remote,dest_fullpath = self.split_remote_copy(line)
-#
-#        if src_name is None or dest_remote is None or dest_fullpath is None:
-#            self.logging.error("src_name=%r, dest_remote=%r, dest_fullpath=%r" % (src_name, dest_remote, dest_fullpath))
-#            raise Exception("Bad input format for export, TODO - type help export for more info")
-#
-#        src_fullpath = self.abspath(src_name)
-#
-#        print("export [%s][%s] -> [%s][%s]" % (src_remote.type, src_fullpath, dest_remote, dest_fullpath))
-#
-#        try:
-#            src_remote.copy(src_fullpath, dest_remote, dest_fullpath, prompt=self.ask)
-#        except Exception as e:
-#            self.logging.error(str(e))
-#            print("Failed or not implemented")
-# TODO - options for metadata copy as well (IF src = mflux)
-#        option_list, tail = getopt.getopt(line, "r")
-#        self.logging.info("options: %r" % option_list)
-#        self.logging.info("tail: %r" % tail)
+# NB: the current remote must be MFLUX and the destination remote must be S3
+    def do_copy(self, line):
+
+        remote = self.remote_active()
+        try:
+            ix1 = line.find(':')
+            ix2 = line[:ix1].rindex(' ')
+            src = self.abspath(line[:ix2])
+            uri = line[ix2+1:]
+            to = uri.partition(":")
+
+# TODO - if remote doesn't exist -> may not be an issue -> really only need an s3.client.host
+            if to[0] in self.remotes:
+                to_remote = self.remotes[to[0]]
+            else:
+                to_remote = None
+
+            to_root = to[2]
+
+# check and/or or configure the s3 client host
+            remote.copy_host_setup(to[0], to_remote)
+            print("copy s3 destination ok")
+
+        except Exception as e:
+            self.logging.error(str(e))
+            raise Exception("Invalid source or remote destination")
+
+
+# main call to get source, destination pairs for the copy
+        results = remote.copy_iter(src, to_root)
+        self.total_count = int(next(results))
+        self.total_bytes = int(next(results))
+        if (self.total_count == 0):
+            raise Exception("No files to copy")
+        if (self.total_bytes == 0):
+            raise Exception("No data to copy")
+
+# TODO - threaded queueing+progress reporting - same as put implementation probably ...
+        for src, dest in results:
+            remote.copy(src, to[0], dest)
 
 #------------------------------------------------------------
     def help_cd(self):
