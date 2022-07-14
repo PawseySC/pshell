@@ -93,6 +93,15 @@ class s3client_standard(unittest.TestCase):
     def test_completion_normpath_partial_offset(self):
         reply = self.s3_client.completion_match("/bucket/child1/", "../c", 3, "child2/")
         self.assertEqual(reply, "child2/")
+    def test_completion_nomatch(self):
+        reply = self.s3_client.completion_match("/bucket/", "zg", 0, "prefix/")
+        self.assertEqual(reply, None)
+    def test_completion_nomatch_char_overlap(self):
+        reply = self.s3_client.completion_match("/bucket/", "sp", 0, "prefix/")
+        self.assertEqual(reply, None)
+    def test_completion_nomatch_string_overlap(self):
+        reply = self.s3_client.completion_match("/bucket/", "popref", 0, "prefix/")
+        self.assertEqual(reply, None)
 
 # TODO - not used yet
     def test_completion_bucket(self):
@@ -106,8 +115,10 @@ class s3client_new(unittest.TestCase):
         global s3_client
         self.s3_client = s3_client
 
-    def test_somestuff(self):
-        return
+    def test_completion_bucket(self):
+        reply = self.s3_client.completion_match("/", "buc", 0, "bucket1")
+        self.assertEqual(reply, "bucket1")
+
 
 #------------------------------------------------------------
 if __name__ == '__main__':

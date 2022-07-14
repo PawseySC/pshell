@@ -155,8 +155,12 @@ class s3_client():
             self.logging.debug("compare [%s] <==> [%s]" % (candidate, partial[i:]))
             if candidate.startswith(partial[i:]):
                 greedy_match=i
-                self.logging.debug("greedy match = %d" % greedy_match)
                 match = partial[:i] + candidate
+                self.logging.debug("greedy match=%s, i=%d" % (match, greedy_match))
+# if match occurred part way through the string, previous char should be a / for a valid (complete) match
+                if i>0:
+                    if partial[:i].endswith('/') is False:
+                        continue
                 return match[start:]
 
 # non-greedy concatenation return if partial is itself a complete prefix
