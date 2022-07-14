@@ -1486,7 +1486,7 @@ class mf_client():
 #------------------------------------------------------------
     def copy(self, from_fullpath, to_host, to_fullpath, cb_progress=None):
 
-        print("copy [%s] -> s3 [%s] : [%s]" % (from_fullpath, to_host, to_fullpath))
+        self.logging.debug("copy [%s] -> s3 [%s] : [%s]" % (from_fullpath, to_host, to_fullpath))
 
 # TODO - when arcitecta implement the new BUCKET argument in the S3 URL ... have to rework slightly ... with tests
         to_url = 's3://%s/%s' % (to_host, to_fullpath)
@@ -1513,7 +1513,6 @@ class mf_client():
 # NB: it's an error (exception) when the task is done, since it no longer exists ... even though it isn't really
             pass
 
-
 # update byte progress to indicate we completed the whole thing 
 # FIXME - better way than just telling it the source file size???
         if cb_progress is not None:
@@ -1523,9 +1522,7 @@ class mf_client():
                 size = int(elem.text)
                 cb_progress(size)
 
-
         return(0)
-
 
 #------------------------------------------------------------
     def copy_host_setup(self, to_host, to_remote=None):

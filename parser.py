@@ -43,6 +43,7 @@ class parser(cmd.Cmd):
     thread_max = 3
     get_count = 0
     get_errors = 0
+    get_running = 0
     get_skipped = 0
     get_bytes = 0
     total_count = 0
@@ -460,16 +461,17 @@ class parser(cmd.Cmd):
         print("Usage: get <remote files or folders>\n")
 
 # -- 
+# TODO - wrap as a progress class ... ??? -> used by get, put and copy ...
     def cb_get_progress_display(self, elapsed=None):
         if elapsed is not None:
             rate = float(self.get_bytes) / float(elapsed)
             rate = rate / 1000000.0
-            speed = "at %.1f MB/s            " % rate
+            speed = "%.1f MB/s            " % rate
         else:
             speed = "                                   "
 
         progress_pc = 100.0 * float(self.get_bytes) / float(self.total_bytes)
-        self.print_over("get: %d/%d files, errors=%d, skipped=%d, progress=%3.1f%% %s" % (self.get_count-self.get_errors, self.total_count, self.get_errors, self.get_skipped, progress_pc, speed))
+        self.print_over("progress=%3.1f%%: %d/%d files, errors=%d, skipped=%d, running=%d, rate=%s" % (progress_pc, self.get_count-self.get_errors, self.total_count, self.get_errors, self.get_skipped, self.get_running, speed))
 
 # --
     def cb_get_done(self, future):
@@ -487,6 +489,7 @@ class parser(cmd.Cmd):
             self.get_errors += error
             self.get_skipped += skip
             self.get_count += 1
+            self.get_running -= 1
 
 # --
     def cb_get_progress(self, chunk):
@@ -510,6 +513,7 @@ class parser(cmd.Cmd):
             self.get_count = 0
             self.get_bytes = 0
             self.get_errors = 0
+            self.get_running = 0
             self.get_skipped = 0
             start_time = time.time()
             self.print_over("get: preparing %d files... " % self.total_count)
@@ -524,12 +528,14 @@ class parser(cmd.Cmd):
                     future = self.thread_executor.submit(remote.get, remote_fullpath, local_filepath, self.cb_get_progress)
                     future.add_done_callback(self.cb_get_done)
                     count += 1
+                    # CURRENT
+                    self.get_running += 1
+
 # NEW - don't submit any more than the batch size - this allows for faster cleanup of threads
                     submitted = count - self.get_count
                     while submitted > batch_size:
                         time.sleep(5)
                         submitted = count - self.get_count
-                        # CURRENT
                         elapsed = time.time() - start_time
                         self.cb_get_progress_display(elapsed)
             except Exception as e:
@@ -592,7 +598,6 @@ class parser(cmd.Cmd):
     def cb_put_progress(self, chunk):
         with threading.Lock():
             self.put_bytes += int(chunk)
-
 
 # --
     def put_iter(self, line, metadata=False, setup=False):
@@ -717,12 +722,10 @@ class parser(cmd.Cmd):
 
 # check and/or or configure the s3 client host
             remote.copy_host_setup(to[0], to_remote)
-            print("copy s3 destination ok")
 
         except Exception as e:
             self.logging.error(str(e))
             raise Exception("Invalid source or remote destination")
-
 
 # main call to get source, destination pairs for the copy
         results = remote.copy_iter(src, to_root)
@@ -734,12 +737,11 @@ class parser(cmd.Cmd):
         if (self.total_bytes == 0):
             raise Exception("No data to copy")
 
-
 # FIXME - reusing get() parameters ...
-
         self.get_count = 0
         self.get_bytes = 0
         self.get_errors = 0
+        self.get_running = 0
         self.get_skipped = 0
         start_time = time.time()
         self.print_over("copy: preparing %d files... " % self.total_count)
@@ -753,6 +755,9 @@ class parser(cmd.Cmd):
                 future = self.thread_executor.submit(remote.copy, src, to[0], dest, cb_progress=self.cb_get_progress)
                 future.add_done_callback(self.cb_get_done)
                 count += 1
+                # CURRENT
+                self.get_running += 1
+
 # NEW - don't submit any more than the batch size - this allows for faster cleanup of threads
                 submitted = count - self.get_count
                 while submitted > batch_size:
@@ -776,12 +781,12 @@ class parser(cmd.Cmd):
             elapsed = time.time() - start_time
             self.cb_get_progress_display(elapsed)
 # newline
+# TODO - might need a final flush with self.get_running=0
         print("")
 
 # non-zero exit code on termination if there were any errors
         if self.get_errors > 0:
             raise Exception("copy: failed for %d file(s)" % self.get_errors)
-
 
 
 #------------------------------------------------------------
