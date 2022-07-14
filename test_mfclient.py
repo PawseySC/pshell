@@ -160,20 +160,36 @@ class mfclient_features(unittest.TestCase):
         self.mf_client = mf_client
 
     def test_copy_file(self):
-        reply = self.mf_client.copy_fullpath_get('/project/folder/file', '/project/folder/file', '/remote')
+        reply = self.mf_client.copy_fullpath_get('/folder/file', '/folder/file', '/remote')
         self.assertEqual(reply, '/remote')
 
     def test_copy_folder(self):
-        reply = self.mf_client.copy_fullpath_get('/project/folder/', '/project/folder/file', '/remote')
+        reply = self.mf_client.copy_fullpath_get('/folder/', '/folder/file', '/remote')
         self.assertEqual(reply, '/remote/folder')
 
     def test_copy_root(self):
-        reply = self.mf_client.copy_fullpath_get('/', '/project/folder/file', '/remote')
-        self.assertEqual(reply, '/remote/project/folder')
+        reply = self.mf_client.copy_fullpath_get('/', '/folder/file', '/remote')
+        self.assertEqual(reply, '/remote/folder')
 
-    def test_copy_wildcard(self):
-        reply = self.mf_client.copy_fullpath_get('/project/folder/*', '/project/folder/file', '/remote')
+    def test_copy_file_wildcard(self):
+        reply = self.mf_client.copy_fullpath_get('/folder/*', '/folder/file', '/remote')
         self.assertEqual(reply, '/remote')
+
+    def test_copy_folder_noslash(self):
+        reply = self.mf_client.copy_fullpath_get('/project/folder', '/project/folder/file', '/remote')
+        self.assertEqual(reply, '/remote/folder')
+
+    def test_copy_root(self):
+        reply = self.mf_client.copy_fullpath_get('/', '/file', '/remote')
+        self.assertEqual(reply, '/remote')
+
+    def test_copy_parent(self):
+        reply = self.mf_client.copy_fullpath_get('/folder/parent/', '/folder/parent/child/file', '/remote')
+        self.assertEqual(reply, '/remote/parent/child')
+
+    def test_copy_child(self):
+        reply = self.mf_client.copy_fullpath_get('/folder/parent/child', '/folder/parent/child/file', '/remote')
+        self.assertEqual(reply, '/remote/child')
 
 
 
