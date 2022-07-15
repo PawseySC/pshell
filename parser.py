@@ -42,22 +42,7 @@ class parser(cmd.Cmd):
     thread_executor = None
     thread_max = 3
 
-
-# TODO - replace all these 
-    get_count = 0
-    get_errors = 0
-    get_running = 0
-    get_skipped = 0
-    get_bytes = 0
-    total_count = 0
-    total_bytes = 0
-    put_count = 0
-    put_errors = 0
-    put_skipped = 0
-    put_count_total = 0
-    put_bytes = 0
-    put_bytes_total = 0
-# TODO - with these
+# NEW - unified (get/put/cp) progress reporter
     progress_total_items = 0
     progress_total_bytes = 0
     progress_completed_items = 0
@@ -65,7 +50,6 @@ class parser(cmd.Cmd):
     progress_running = 0
     progress_skipped = 0
     progress_errors = 0
-
 
     logging = logging.getLogger('parser')
 
@@ -542,42 +526,6 @@ class parser(cmd.Cmd):
         print("\nDownload remote files to the current local folder\n")
         print("Usage: get <remote files or folders>\n")
 
-# -- 
-# TODO - wrap as a progress class ... ??? -> used by get, put and copy ...
-    def cb_get_progress_display(self, elapsed=None):
-        if elapsed is not None:
-            rate = float(self.get_bytes) / float(elapsed)
-            rate = rate / 1000000.0
-            speed = "%.1f MB/s            " % rate
-        else:
-            speed = "                                   "
-
-        progress_pc = 100.0 * float(self.get_bytes) / float(self.total_bytes)
-        self.print_over("progress=%3.1f%%: %d/%d files, errors=%d, skipped=%d, running=%d, rate=%s" % (progress_pc, self.get_count-self.get_errors, self.total_count, self.get_errors, self.get_skipped, self.get_running, speed))
-
-# --
-    def cb_get_done(self, future):
-        error = 0
-        skip = 0
-        try:
-            code = int(future.result())
-            if code < 0:
-                skip = 1
-        except Exception as e:
-            self.logging.error(str(e))
-            error = 1
-
-        with threading.Lock():
-            self.get_errors += error
-            self.get_skipped += skip
-            self.get_count += 1
-            self.get_running -= 1
-
-# --
-    def cb_get_progress(self, chunk):
-        with threading.Lock():
-            self.get_bytes += int(chunk)
-
 # --
     def do_get(self, line):
         if len(line) == 0:
@@ -588,98 +536,41 @@ class parser(cmd.Cmd):
         abspath = self.abspath(line)
 
         if remote is not None:
-            self.print_over("get: preparing... ")
             results = remote.get_iter(abspath)
-            self.total_count = int(next(results))
-            self.total_bytes = int(next(results))
-            self.get_count = 0
-            self.get_bytes = 0
-            self.get_errors = 0
-            self.get_running = 0
-            self.get_skipped = 0
-            start_time = time.time()
-            self.print_over("get: preparing %d files... " % self.total_count)
+            total_count = int(next(results))
+            total_bytes = int(next(results))
+
+            self.progress_start(total_count, total_bytes)
+
             try:
-                count = 0
 # define batch limit
                 batch_size = self.thread_max * 2 - 1
                 for remote_fullpath in results:
 # TODO - this needs a tweak so we don't get the intermediate directories ...
                     remote_relpath = posixpath.relpath(path=remote_fullpath, start=self.cwd)
                     local_filepath = os.path.join(os.getcwd(), remote_relpath)
-                    future = self.thread_executor.submit(remote.get, remote_fullpath, local_filepath, self.cb_get_progress)
-                    future.add_done_callback(self.cb_get_done)
-                    count += 1
-                    # CURRENT
-                    self.get_running += 1
+                    future = self.thread_executor.submit(remote.get, remote_fullpath, local_filepath, self.progress_byte_chunk)
+                    self.progress_item_add(future)
 
 # NEW - don't submit any more than the batch size - this allows for faster cleanup of threads
-                    submitted = count - self.get_count
-                    while submitted > batch_size:
-                        time.sleep(5)
-                        submitted = count - self.get_count
-                        elapsed = time.time() - start_time
-                        self.cb_get_progress_display(elapsed)
+                    self.progress_throttle(batch_size)
+
             except Exception as e:
-                self.logging.error("[%s] count = %d" % (str(e), count))
+                self.logging.error(str(e))
                 pass
 
-# NB: sometimes remote.get_iter() returns the wrong number for total_count ... I think it's an mflux eccentricity for files with no content
-# HACK - just set what we expect to download equal to the number of files actually submitted
-            self.total_count = count
-
-# wait until completed (cb_get does progress updates)
-            self.logging.info("Waiting for background downloads...")
-            while self.get_count < self.total_count:
-                time.sleep(5)
-                # CURRENT
-                elapsed = time.time() - start_time
-                self.cb_get_progress_display(elapsed)
-# newline
+# wait until completed 
+            self.progress_throttle()
             print("")
 
 # non-zero exit code on termination if there were any errors
-            if self.get_errors > 0:
-                raise Exception("get: download failed for %d file(s)" % self.get_errors)
+            if self.progress_errors > 0:
+                raise Exception("get: download failed for %d file(s)" % self.progress_errors)
 
 #------------------------------------------------------------
     def help_put(self):
         print("\nUpload local files or folders to the current folder on the remote server\n")
         print("Usage: put <file or folder>\n")
-
-# --
-    def cb_put_progress_display(self, elapsed=None):
-        if elapsed is not None:
-            rate = float(self.put_bytes) / float(elapsed)
-            rate = rate / 1000000.0
-            speed = "at %.2f MB/s            " % rate
-        else:
-            speed = "                                   "
-
-        progress_pc = 100.0 * float(self.put_bytes) / float(self.put_bytes_total)
-        self.print_over("put: %d/%d files, errors=%d, skipped=%d, progress: %3.1f%% %s" % (self.put_count-self.put_errors, self.put_count_total, self.put_errors, self.put_skipped, progress_pc, speed))
-
-# --
-    def cb_put_done(self, future):
-        error = 0
-        skip = 0
-        try:
-            code = int(future.result())
-            if code < 0:
-                skip = 1
-        except Exception as e:
-            self.logging.error(str(e))
-            error = 1
-
-        with threading.Lock():
-            self.put_errors += error
-            self.put_skipped += skip
-            self.put_count += 1
-
-# --
-    def cb_put_progress(self, chunk):
-        with threading.Lock():
-            self.put_bytes += int(chunk)
 
 # --
     def put_iter(self, line, metadata=False, setup=False):
@@ -733,53 +624,39 @@ class parser(cmd.Cmd):
         self.logging.info("[%s]" % line)
         remote = self.remote_active()
         try:
-            self.put_count = 0
-            self.put_bytes = 0
-            self.put_errors = 0
-            self.put_skipped = 0
-            start_time = time.time()
 
 # determine size of upload
             self.print_over("put: analysing...")
             results = self.put_iter(line, metadata=metadata, setup=True)
-            self.put_count_total = next(results)
-            self.put_bytes_total = next(results)
-            self.print_over("put: uploading %d files, size: %s" % (self.put_count_total, self.human_size(self.put_bytes_total)))
+            total_count = next(results)
+            total_bytes = next(results)
+
+            self.progress_start(total_count, total_bytes)
 
 # iterate over upload items
             results = self.put_iter(line, metadata=metadata)
 
-            count = 0
             batch_size = self.thread_max * 2 - 1
 
             for remote_fullpath, local_fullpath in results:
                 self.logging.info("put remote=[%s] local=[%s]" % (remote_fullpath, local_fullpath))
-                future = self.thread_executor.submit(jump_put, remote, remote_fullpath, local_fullpath, metadata=metadata, cb_progress=self.cb_put_progress)
-                future.add_done_callback(self.cb_put_done)
-                count += 1
+                future = self.thread_executor.submit(jump_put, remote, remote_fullpath, local_fullpath, metadata=metadata, cb_progress=self.progress_byte_chunk)
 
-                submitted = count - self.put_count
+                self.progress_item_add(future)
 
-                while submitted > batch_size:
-                    time.sleep(5)
-                    submitted = count - self.put_count
-                    elapsed = time.time() - start_time
-                    self.cb_put_progress_display(elapsed)
+                self.progress_throttle(batch_size)
+
 
         except Exception as e:
             self.logging.error(str(e))
             pass
 
 # wait until completed (cb_put does progress updates)
-        while self.put_count < count:
-            time.sleep(5)
-            elapsed = time.time() - start_time
-            self.cb_put_progress_display(elapsed)
-
+        self.progress_throttle()
         print("")
 
-        if self.put_errors > 0:
-            raise Exception("put: upload failed for %d file(s)" % self.put_errors)
+        if self.progress_errors > 0:
+            raise Exception("put: upload failed for %d file(s)" % self.progress_errors)
 
 #------------------------------------------------------------
     def help_cp(self):
@@ -845,8 +722,8 @@ class parser(cmd.Cmd):
 
 # TODO - progress call to trigger this
 # non-zero exit code on termination if there were any errors
-#        if self.get_errors > 0:
-#            raise Exception("copy: failed for %d file(s)" % self.get_errors)
+        if self.progress_errors > 0:
+            raise Exception("copy: failed for %d file(s)" % self.progress_errors)
 
 #------------------------------------------------------------
     def help_cd(self):
