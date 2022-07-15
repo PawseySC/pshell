@@ -41,6 +41,9 @@ class parser(cmd.Cmd):
     script_output = None
     thread_executor = None
     thread_max = 3
+
+
+# TODO - replace all these 
     get_count = 0
     get_errors = 0
     get_running = 0
@@ -54,6 +57,16 @@ class parser(cmd.Cmd):
     put_count_total = 0
     put_bytes = 0
     put_bytes_total = 0
+# TODO - with these
+    progress_total_items = 0
+    progress_total_bytes = 0
+    progress_completed_items = 0
+    progress_completed_bytes = 0
+    progress_running = 0
+    progress_skipped = 0
+    progress_errors = 0
+
+
     logging = logging.getLogger('parser')
 
 # --- initial setup 
@@ -289,7 +302,76 @@ class parser(cmd.Cmd):
         sys.stdout.flush()
 
 #------------------------------------------------------------
-# NEW - replaces both file and usage
+# TODO - can we cleanly separate thread executor (futures) stuff from the progress wrapper and then redo as class
+# thread-safe background task progress helpers for file transfers
+    def progress_start(self, total_items, total_bytes=0):
+        self.progress_total_items = total_items
+        self.progress_total_bytes = total_bytes
+        self.progress_completed_items = 0
+        self.progress_completed_bytes = 0
+        self.progress_running = 0
+        self.progress_skipped = 0
+        self.progress_errors = 0
+# long tail to cleanup any background task running/completed messages
+        self.print_over("Preparing %d files...                          " % total_items)
+        self.progress_start = time.time()
+
+#---
+    def progress_item_add(self, future):
+        future.add_done_callback(self.progress_item_completed)
+        with threading.Lock():
+            self.progress_running += 1
+
+#---
+    def progress_item_completed(self, future):
+        error = 0
+        skip = 0
+        try:
+            code = int(future.result())
+            if code < 0:
+                skip = 1
+        except Exception as e:
+            self.logging.error(str(e))
+            error = 1
+# update
+        with threading.Lock():
+            self.progress_completed_items += 1
+            self.progress_running -= 1
+            self.progress_skipped += skip
+            self.progress_errors += error
+
+#---
+    def progress_byte_chunk(self, chunk):
+        with threading.Lock():
+            self.progress_completed_bytes += int(chunk)
+
+#---
+    def progress_display(self):
+
+        elapsed = time.time() - self.progress_start
+
+        rate = float(self.progress_completed_bytes) / float(elapsed)
+        rate = rate / 1000000.0
+        progress_pc = 100.0 * float(self.progress_completed_bytes) / float(self.progress_total_bytes)
+
+        msg = "progress=%3.1f%%, " % progress_pc
+        msg+= "%d/%d files, " % (self.progress_completed_items-self.progress_errors, self.progress_total_items)
+        msg += "errors=%s, " % self.progress_errors
+        msg += "skipped=%s, " % self.progress_skipped
+        msg += "running=%s, " % self.progress_running
+        msg += "rate=%.2f MB/s                " % rate
+
+        self.print_over(msg)
+
+#---
+# size = 0 -> drain running to 0, else drain while running > size
+    def progress_throttle(self, size=0, wait=5):
+        while self.progress_running > size:
+            time.sleep(wait)
+            self.progress_display()
+
+
+#------------------------------------------------------------
     def help_info(self):
         print("\nReturn information for a remote file or folder\n")
         print("Usage: info <filename/folder>\n")
@@ -735,63 +817,36 @@ class parser(cmd.Cmd):
 
 # main call to get source, destination pairs for the copy
         results = remote.copy_iter(src, to_root)
-        self.total_count = int(next(results))
-        self.total_bytes = int(next(results))
+        total_items = int(next(results))
+        total_bytes = int(next(results))
 
-        if (self.total_count == 0):
-            raise Exception("No files to copy")
-        if (self.total_bytes == 0):
-            raise Exception("No data to copy")
-
-# FIXME - reusing get() parameters ...
-        self.get_count = 0
-        self.get_bytes = 0
-        self.get_errors = 0
-        self.get_running = 0
-        self.get_skipped = 0
-        start_time = time.time()
-        self.print_over("copy: preparing %d files... " % self.total_count)
-
+# TODO - make this raise an exception (nothing to do) if no items and/or bytes
+        self.progress_start(total_items, total_bytes)
         try:
-            count = 0
-# define batch limit
             batch_size = self.thread_max * 2 - 1
-
             for src, dest in results:
-                future = self.thread_executor.submit(remote.copy, src, to[0], dest, cb_progress=self.cb_get_progress)
-                future.add_done_callback(self.cb_get_done)
-                count += 1
-                # CURRENT
-                self.get_running += 1
+                future = self.thread_executor.submit(remote.copy, src, to[0], dest, cb_progress=self.progress_byte_chunk)
+                self.progress_item_add(future)
 
-# NEW - don't submit any more than the batch size - this allows for faster cleanup of threads
-                submitted = count - self.get_count
-                while submitted > batch_size:
-                    time.sleep(5)
-                    submitted = count - self.get_count
-                    elapsed = time.time() - start_time
-                    self.cb_get_progress_display(elapsed)
+# don't submit any more than the batch size - this allows for faster cleanup of threads
+                self.progress_throttle(size=batch_size)
 
         except Exception as e:
-            self.logging.error("[%s] count = %d" % (str(e), count))
+            self.logging.error(str(e))
             pass
-
-# NB: sometimes remote.get_iter() returns the wrong number for total_count ... I think it's an mflux eccentricity for files with no content
-# HACK - just set what we expect to download equal to the number of files actually submitted
-        self.total_count = count
 
 # wait until completed (cb_get does progress updates)
         self.logging.info("Waiting for background downloads...")
-        while self.get_count < self.total_count:
-            time.sleep(5)
-            elapsed = time.time() - start_time
-            self.cb_get_progress_display(elapsed)
+
+        self.progress_throttle()
+
 # newline
         print("")
 
+# TODO - progress call to trigger this
 # non-zero exit code on termination if there were any errors
-        if self.get_errors > 0:
-            raise Exception("copy: failed for %d file(s)" % self.get_errors)
+#        if self.get_errors > 0:
+#            raise Exception("copy: failed for %d file(s)" % self.get_errors)
 
 #------------------------------------------------------------
     def help_cd(self):
