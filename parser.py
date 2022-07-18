@@ -160,7 +160,6 @@ class parser(cmd.Cmd):
                 client = mfclient.mf_client.from_endpoint(endpoint)
             elif endpoint['type'] == 's3':
                 client = s3client.s3_client.from_endpoint(endpoint)
-
 # register in parser
             self.remotes[name] = client
 # get connection status
@@ -204,15 +203,11 @@ class parser(cmd.Cmd):
             self.config.set(self.config_name, 'remotes_home', home)
             with open(self.config_filepath, 'w') as f:
                 self.config.write(f)
-
         except Exception as e:
             self.logging.error("Could not connect to remote [%s]" % name)
 
 #------------------------------------------------------------
     def abspath(self, line):
-
-        self.logging.debug("in: [%s]" % line)
-
         if line.startswith('"') and line.endswith('"'):
             line = line[1:-1]
 # convert blank entry to cwd (which should have a trailing / for S3 reasons)
@@ -223,14 +218,10 @@ class parser(cmd.Cmd):
             path = posixpath.normpath(posixpath.join(self.cwd, line))
         else:
             path = posixpath.normpath(line)
-
 # enforce trailing / removed by normpath - important for S3 prefix handling
         if line.endswith('/') is True:
             if path.endswith('/') is False:
                 path = path+'/'
-
-        self.logging.debug("out: [%s]" % path)
-
         return path
 
 #------------------------------------------------------------
@@ -343,7 +334,7 @@ class parser(cmd.Cmd):
         msg += "errors=%s, " % self.progress_errors
         msg += "skipped=%s, " % self.progress_skipped
         msg += "running=%s, " % self.progress_running
-        msg += "rate=%.2f MB/s                " % rate
+        msg += "overall rate=%.2f MB/s                " % rate
 
         self.print_over(msg)
 
@@ -541,7 +532,6 @@ class parser(cmd.Cmd):
             total_bytes = int(next(results))
 
             self.progress_start(total_count, total_bytes)
-
             try:
 # define batch limit
                 batch_size = self.thread_max * 2 - 1
@@ -631,21 +621,15 @@ class parser(cmd.Cmd):
             total_count = next(results)
             total_bytes = next(results)
 
-            self.progress_start(total_count, total_bytes)
-
 # iterate over upload items
+            self.progress_start(total_count, total_bytes)
             results = self.put_iter(line, metadata=metadata)
-
             batch_size = self.thread_max * 2 - 1
-
             for remote_fullpath, local_fullpath in results:
                 self.logging.info("put remote=[%s] local=[%s]" % (remote_fullpath, local_fullpath))
                 future = self.thread_executor.submit(jump_put, remote, remote_fullpath, local_fullpath, metadata=metadata, cb_progress=self.progress_byte_chunk)
-
                 self.progress_item_add(future)
-
                 self.progress_throttle(batch_size)
-
 
         except Exception as e:
             self.logging.error(str(e))
