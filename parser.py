@@ -651,7 +651,7 @@ class parser(cmd.Cmd):
 #------------------------------------------------------------
 # use:  copy file/folder remote2:/abs/path
 # NB: the current remote must be MFLUX and the destination remote must be S3
-    def do_cp(self, line):
+    def do_cp(self, line, skip=True):
 
         remote = self.remote_active()
         try:
@@ -662,10 +662,12 @@ class parser(cmd.Cmd):
             to = uri.partition(":")
 
 # TODO - if remote doesn't exist -> may not be an issue -> really only need an s3.client.host
+# HOWEVER - if we're doing some form of S3 skip-if-exists we will need S3 remote object methods
             if to[0] in self.remotes:
                 to_remote = self.remotes[to[0]]
             else:
                 to_remote = None
+# TODO - if skip is true -> log that we can't do the existence check and set skip to false
 
             to_root = to[2]
 
@@ -680,16 +682,34 @@ class parser(cmd.Cmd):
         results = remote.copy_iter(src, to_root)
         total_items = int(next(results))
         total_bytes = int(next(results))
+# raise if nothing to do
+        if total_items == 0 or total_bytes == 0:
+            raise Exception("Nothing to copy")
 
-# TODO - make this raise an exception (nothing to do) if no items and/or bytes
+# start
         self.progress_start(total_items, total_bytes)
         try:
             batch_size = self.thread_max * 2 - 1
             for src, dest in results:
+
+# NEW - use info() to check if already exists
+                if skip is True:
+                    filename = posixpath.basename(src)
+                    remote_fullpath = posixpath.join(dest, filename)
+                    self.logging.info("check src=%s, dest=%s, remote_fullpath=%s" % (src, dest, remote_fullpath))
+# TODO - change to -> if skip is true
+                if to_remote is not None:
+                    exist_check = to_remote.info_iter(remote_fullpath)
+                    exist_count = int(next(exist_check))
+                    exist_size = int(next(exist_check))
+                    self.logging.info("count=%d, size=%d" % (exist_count, exist_size))
+# TODO - if count is not 0 -> already exists, so can skip ... 
+# NB: probably too expensive to get src size and compare ... should bake into original remote.copy_iter() if we want this
+
+
+# submit and throttle against the batch_size - allows for faster cleanup of threads (if cancelled)
                 future = self.thread_executor.submit(remote.copy, src, to[0], dest, cb_progress=self.progress_byte_chunk)
                 self.progress_item_add(future)
-
-# don't submit any more than the batch size - this allows for faster cleanup of threads
                 self.progress_throttle(size=batch_size)
 
         except Exception as e:
