@@ -43,6 +43,7 @@ class parser(cmd.Cmd):
     thread_max = 3
 
 # NEW - unified (get/put/cp) progress reporter
+    progress_start_time = 0
     progress_total_items = 0
     progress_total_bytes = 0
     progress_completed_items = 0
@@ -280,6 +281,7 @@ class parser(cmd.Cmd):
 # TODO - can we cleanly separate thread executor (futures) stuff from the progress wrapper and then redo as class
 # thread-safe background task progress helpers for file transfers
     def progress_start(self, total_items, total_bytes=0):
+
         self.progress_total_items = total_items
         self.progress_total_bytes = total_bytes
         self.progress_completed_items = 0
@@ -287,9 +289,11 @@ class parser(cmd.Cmd):
         self.progress_running = 0
         self.progress_skipped = 0
         self.progress_errors = 0
+
 # long tail to cleanup any background task running/completed messages
         self.print_over("Preparing %d files...                          " % total_items)
-        self.progress_start = time.time()
+# NEW - rename to something less silly...
+        self.progress_start_time = time.time()
 
 #---
     def progress_item_add(self, future):
@@ -323,7 +327,7 @@ class parser(cmd.Cmd):
 #---
     def progress_display(self):
 
-        elapsed = time.time() - self.progress_start
+        elapsed = time.time() - self.progress_start_time
 
         rate = float(self.progress_completed_bytes) / float(elapsed)
         rate = rate / 1000000.0
@@ -530,8 +534,8 @@ class parser(cmd.Cmd):
             results = remote.get_iter(abspath)
             total_count = int(next(results))
             total_bytes = int(next(results))
-
             self.progress_start(total_count, total_bytes)
+
             try:
 # define batch limit
                 batch_size = self.thread_max * 2 - 1
