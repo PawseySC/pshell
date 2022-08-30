@@ -6,6 +6,7 @@ Author: Sean Fleming
 """
 
 import os
+import json
 import math
 import urllib
 import fnmatch
@@ -23,6 +24,62 @@ try:
     ok=True
 except:
     ok=False
+
+
+
+# NEW - going to need some JSON policy creators (with tests)
+
+class s3_policy():
+    def __init__(self):
+
+        self.condition = None
+        self.hash_policy = {}
+
+        self.hash_policy['Id'] = 'Custom-Policy'
+        self.hash_policy['Statement'] = []
+
+# deprec
+        self.list_statement = []
+
+
+# populate statement list with existing bucket policy (if any)
+# RENAME? -> get_existing
+    def statement_get_existing(self, bucket, s3_client):
+        try:
+            print("%s -> %r" % (bucket, s3_client))
+
+            reply = s3_client.get_bucket_policy(Bucket=bucket)
+
+            self.hash_policy = json.loads(reply['Policy'])
+
+            print(" === existing policy")
+            print(self.hash_policy)
+            print(" === ")
+
+        except Exception as e:
+            print(str(e))
+            pass
+
+
+
+    def statement_new(self, sid='default'):
+        statement = {}
+
+ # TODO - timestamp?
+        statement['Sid'] = sid
+
+        self.hash_policy['Statement'].append(statement)
+
+        return statement
+
+
+
+    def get_json(self, indent=0):
+
+#        return(json.dumps(self.hash_policy))
+        return(json.dumps(self.hash_policy, indent=indent))
+
+
 
 #------------------------------------------------------------
 class s3_client():
@@ -277,36 +334,19 @@ class s3_client():
             fullpath += '/'
         self.logging.debug("input fullpath=[%s]" % fullpath)
         bucket,prefix,key = self.path_convert(fullpath)
+        self.logging.debug("bucket=[%s] prefix=[%s]" % (bucket, prefix))
 # check for existence
-        exists = False
-        try:
-            if bucket is None:
-# root level
-                exists = True
-            else:
-# bucket level
-                if prefix == "":
-                    response = self.s3.list_buckets()
-                    for item in response['Buckets']:
-                        if item['Name'] == bucket:
-                            exists = True
-# prefix (subdir) levels
-                else:
-                    self.logging.debug("bucket=[%s] prefix=[%s]" % (bucket, prefix))
-                    response = self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
-# if the path contains objects or prefixes then it is valid
-                    if 'Contents' in response:
-                        exists = True
-                    if 'CommonPrefixes' in response:
-                        exists = True
-
-        except Exception as e:
-            self.logging.error(str(e))
-
-# return path (for setting cwd) if exists
-        if exists is True:
-            self.logging.debug("output fullpath=[%s]" % fullpath)
+        if bucket is None:
+            # root level
             return fullpath
+        else:
+            try:
+# if a list_objects generates no exception - return as valid path
+                response = self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
+                return fullpath
+
+            except Exception as e:
+                self.logging.debug(str(e))
 
         raise Exception("Could not find remote path: [%s]" % fullpath)
 
@@ -577,6 +617,19 @@ class s3_client():
                     count, size = self.bucket_size(bucket)
                     yield "%20s : %s" % ('objects', count)
                     yield "%20s : %s" % ('size', self.human_size(size))
+# NEW - show policy (if any)
+# NB: generates an error (exception) if no policy exists
+                    try:
+                        response = self.s3.get_bucket_policy(Bucket=bucket)
+
+                        yield " === Policy === "
+# NEW
+                        hash_policy = json.loads(response['Policy'])
+                        yield json.dumps(hash_policy, indent=4)
+
+
+                    except Exception as e:
+                        yield "No policy on bucket"
                 else:
 # nothing specified - project summary
                     yield "%20s : %s" % ('type', 'project')
@@ -611,9 +664,110 @@ class s3_client():
                 yield "%20s : %s" % (item, response['ResponseMetadata']['HTTPHeaders'][item])
 
 #------------------------------------------------------------
+    def policy_bucket_get(self, bucket, perm, users, policy=None):
+
+        print("bucket=%s, perm=%s, users=%r" % (bucket, perm, users))
+
+# TODO - split users on , ==> list of users to apply against
+
+        if policy is None:
+            policy = s3_policy()
+
+# expect multiple users to be comma separated
+        list_users = users.split(',')
+
+        print("IN")
+        print(policy.hash_policy['Statement'])
+
+        principal = [ 'arn:aws:iam:::user/%s' % user.strip() for user in list_users]
+        print(principal)
+
+# TODO - removing arbitrary principle entries from a policy is a fair bit of work to do properly 
+        if perm == '-':
+            raise Exception("Not supported")
+
+        statement = policy.statement_new('sid1')
+# project ref
+#        statement['Principal'] = {'AWS': ['arn:aws:iam::0519d807c3a549c0b73cdc8244d6a0c5:']} 
+
+# +r,-r +w,-w -> translates
+        if '-' in perm:
+            statement['Effect'] = 'Deny'
+        elif '+' in perm:
+            statement['Effect'] = 'Allow'
+        else:
+            raise Exception("Unknown permission string=%s" % perm)
+
+        statement['Principal'] = {'AWS': principal}
+
+        if 'r' in perm:
+            statement['Action'] = ["s3:ListBucket", "s3:GetObject"]
+
+# TODO - technically should omit the 'r' perms...
+        if 'w' in perm:
+            statement['Action'] = ["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+
+        statement['Resource'] = [ 'arn:aws:s3:::%s' % bucket, 'arn:aws:s3:::%s/*' % bucket ]
+
+        return(policy.get_json())
+
+#------------------------------------------------------------
+#    def policy_bucket_set(self, bucket, perm, users=None):
+    def policy_bucket_set(self, text):
+
+        args = text.split(" ", 3)
+        nargs = len(args)
+        bucket = args[1]
+        perm = args[2]
+        try:
+            users=args[3]
+        except:
+            users='*'
+            pass
+
+        print("bucket=%s, perm=%s, users=%r" % (bucket, perm, users))
+
+# TODO - if users NOT none -> only remove policy for this user ...
+        if perm == '-' and (users is None or users == '*'):
+            print("Deleting all policies on bucket=%s" % bucket)
+            self.s3.delete_bucket_policy(Bucket=bucket)
+            return
+        else:
+            print("TODO - Setting bucket=%s, perm=%s" % (bucket, perm))
+
+
+# use as base ...
+        p = s3_policy()
+        p.statement_get_existing(bucket, self.s3)
+        text = self.policy_bucket_get(bucket, perm, users, policy=p)
+
+
+# APPLY
+        self.s3.put_bucket_policy(Bucket=bucket, Policy=text)
+
+        return(text)
+
+
+# you must specify a region ...
+# CURRENT - these seem broken in our CEPH deployment 
+#        client = boto3.client('sts', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, region_name='')
+#        print("STS ok")
+#        iam_client = boto3.client('iam', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, region_name='')
+#        print("IAM ok")
+#        response = iam_client.get_account_summary()
+#        print(response)
+
+#------------------------------------------------------------
     def command(self, text):
         """
         Default passthrough method
         """
-        raise Exception("Unsupported S3 command: %s" % text)
 
+        print("S3 PASSTHRU...")
+
+        if text.startswith("policy"):
+            policy = self.policy_bucket_set(text)
+            return
+
+
+        raise Exception("Bad or unsupported S3 command: %s" % text)

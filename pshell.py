@@ -93,10 +93,10 @@ def main():
                 if args.current == 'pawsey':
                     endpoints['portal'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'ivec'}
                     endpoints['public'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'public'}
-                    endpoints['private'] = {'type':'s3', 'url':'https://projects.pawsey.org.au'}
+# projects.pawsey.org.au did not work as an endpoint on setonix, but acacia.pawsey.org.au worked fine
+                    endpoints['private'] = {'type':'s3', 'url':'https://acacia.pawsey.org.au'}
                     remotes_home = '/projects'
                     remotes_current = 'portal'
-
 # store endpoints in config
                     config[args.current] = {'endpoints':json.dumps(endpoints)}
                 else:

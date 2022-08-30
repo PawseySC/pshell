@@ -115,9 +115,18 @@ class s3client_new(unittest.TestCase):
         global s3_client
         self.s3_client = s3_client
 
-    def test_completion_bucket(self):
-        reply = self.s3_client.completion_match("/", "buc", 0, "bucket1")
-        self.assertEqual(reply, "bucket1")
+    def test_policy_get(self):
+        reply = self.s3_client.policy_bucket_get("bucket", "+r", "user1")
+        self.assertEqual(reply, '{"Id": "Custom-Policy", "Statement": [{"Effect": "Allow", "Principal": {"AWS": ["arn:aws:iam:::user/user1"]}, "Action": ["s3:ListBucket", "s3:GetObject"], "Resource": ["arn:aws:s3:::bucket/*"]}]}')
+
+        reply = self.s3_client.policy_bucket_get("bucket", "+r", "user1, user2")
+        self.assertEqual(reply, '{"Id": "Custom-Policy", "Statement": [{"Effect": "Allow", "Principal": {"AWS": ["arn:aws:iam:::user/user1", "arn:aws:iam:::user/user2"]}, "Action": ["s3:ListBucket", "s3:GetObject"], "Resource": ["arn:aws:s3:::bucket/*"]}]}')
+
+
+        reply = self.s3_client.policy_bucket_get("bucket", "+w", "user1")
+        reply = self.s3_client.policy_bucket_get("bucket", "+w", "user1, user2")
+
+# TODO - asserts ...
 
 
 #------------------------------------------------------------
@@ -137,8 +146,8 @@ if __name__ == '__main__':
 
 
 # classes to test
-    test_class_list = [s3client_standard]
-#    test_class_list = [s3client_new]
+#    test_class_list = [s3client_standard]
+    test_class_list = [s3client_new]
 
 # build suite
     suite_list = []
