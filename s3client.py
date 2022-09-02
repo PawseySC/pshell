@@ -27,39 +27,82 @@ try:
 except:
     ok=False
 
-
 #------------------------------------------------------------
 # TODO - implement some testing methods for the JSON policy creators
 class s3_policy():
-    def __init__(self):
-        self.condition = None
+    def __init__(self, bucket, s3_client=None):
+        self.bucket = bucket
         self.hash_policy = {}
-        self.hash_policy['Id'] = 'generated-policy'
-        self.hash_policy['Statement'] = []
-
-# --- populate policy dict with existing bucket policy (if any)
-    def statement_get_existing(self, bucket, s3_client):
+# init IAM owner
+        try:
+            reply = s3_client.get_bucket_acl(Bucket=bucket)
+            owner = reply['Owner']['ID']
+            if len(owner) > 20 and all(c in string.hexdigits for c in owner):
+                self.iam_owner = 'arn:aws:iam::%s:root' % owner
+            else:
+                self.iam_owner = 'arn:aws:iam:::user/%s' % owner
+        except:
+            self.iam_owner = 'unknown'
+            pass
+# init policy to existing bucket policy (if any)
         try:
             reply = s3_client.get_bucket_policy(Bucket=bucket)
             self.hash_policy = json.loads(reply['Policy'])
-        except Exception as e:
-            self.logging.debug(str(e))
+        except:
+            self.hash_policy['Id'] = 'generated-policy'
+            self.hash_policy['Statement'] = []
             pass
 
-# --- return a blank statement for manual population
-    def statement_new(self, sid=None):
+# --- construct and append a statement 
+    def statement_append(self, perm, users):
+
+#        print("bucket=%s, perm=%s, users=%r" % (self.bucket, perm, users))
+
+# expect multiple users to be comma separated
+        list_users = users.split(',')
+        principal = [ 'arn:aws:iam:::user/%s' % user.strip() for user in list_users]
+
+# TODO - removing arbitrary principle entries from a policy is a fair bit of work to do properly 
+# HOWEVER - can just a append a DENY (eg -r) policy and it will override as DENY > ALLOW
+        if perm == '-':
+            raise Exception("Not supported")
+
+# init with timestamped sid
         statement = {}
-# provide timestamp for sid if not specified
-        if sid is None:
-            sid = datetime.datetime.now().strftime('%Y%b%d_%X')
+        sid = datetime.datetime.now().strftime('%Y%b%d_%X')
         statement['Sid'] = sid
+
+# +r,-r +w,-w -> translations
+        if '-' in perm:
+            statement['Effect'] = 'Deny'
+        elif '+' in perm:
+            statement['Effect'] = 'Allow'
+# NB: ONLY for allow policies, also grant bucket owner the same permissions
+            principal.append(self.iam_owner)
+        else:
+            raise Exception("Unknown permission string=%s" % perm)
+
+        statement['Principal'] = {'AWS': principal}
+
+# NB: adding s3:* or s3:ListAllMyBuckets currently does NOT allow the user to list buckets ... although they can see the objects in the bucket
+        if 'r' in perm:
+            statement['Action'] = ["s3:ListBucket", "s3:GetObject"]
+
+# TODO - technically should omit the 'r' perms...
+        if 'w' in perm:
+            statement['Action'] = ["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+
+# TODO - not sure if we should include this...
+#        if '*' in perm:
+#            statement['Action'] = ["s3:*"]
+
+        statement['Resource'] = [ 'arn:aws:s3:::%s' % self.bucket, 'arn:aws:s3:::%s/*' % self.bucket ]
+
         self.hash_policy['Statement'].append(statement)
-        return statement
 
-# --- 
+
+# --- return in suitable form for setting
     def get_json(self, indent=0):
-
-#        return(json.dumps(self.hash_policy))
         return(json.dumps(self.hash_policy, indent=indent))
 
 
@@ -568,31 +611,6 @@ class s3_client():
         return count, size
 
 #------------------------------------------------------------
-# true if a project code, false if a user uid
-    def owner_is_project(self, owner_id):
-        if len(owner_id) > 20:
-            return all(c in string.hexdigits for c in owner_id)
-        return(False)
-
-#------------------------------------------------------------
-# return the IAM formatted owner (for policy building)
-    def bucket_iam_owner(self, bucket):
-
-        reply = self.s3.get_bucket_acl(Bucket=bucket)
-        print(reply)
-
-        owner = reply['Owner']['ID']
-
-        if self.owner_is_project(owner) is True:
-            iam_owner = 'arn:aws:iam::%s:root' % owner
-        else:
-            iam_owner = 'arn:aws:iam:::user/%s' % owner
-
-        print(iam_owner)
-
-        return iam_owner
-
-#------------------------------------------------------------
 # return the Display Name owner (for pretty printing)
     def bucket_owner(self, bucket):
         try:
@@ -626,17 +644,12 @@ class s3_client():
                     count, size = self.bucket_size(bucket)
                     yield "%20s : %s" % ('objects', count)
                     yield "%20s : %s" % ('size', self.human_size(size))
-# NEW - show policy (if any)
-# NB: generates an error (exception) if no policy exists
+# show policy (if any)
                     try:
                         response = self.s3.get_bucket_policy(Bucket=bucket)
-
                         yield " === Policy === "
-# NEW
                         hash_policy = json.loads(response['Policy'])
                         yield json.dumps(hash_policy, indent=4)
-
-
                     except Exception as e:
                         yield "No policy on bucket"
                 else:
@@ -673,69 +686,14 @@ class s3_client():
                 yield "%20s : %s" % (item, response['ResponseMetadata']['HTTPHeaders'][item])
 
 #------------------------------------------------------------
-    def policy_bucket_get(self, bucket, perm, users, policy=None):
-
-        print("bucket=%s, perm=%s, users=%r" % (bucket, perm, users))
-
-# TODO - split users on , ==> list of users to apply against
-
-        if policy is None:
-            policy = s3_policy()
-#        print(policy.hash_policy['Statement'])
-
-# expect multiple users to be comma separated
-        list_users = users.split(',')
-        principal = [ 'arn:aws:iam:::user/%s' % user.strip() for user in list_users]
-
-# TODO - removing arbitrary principle entries from a policy is a fair bit of work to do properly 
-# HOWEVER - can just a append a DENY (eg -r) policy and it will override as DENY > ALLOW
-
-        if perm == '-':
-            raise Exception("Not supported")
-
-        statement = policy.statement_new()
-
-# +r,-r +w,-w -> translates
-
-        if '-' in perm:
-            statement['Effect'] = 'Deny'
-        elif '+' in perm:
-            statement['Effect'] = 'Allow'
-
-# NB: for allow policies, also grant bucket owner the same permissions
-            principal.append(self.bucket_iam_owner(bucket))
-
-        else:
-            raise Exception("Unknown permission string=%s" % perm)
-
-        statement['Principal'] = {'AWS': principal}
-
-        if 'r' in perm:
-            statement['Action'] = ["s3:ListBucket", "s3:GetObject"]
-
-# TODO - technically should omit the 'r' perms...
-        if 'w' in perm:
-            statement['Action'] = ["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-
-
-# TESTING - upload into p0002-sfx ... permission denied (headobject) for project members
-        if '*' in perm:
-            statement['Action'] = ["s3:*"]
-
-
-
-
-        statement['Resource'] = [ 'arn:aws:s3:::%s' % bucket, 'arn:aws:s3:::%s/*' % bucket ]
-
-        return(policy.get_json())
-
-#------------------------------------------------------------
-#    def policy_bucket_set(self, bucket, perm, users=None):
     def policy_bucket_set(self, text):
-
+# process args
         args = text.split(" ", 3)
         nargs = len(args)
+
+# TODO - this should be a bucket + (optional) object reference ...
         bucket = args[1]
+
         perm = args[2]
         try:
             users=args[3]
@@ -743,37 +701,16 @@ class s3_client():
             users='*'
             pass
 
-        print("bucket=%s, perm=%s, users=%r" % (bucket, perm, users))
-
-# TODO - if users NOT none -> only remove policy for this user ...
+# remove all policies if - and no users specified
         if perm == '-' and (users is None or users == '*'):
             print("Deleting all policies on bucket=%s" % bucket)
             self.s3.delete_bucket_policy(Bucket=bucket)
-            return
         else:
-            print("TODO - Setting bucket=%s, perm=%s" % (bucket, perm))
-
-
-# use as base ...
-        p = s3_policy()
-        p.statement_get_existing(bucket, self.s3)
-        text = self.policy_bucket_get(bucket, perm, users, policy=p)
-
-
-# APPLY
-        self.s3.put_bucket_policy(Bucket=bucket, Policy=text)
-
-        return(text)
-
-
-# you must specify a region ...
-# CURRENT - these seem broken in our CEPH deployment 
-#        client = boto3.client('sts', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, region_name='')
-#        print("STS ok")
-#        iam_client = boto3.client('iam', endpoint_url=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, region_name='')
-#        print("IAM ok")
-#        response = iam_client.get_account_summary()
-#        print(response)
+# append required policy statement to existing policy (if any) and apply
+            print("Setting bucket=%s, perm=%s, for user(s)=%r" % (bucket, perm, users))
+            p = s3_policy(bucket, self.s3)
+            p.statement_append(perm, users)
+            self.s3.put_bucket_policy(Bucket=bucket, Policy=p.get_json())
 
 #------------------------------------------------------------
     def command(self, text):
@@ -781,11 +718,8 @@ class s3_client():
         Default passthrough method
         """
 
-        print("S3 PASSTHRU...")
-
         if text.startswith("policy"):
-            policy = self.policy_bucket_set(text)
+            self.policy_bucket_set(text)
             return
-
 
         raise Exception("Bad or unsupported S3 command: %s" % text)
