@@ -28,11 +28,10 @@ except:
     ok=False
 
 #------------------------------------------------------------
-# TODO - implement some testing methods for the JSON policy creators
 class s3_policy():
     def __init__(self, bucket, s3_client=None):
         self.bucket = bucket
-        self.hash_policy = {}
+        self.hash = {}
 # init IAM owner
         try:
             reply = s3_client.get_bucket_acl(Bucket=bucket)
@@ -47,10 +46,10 @@ class s3_policy():
 # init policy to existing bucket policy (if any)
         try:
             reply = s3_client.get_bucket_policy(Bucket=bucket)
-            self.hash_policy = json.loads(reply['Policy'])
+            self.hash = json.loads(reply['Policy'])
         except:
-            self.hash_policy['Id'] = 'generated-policy'
-            self.hash_policy['Statement'] = []
+            self.hash['Id'] = 'generated-policy'
+            self.hash['Statement'] = []
             pass
 
 # --- construct and append a statement 
@@ -98,13 +97,11 @@ class s3_policy():
 
         statement['Resource'] = [ 'arn:aws:s3:::%s' % self.bucket, 'arn:aws:s3:::%s/*' % self.bucket ]
 
-        self.hash_policy['Statement'].append(statement)
-
+        self.hash['Statement'].append(statement)
 
 # --- return in suitable form for setting
     def get_json(self, indent=0):
-        return(json.dumps(self.hash_policy, indent=indent))
-
+        return(json.dumps(self.hash, indent=indent))
 
 
 #------------------------------------------------------------
@@ -710,6 +707,9 @@ class s3_client():
             print("Setting bucket=%s, perm=%s, for user(s)=%r" % (bucket, perm, users))
             p = s3_policy(bucket, self.s3)
             p.statement_append(perm, users)
+
+#            print(p.get_json())
+
             self.s3.put_bucket_policy(Bucket=bucket, Policy=p.get_json())
 
 #------------------------------------------------------------

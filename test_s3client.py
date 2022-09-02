@@ -111,22 +111,32 @@ class s3client_standard(unittest.TestCase):
 #------------------------------------------------------------
 class s3client_new(unittest.TestCase):
 
-    def setUp(self):
-        global s3_client
-        self.s3_client = s3_client
+    def test_policy_read_allow(self):
+        policy = s3client.s3_policy("bucket")
+        policy.iam_owner = 'user4'
+        policy.statement_append("+r", "user1,user2, user3")
+        self.assertIn("'Effect': 'Allow', 'Principal': {'AWS': ['arn:aws:iam:::user/user1', 'arn:aws:iam:::user/user2', 'arn:aws:iam:::user/user3', 'user4']}, 'Action': ['s3:ListBucket', 's3:GetObject'], 'Resource': ['arn:aws:s3:::bucket', 'arn:aws:s3:::bucket/*']}]}", str(policy.hash))
 
-    def test_policy_get(self):
-        reply = self.s3_client.policy_bucket_get("bucket", "+r", "user1")
-        self.assertEqual(reply, '{"Id": "Custom-Policy", "Statement": [{"Effect": "Allow", "Principal": {"AWS": ["arn:aws:iam:::user/user1"]}, "Action": ["s3:ListBucket", "s3:GetObject"], "Resource": ["arn:aws:s3:::bucket/*"]}]}')
+    def test_policy_read_deny(self):
+        policy = s3client.s3_policy("bucket")
+        policy.statement_append("-r", "user1")
+        self.assertIn("'Effect': 'Deny', 'Principal': {'AWS': ['arn:aws:iam:::user/user1']}, 'Action': ['s3:ListBucket', 's3:GetObject'], 'Resource': ['arn:aws:s3:::bucket', 'arn:aws:s3:::bucket/*']}]}", str(policy.hash))
 
-        reply = self.s3_client.policy_bucket_get("bucket", "+r", "user1, user2")
-        self.assertEqual(reply, '{"Id": "Custom-Policy", "Statement": [{"Effect": "Allow", "Principal": {"AWS": ["arn:aws:iam:::user/user1", "arn:aws:iam:::user/user2"]}, "Action": ["s3:ListBucket", "s3:GetObject"], "Resource": ["arn:aws:s3:::bucket/*"]}]}')
+    def test_policy_write_allow(self):
+        policy = s3client.s3_policy("bucket")
+        policy.iam_owner = 'user4'
+        policy.statement_append("+w", "user1,user2, user3")
+        self.assertIn("'Effect': 'Allow', 'Principal': {'AWS': ['arn:aws:iam:::user/user1', 'arn:aws:iam:::user/user2', 'arn:aws:iam:::user/user3', 'user4']}, 'Action': ['s3:ListBucket', 's3:GetObject', 's3:PutObject', 's3:DeleteObject'], 'Resource': ['arn:aws:s3:::bucket', 'arn:aws:s3:::bucket/*']}]}", str(policy.hash))
 
+    def test_policy_write_deny(self):
+        policy = s3client.s3_policy("bucket")
+        policy.iam_owner = 'user2'
+        policy.statement_append("-w", "user1")
+        self.assertIn("'Effect': 'Deny', 'Principal': {'AWS': ['arn:aws:iam:::user/user1']}, 'Action': ['s3:ListBucket', 's3:GetObject', 's3:PutObject', 's3:DeleteObject'], 'Resource': ['arn:aws:s3:::bucket', 'arn:aws:s3:::bucket/*']}]}", str(policy.hash))
 
-        reply = self.s3_client.policy_bucket_get("bucket", "+w", "user1")
-        reply = self.s3_client.policy_bucket_get("bucket", "+w", "user1, user2")
+#        print(str(policy.hash))
 
-# TODO - asserts ...
+# TODO - policy on object tests ...
 
 
 #------------------------------------------------------------
