@@ -945,15 +945,17 @@ class parser(cmd.Cmd):
                 self.cmdloop()
 
             except KeyboardInterrupt:
-                print(" Interrupted. Cleaning up, please wait... ")
+                self.print_over(" Interrupting, please wait... ")
                 remote = self.remote_active()
 # signal running threads to terminate ...
+# TODO: implemented interrupting for mfclient, but not s3client ...
                 remote.polling(False)
 # wait until threads have terminated
                 self.thread_executor.shutdown()
 # start thread machinery back up
                 self.thread_executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_max)
                 remote.polling(True)
+                print("done ")
 
 # NB: here's where all command failures are caught
             except SyntaxError:
