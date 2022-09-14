@@ -102,15 +102,12 @@ class s3client_standard(unittest.TestCase):
     def test_completion_nomatch_string_overlap(self):
         reply = self.s3_client.completion_match("/bucket/", "popref", 0, "prefix/")
         self.assertEqual(reply, None)
-
-# TODO - not used yet
+        # FIXME - not used ...
     def test_completion_bucket(self):
         reply = self.s3_client.completion_match("/", "buc", 0, "bucket1")
         self.assertEqual(reply, "bucket1")
 
-#------------------------------------------------------------
-class s3client_new(unittest.TestCase):
-
+# NEW - S3 policy stuff
     def test_policy_read_allow(self):
         policy = s3client.s3_policy("bucket")
         policy.iam_owner = 'user4'
@@ -134,10 +131,10 @@ class s3client_new(unittest.TestCase):
         policy.statement_append("-w", "user1")
         self.assertIn("'Effect': 'Deny', 'Principal': {'AWS': ['arn:aws:iam:::user/user1']}, 'Action': ['s3:ListBucket', 's3:GetObject', 's3:PutObject', 's3:DeleteObject'], 'Resource': ['arn:aws:s3:::bucket', 'arn:aws:s3:::bucket/*']}]}", str(policy.hash))
 
-#        print(str(policy.hash))
-
-# TODO - policy on object tests ...
-
+#------------------------------------------------------------
+class s3client_new(unittest.TestCase):
+    def test_something(self):
+        print("TODO")
 
 #------------------------------------------------------------
 if __name__ == '__main__':
@@ -156,8 +153,8 @@ if __name__ == '__main__':
 
 
 # classes to test
-#    test_class_list = [s3client_standard]
-    test_class_list = [s3client_new]
+    test_class_list = [s3client_standard]
+#    test_class_list = [s3client_new]
 
 # build suite
     suite_list = []
