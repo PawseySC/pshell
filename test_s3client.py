@@ -123,13 +123,13 @@ class s3client_standard(unittest.TestCase):
         policy = s3client.s3_policy("bucket")
         policy.iam_owner = 'user4'
         policy.statement_append("+w", "user1,user2, user3")
-        self.assertIn("'Effect': 'Allow', 'Principal': {'AWS': ['arn:aws:iam:::user/user1', 'arn:aws:iam:::user/user2', 'arn:aws:iam:::user/user3', 'user4']}, 'Action': ['s3:ListBucket', 's3:GetObject', 's3:PutObject', 's3:DeleteObject'], 'Resource': ['arn:aws:s3:::bucket', 'arn:aws:s3:::bucket/*']}]}", str(policy.hash))
+        self.assertIn("'Effect': 'Allow', 'Principal': {'AWS': ['arn:aws:iam:::user/user1', 'arn:aws:iam:::user/user2', 'arn:aws:iam:::user/user3', 'user4']}, 'Action': ['s3:PutObject', 's3:DeleteObject'], 'Resource': ['arn:aws:s3:::bucket', 'arn:aws:s3:::bucket/*']}]}", str(policy.hash))
 
     def test_policy_write_deny(self):
         policy = s3client.s3_policy("bucket")
         policy.iam_owner = 'user2'
         policy.statement_append("-w", "user1")
-        self.assertIn("'Effect': 'Deny', 'Principal': {'AWS': ['arn:aws:iam:::user/user1']}, 'Action': ['s3:ListBucket', 's3:GetObject', 's3:PutObject', 's3:DeleteObject'], 'Resource': ['arn:aws:s3:::bucket', 'arn:aws:s3:::bucket/*']}]}", str(policy.hash))
+        self.assertIn("'Effect': 'Deny', 'Principal': {'AWS': ['arn:aws:iam:::user/user1']}, 'Action': ['s3:PutObject', 's3:DeleteObject'], 'Resource': ['arn:aws:s3:::bucket', 'arn:aws:s3:::bucket/*']}]}", str(policy.hash))
 
 #------------------------------------------------------------
 class s3client_new(unittest.TestCase):

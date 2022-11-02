@@ -86,10 +86,8 @@ class s3_policy():
 # NB: adding s3:* or s3:ListAllMyBuckets currently does NOT allow the user to list buckets ... although they can see the objects in the bucket
         if 'r' in perm:
             statement['Action'] = ["s3:ListBucket", "s3:GetObject"]
-
-# TODO - technically should omit the 'r' perms...
         if 'w' in perm:
-            statement['Action'] = ["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+            statement['Action'] = ["s3:PutObject", "s3:DeleteObject"]
 
 # TODO - not sure if we should include this...
 #        if '*' in perm:
