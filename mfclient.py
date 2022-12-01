@@ -32,7 +32,6 @@ from pathlib import PurePath
 class mf_client():
     """
     Base Mediaflux authentication and communication client
-    Parallel transfers are handled by multiprocessing (urllib2 and httplib are not thread-safe)
     All unexpected failures are handled by raising exceptions
     """
     def __init__(self, protocol="http", port="80", server="localhost", domain="system", encrypted_data=True):
@@ -422,10 +421,9 @@ class mf_client():
         boundary = ''.join(random.choice(string.digits + string.ascii_letters) for i in range(30))
         filename = os.path.basename(filepath)
 
-# if we get anything other than a single clear mimetype to use - default to generic
-        mimetype = mimetypes.guess_type(filepath, strict=True)
-        if len(mimetype) != 1:
-            mimetype = 'application/octet-stream'
+# NEW - always use generic upload mimetype - mflux will do its own analysis to record type
+#        mimetype = mimetypes.guess_type(filepath, strict=True)
+        mimetype = 'application/octet-stream'
 
 # multipart - request xml and file
         lines = []
