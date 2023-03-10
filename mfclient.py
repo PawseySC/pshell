@@ -1391,7 +1391,7 @@ class mf_client():
             local_parent = os.path.dirname(local_filepath)
             if os.path.exists(local_parent) is False:
                 self.logging.debug("Creating required local folder(s): [%s]" % local_parent)
-                os.makedirs(local_parent)
+                os.makedirs(local_parent, exist_ok=True)
 
 # download only when file is online 
             if self._wait_until_online(remote_filepath) is True:
