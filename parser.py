@@ -647,15 +647,16 @@ class parser(cmd.Cmd):
             raise Exception("put: upload failed for %d file(s)" % self.progress_errors)
 
 #------------------------------------------------------------
-    def help_cp(self):
-        print("\nCopy folders/files from the current remote to a folder in a different remote.")
-        print("Currently only supports copying data from Mediaflux to S3\n")
-        print("Usage: cp <folder/file> acacia:/folder\n")
-
+#    def help_cp(self):
+#        print("\nCopy folders/files from the current remote to a folder in a different remote.")
+#        print("Currently only supports copying data from Mediaflux to S3\n")
+#        print("Usage: cp <folder/file> acacia:/folder\n")
 #------------------------------------------------------------
 # use:  copy file/folder remote2:/abs/path
 # NB: the current remote must be MFLUX and the destination remote must be S3
-    def do_cp(self, line, skip=True):
+#    def do_cp(self, line, skip=True):
+# CURRENT - WIP
+    def todo_cp(self, line, skip=True):
 
         remote = self.remote_active()
         try:
