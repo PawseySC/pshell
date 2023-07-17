@@ -1,5 +1,4 @@
 
-
 ### Current
 
 Just use build_release -> zip source bundle and require users to install >= python 3.6 on whatever platform they're on
