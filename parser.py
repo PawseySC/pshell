@@ -329,6 +329,12 @@ class parser(cmd.Cmd):
 
         elapsed = time.time() - self.progress_start_time
 
+# avoid naughtiness
+        if elapsed == 0:
+            elapsed = 1
+        if self.progress_total_bytes == 0:
+            self.progress_total_bytes = 1
+
         rate = float(self.progress_completed_bytes) / float(elapsed)
         rate = rate / 1000000.0
         progress_pc = 100.0 * float(self.progress_completed_bytes) / float(self.progress_total_bytes)
