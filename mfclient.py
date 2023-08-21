@@ -1601,14 +1601,15 @@ class mf_client():
         """
         self.logging.debug("import_metadata() [%s] : [%s]" % (remote_filepath, filepath))
 
-# get asset_id from remote_filepath
-        xml_reply = self.aterm_run('asset.get :id "path=%s"' % remote_filepath)
-        elem = xml_reply.find(".//asset")
-        asset_id = int(elem.attrib['id'])
+        try:
 
+# FIXME - if remote_filepath is a namespace - this will be an error, not sure why this happens but can be ignored
+# get asset_id from remote_filepath
+            xml_reply = self.aterm_run('asset.get :id "path=%s"' % remote_filepath)
+            elem = xml_reply.find(".//asset")
+            asset_id = int(elem.attrib['id'])
 #        print("asset id = %r" % asset_id)
 
-        try:
             config = configparser.ConfigParser()
             config.read(filepath)
 # section -> xmlns
