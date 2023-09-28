@@ -1425,7 +1425,7 @@ class mf_client():
         raise Exception("Download failed for: %s" % remote_filepath)
 
 #------------------------------------------------------------
-    def put(self, namespace, filepath, cb_progress=None, overwrite=True):
+    def put(self, namespace, filepath, cb_progress=None, metadata=False, overwrite=True):
         """
         Creates a new asset on the Mediaflux server and uploads from a local filepath to supply its content
 
@@ -1433,6 +1433,7 @@ class mf_client():
             namespace: a STRING representing the remote destination in which to create the asset
              filepath: a STRING giving the absolute path and name of the local file
           cb_progress: a FUNCTION which may be repeatedly called with a single argument for the number of bytes (non-cummulative) successfully sent 
+             metadata: a BOOLEAN indicating that filepath plus ".meta" should contain metadata
             overwrite: a BOOLEAN indicating action if remote copy exists
 
         Returns:
@@ -1448,7 +1449,7 @@ class mf_client():
         namespace = self._xml_sanitise(namespace)
         remotepath = posixpath.join(namespace, filename)
 
-# find asset ID if exists, else create
+# find asset ID if exists, else create (will have empty content)
         result = self.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
         xml_id = result.find(".//id")
         if xml_id is None:
@@ -1456,6 +1457,8 @@ class mf_client():
 # NB: must create intermediate directories if they don't exist (mediaflux won't do it by default)
             reply = self.aterm_run('asset.create :namespace -create "true" %s :name %s' % (namespace, filename))
             xml_id = reply.find(".//id")
+# didn't exist - so enforce writing
+            overwrite=True
         else:
 # NB: assets with no content can have either the root element or the text set to None
             remote_size = 0
@@ -1471,13 +1474,16 @@ class mf_client():
             else:
                 self.logging.debug("Mismatch; local=%r -> remote=%r" % (local_size, remote_size))
 
+# if overwrite - do the upload
         asset_id = int(xml_id.text)
-        # NB: create=true to generate intermediate directories (if needed)
         if overwrite is True:
             self.logging.debug("Uploading asset=%d: [%s] -> [%s]" % (asset_id, filepath, remotepath))
+# NB: create=true to generate intermediate directories (if needed)
             xml_string = '<request><service name="service.execute" session="%s"><args><service name="asset.set">' % self.session
             xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
             asset_id = self._post_multipart_buffered(xml_string, filepath, cb_progress=cb_progress)
+            if metadata is True:
+                self.import_metadata(asset_id, filepath + ".meta")
 
         return(0)
 
@@ -1592,24 +1598,18 @@ class mf_client():
         return result
 
 #------------------------------------------------------------
-# TODO - verify this still works with the changed argument
-#    def import_metadata(self, asset_id, filepath):
-    def import_metadata(self, remote_filepath, filepath):
+    def import_metadata(self, asset_id, filepath):
         """
         populate metadata for an asset using INI style file
         the section is the xml document namespace and options are flat element node + values
         """
-        self.logging.debug("import_metadata() [%s] : [%s]" % (remote_filepath, filepath))
+
+        self.logging.debug("import_metadata() [asset ID=%s] : [%s]" % (asset_id, filepath))
+        if os.path.isfile(filepath) is False:
+            self.logging.warning("Missing metadata file: %s" % filepath)
+            return
 
         try:
-
-# FIXME - if remote_filepath is a namespace - this will be an error, not sure why this happens but can be ignored
-# get asset_id from remote_filepath
-            xml_reply = self.aterm_run('asset.get :id "path=%s"' % remote_filepath)
-            elem = xml_reply.find(".//asset")
-            asset_id = int(elem.attrib['id'])
-#        print("asset id = %r" % asset_id)
-
             config = configparser.ConfigParser()
             config.read(filepath)
 # section -> xmlns
@@ -1632,7 +1632,7 @@ class mf_client():
                     if xml_item is not None:
                         xml_item.text = config.get(section, option)
 # DEBUG
-#            self.mf_client.xml_print(xml_root)
+#            self.xml_print(xml_root)
 
 # construct the command
             xml_command = 'asset.set :id %d' % asset_id

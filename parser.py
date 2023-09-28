@@ -19,16 +19,6 @@ import mfclient
 import s3client
 
 #------------------------------------------------------------
-# CURRENT - this can't be replaced by a direct call yet due to the metadata stuff
-def jump_put(remote, remote_fullpath, local_fullpath, metadata=False, cb_progress=None):
-    code = remote.put(remote_fullpath, local_fullpath, cb_progress=cb_progress)
-    if metadata:
-        metadata_filepath = local_fullpath+".meta"
-        if os.path.isfile(metadata_filepath):
-            remote.import_metadata(remote_fullpath, metadata_filepath)
-    return code
-
-#------------------------------------------------------------
 class parser(cmd.Cmd):
     config = None
     config_name = None
@@ -636,8 +626,7 @@ class parser(cmd.Cmd):
             results = self.put_iter(line, metadata=metadata)
             batch_size = self.thread_max * 2 - 1
             for remote_fullpath, local_fullpath in results:
-                self.logging.info("put remote=[%s] local=[%s]" % (remote_fullpath, local_fullpath))
-                future = self.thread_executor.submit(jump_put, remote, remote_fullpath, local_fullpath, metadata=metadata, cb_progress=self.progress_byte_chunk)
+                future = self.thread_executor.submit(remote.put, remote_fullpath, local_fullpath, cb_progress=self.progress_byte_chunk, metadata=metadata)
                 self.progress_item_add(future)
                 self.progress_throttle(batch_size)
 
