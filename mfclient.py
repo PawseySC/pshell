@@ -420,11 +420,8 @@ class mf_client():
         pid = os.getpid()
         boundary = ''.join(random.choice(string.digits + string.ascii_letters) for i in range(30))
         filename = os.path.basename(filepath)
-
-# NEW - always use generic upload mimetype - mflux will do its own analysis to record type
-#        mimetype = mimetypes.guess_type(filepath, strict=True)
+# default
         mimetype = 'application/octet-stream'
-
 # multipart - request xml and file
         lines = []
         lines.extend(('--%s' % boundary, 'Content-Disposition: form-data; name="request"', '', str(xml),))
@@ -538,6 +535,7 @@ class mf_client():
         if input_line[-1:] == '&':
             background = True
             input_line = input_line[:-1]
+            self.logging.info("running in background: [%s]" % input_line)
 
 # use posix=True as it's the closest to how aterm processes input strings
 # encoding the line (which is a str) creates an object with no read() method
