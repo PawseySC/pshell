@@ -18,6 +18,10 @@ import xml.etree.ElementTree as ET
 import mfclient
 import s3client
 
+# CURRENT
+import keystone
+import urllib
+
 #------------------------------------------------------------
 class parser(cmd.Cmd):
     config = None
@@ -151,6 +155,74 @@ class parser(cmd.Cmd):
                 client = mfclient.mf_client.from_endpoint(endpoint)
             elif endpoint['type'] == 's3':
                 client = s3client.s3_client.from_endpoint(endpoint)
+
+# NEW - keystone S3 ... technically should probably be 'os-ec2' but ks3 is catchier
+            elif endpoint['type'] == 'ks3':
+
+                print("url = %s" % endpoint['url'])
+
+                print("keystone authentication")
+                ks = keystone.keystone(endpoint['url']+":5000")
+                ks.connect()
+
+# CURRENT - technically would prefer to discover existing credentials ... but getting an internal server error -> exception
+# this bails on the whole thing ... can try/except later but for now just create new creds on a new remote addition
+
+                # this should always work
+                print("keystone discovery")
+                ks.get_projects()
+                cflag=False
+
+#                for credential in ks.credential_list:
+#                    if credential['tenant_id'] == name:
+#                        print("FOUND - access=%s" % credential['access'])
+#                        cflag = True
+#                        endpoint['access'] = credential['access']
+#                        endpoint['secret'] = credential['secret']
+
+
+                if cflag is False:
+                    print("creating new credentials ...")
+
+                    if name in ks.project_dict.keys():
+
+                        project_id = ks.project_dict[name]
+
+# TODO - re-use existing credentials (if any)
+
+                        print("Found project=%s with id=%s ... creating credentials ..." % (name, project_id))
+
+                        data = json.dumps({ "tenant_id": project_id })
+                        headers = {"Accept": "application/json", "Content-type": "application/json", "X-Auth-Token": ks.token }
+                        url = "%s/v3/users/%s/credentials/OS-EC2" % (ks.url, ks.user)
+                        request = urllib.request.Request(url, data=data.encode(), headers=headers, method="POST")
+                        response = urllib.request.urlopen(request)
+                        reply = response.read()
+                        credential = json.loads(reply)
+
+                        print(credential)
+
+# This can be a list ...
+
+                        endpoint['access'] = credential['credential']['access']
+                        endpoint['secret'] = credential['credential']['secret']
+
+                        print("creating S3 remote")
+
+                    else:
+                        raise Exception("Failed to find project [%s]" % name)
+
+# voyage of self-discovery is over ...
+
+                print("Adding remote [%s] ..." % name)
+                client = s3client.s3_client.from_endpoint(endpoint)
+
+
+            else:
+                raise Exception("Unknown endpoint type")
+
+
+
 # register in parser
             self.remotes[name] = client
 # get connection status

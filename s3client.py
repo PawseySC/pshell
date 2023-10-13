@@ -474,7 +474,7 @@ class s3_client():
         return(0)
 
 #------------------------------------------------------------
-    def put(self, remote_path, local_filepath, cb_progress=None):
+    def put(self, remote_path, local_filepath, cb_progress=None, metadata=False):
         bucket,prefix,key = self.path_convert(remote_path+'/')
         filename = os.path.basename(local_filepath)
         fullkey = posixpath.join(prefix, filename)
