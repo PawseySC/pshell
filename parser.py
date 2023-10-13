@@ -149,6 +149,7 @@ class parser(cmd.Cmd):
 #------------------------------------------------------------
     def remote_add(self, name, endpoint):
         try:
+            client = None
             self.logging.debug("remote: [%s] endpoint: %r" % (name, endpoint))
 # create client
             if endpoint['type'] == 'mflux':
@@ -158,18 +159,13 @@ class parser(cmd.Cmd):
 
 # NEW - keystone S3 ... technically should probably be 'os-ec2' but ks3 is catchier
             elif endpoint['type'] == 'ks3':
-
-                print("url = %s" % endpoint['url'])
-
-                print("keystone authentication")
+                self.logging.info("Authenticating to keystone, url=%s:5000" % endpoint['url'])
                 ks = keystone.keystone(endpoint['url']+":5000")
                 ks.connect()
 
 # CURRENT - technically would prefer to discover existing credentials ... but getting an internal server error -> exception
 # this bails on the whole thing ... can try/except later but for now just create new creds on a new remote addition
-
-                # this should always work
-                print("keystone discovery")
+                self.logging.info("Querying keystone...")
                 ks.get_projects()
                 cflag=False
 
@@ -180,18 +176,11 @@ class parser(cmd.Cmd):
 #                        endpoint['access'] = credential['access']
 #                        endpoint['secret'] = credential['secret']
 
-
                 if cflag is False:
-                    print("creating new credentials ...")
-
                     if name in ks.project_dict.keys():
-
                         project_id = ks.project_dict[name]
-
+                        self.logging.info("Creating new credentials for project name=%s, id=%s" % (name, project_id))
 # TODO - re-use existing credentials (if any)
-
-                        print("Found project=%s with id=%s ... creating credentials ..." % (name, project_id))
-
                         data = json.dumps({ "tenant_id": project_id })
                         headers = {"Accept": "application/json", "Content-type": "application/json", "X-Auth-Token": ks.token }
                         url = "%s/v3/users/%s/credentials/OS-EC2" % (ks.url, ks.user)
@@ -199,38 +188,23 @@ class parser(cmd.Cmd):
                         response = urllib.request.urlopen(request)
                         reply = response.read()
                         credential = json.loads(reply)
-
-                        print(credential)
-
-# This can be a list ...
-
+# FIXME - This can be a list ...
                         endpoint['access'] = credential['credential']['access']
                         endpoint['secret'] = credential['credential']['secret']
-
-                        print("creating S3 remote")
-
                     else:
                         raise Exception("Failed to find project [%s]" % name)
 
 # voyage of self-discovery is over ...
-
-                print("Adding remote [%s] ..." % name)
                 client = s3client.s3_client.from_endpoint(endpoint)
-
-
             else:
-                raise Exception("Unknown endpoint type")
+                raise Exception("Unknown endpoint type=%s" % endpoint['type'])
 
-
-
-# register in parser
-            self.remotes[name] = client
-# get connection status
-# TODO - if this returns False ... we are not connected so disallow anything but login
-# technically, should distinguish between not connected/authenticated and unreachable
-#            client.connect()
-
-# register in config
+# if configured successfully, register in hash table
+            if client is not None:
+                self.remotes[name] = client
+            else:
+                raise Exception("Failed to configure remote client.")
+# save in config
             if self.config is not None:
                 endpoints = json.loads(self.config.get(self.config_name, 'endpoints'))
                 endpoints[name] = client.endpoint()

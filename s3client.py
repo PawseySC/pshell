@@ -59,7 +59,12 @@ class s3_policy():
 
 # expect multiple users to be comma separated
         list_users = users.split(',')
+
+# OLD way - only good for users (not projects)
         principal = [ 'arn:aws:iam:::user/%s' % user.strip() for user in list_users]
+# TODO - testing ... this method allows for project IDs as well as users to be added, but is different from the documented method ...
+#        principal = [ 'arn:aws:iam::%s' % user.strip() for user in list_users]
+
 
 # TODO - removing arbitrary principle entries from a policy is a fair bit of work to do properly 
 # HOWEVER - can just a append a DENY (eg -r) policy and it will override as DENY > ALLOW
