@@ -6,6 +6,7 @@ cp pshell.py release/__main__.py
 cp parser.py release/parser.py
 cp mfclient.py release/mfclient.py
 cp s3client.py release/s3client.py
+cp keystone.py release/keystone.py
 
 # stamp
 # METHOD 1 - today's date (preferred as really want an overall build indicator)
@@ -17,7 +18,7 @@ cd release
 sed -i tmp -e 's/^build.*$/build="'$d'"/' __main__.py
 
 # build
-zip pshell.zip __main__.py parser.py mfclient.py s3client.py
+zip pshell.zip __main__.py parser.py mfclient.py s3client.py keystone.py
 echo "#!/usr/bin/env python3" > pshell
 cat pshell.zip >> pshell
 chmod u+x pshell
@@ -28,5 +29,6 @@ rm __main__.py
 rm parser.py
 rm mfclient.py
 rm s3client.py
+rm keystone.py
 rm *.pytmp
 
