@@ -452,6 +452,18 @@ class s3_client():
                 if fnmatch.fnmatch(item['Key'], key_pattern):
                     yield "/%s/%s" % (bucket, item['Key'])
 
+# === WORKING EXAMPLE
+    def smart_open_get(self, remote_filepath, local_filepath=None, cb_progress=None):
+        import smart_open
+        print("get() -> smart_open() -> OPEN: %s" % remote_filepath)
+# NB: 1st argument needs to strictly conform to s3://bucket/key
+# eg if remote filepath is relative (ie no leading slash) this will likely fail...
+        fin = smart_open.open('s3:/%s' % remote_filepath, transport_params=dict(client=self.s3))
+        print("get() -> smart_open() -> READ: %r" % fin)
+        for line in fin:
+            print(line)
+        return(0)
+
 #------------------------------------------------------------
     def get(self, remote_filepath, local_filepath=None, cb_progress=None):
 
