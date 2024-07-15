@@ -1092,7 +1092,7 @@ class mf_client():
         if 'and name' not in query:
             raise Exception("Use rmdir for folders")
 
-        reply = self.aterm_run('asset.query :where "%s" :action count' % query)
+        reply = self.aterm_run('asset.query %s :action count' % query)
         elem = reply.find(".//value")
         count = int(elem.text)
         if count == 0:
@@ -1102,11 +1102,10 @@ class mf_client():
             if prompt("Delete %d files (y/n): " % count) is False:
                 return False
         self.logging.info("Destroy confirmed.")
-        self.aterm_run('asset.query :where "%s" :action pipe :service -name asset.destroy' % query)
+        self.aterm_run('asset.query %s :action pipe :service -name asset.destroy' % query)
         return True
 
 #------------------------------------------------------------
-# TODO - fullpath can be a namespace or pattern ...
     def info_iter(self, fullpath):
         """
         information on a named file or folder
@@ -1128,8 +1127,10 @@ class mf_client():
                 yield "%20s : %s" % ('count', elem.text) 
             else:
 # all other namespaces, have to query for the info
-                query = "namespace>='%s'" % fullpath
-                xml_reply = self.aterm_run('asset.query :where "%s" :count true :action sum :xpath content/size' % query, background=True)
+#                query = "namespace>='%s'" % fullpath
+#                xml_reply = self.aterm_run('asset.query :where "%s" :count true :action sum :xpath content/size' % query, background=True)
+# july 2024 - performance improvement
+                xml_reply = self.aterm_run('asset.query :namespace "%s" :count true :action sum :xpath content/size' % fullpath, background=True)
                 elem = xml_reply.find(".//value")
                 if elem is not None:
                     yield "%20s : %s" % ('usage', self.human_size(elem.text))
@@ -1137,6 +1138,7 @@ class mf_client():
         else:
             try:
 # get asset information, if it exists
+# TODO (maybe) - redo to allow patterns ... 
                 result = self.aterm_run('asset.get :id "path=%s"' % fullpath)
                 elem = result.find(".//asset")
                 yield "%20s : %s" % ('asset', elem.attrib['id'])
@@ -1185,7 +1187,7 @@ class mf_client():
 
 # yield all matching assets 
         query = self.get_query(pattern)
-        result = self.aterm_run('asset.query :where "%s" :as iterator :action get-values :xpath -ename id id :xpath -ename name name :xpath -ename size content/size' % query)
+        result = self.aterm_run('asset.query %s :as iterator :action get-values :xpath -ename id id :xpath -ename name name :xpath -ename size content/size' % query)
 
         elem = result.find(".//iterator")
         iterator = int(elem.text)
@@ -1234,13 +1236,14 @@ class mf_client():
         """
         if self.namespace_exists(fullpath_pattern):
             if recurse is True:
-                query = "namespace>='%s'" % fullpath_pattern
+# NEW - reworked for better perf
+                query = ":namespace '%s'" % fullpath_pattern
             else:
-                query = "namespace='%s'" % fullpath_pattern
+                query = ":where \"namespace='%s'\"" % fullpath_pattern
         else:
             pattern = posixpath.basename(fullpath_pattern)
             namespace = posixpath.dirname(fullpath_pattern)
-            query = "namespace='%s' and name='%s'" % (namespace, pattern)
+            query = ":where \"namespace='%s' and name='%s'\"" % (namespace, pattern)
 
         return(query)
 
@@ -1252,7 +1255,7 @@ class mf_client():
         """
         try:
             query = self.get_query(fullpath_pattern, recurse=True)
-            reply = self.aterm_run('asset.query :where "%s" :count true :action pipe :service -name asset.label.add < :label PUBLISHED >' % query, background=True)
+            reply = self.aterm_run('asset.query %s :count true :action pipe :service -name asset.label.add < :label PUBLISHED >' % query, background=True)
             elem = reply.find(".//count")
             return(int(elem.text))
         except Exception as e:
@@ -1266,7 +1269,7 @@ class mf_client():
         """
         try:
             query = self.get_query(fullpath_pattern, recurse=True)
-            reply = self.aterm_run('asset.query :where "%s" :count true :action pipe :service -name asset.label.remove < :label PUBLISHED >' % query, background=True)
+            reply = self.aterm_run('asset.query %s :count true :action pipe :service -name asset.label.remove < :label PUBLISHED >' % query, background=True)
             elem = reply.find(".//count")
             return(int(elem.text))
         except Exception as e:
@@ -1290,7 +1293,7 @@ class mf_client():
 # count download results and get total size
             query = self.get_query(fullpath_pattern, recurse=True)
 # get the number of results and total size
-            reply = self.aterm_run('asset.query :where "%s" :count true :action sum :xpath content/size' % query, background=True, show_progress=True)
+            reply = self.aterm_run('asset.query %s :count true :action sum :xpath content/size' % query, background=True, show_progress=True)
             elem = reply.find(".//value")
 # must return valid ints (NB: mflux will return empty space rather than 0 if no query match)
             total_bytes = int(elem.text)
@@ -1304,7 +1307,7 @@ class mf_client():
             return
 
 # get the file list as an iterator
-        result = self.aterm_run('asset.query :where "%s" :as iterator :action get-path' % query)
+        result = self.aterm_run('asset.query %s :as iterator :action get-path' % query)
         elem = result.find(".//iterator")
         iterator = elem.text
 # effectively the recall batch size
