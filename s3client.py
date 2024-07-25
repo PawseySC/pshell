@@ -28,6 +28,7 @@ except:
     ok=False
 
 #------------------------------------------------------------
+# technically, s3_bucket_policy
 class s3_policy():
     def __init__(self, bucket, s3_client=None):
         self.bucket = bucket
@@ -48,59 +49,60 @@ class s3_policy():
             reply = s3_client.get_bucket_policy(Bucket=bucket)
             self.hash = json.loads(reply['Policy'])
         except:
-            self.hash['Id'] = 'generated-policy'
+            self.hash['Id'] = 'pshell-%s' % datetime.datetime.now().strftime('%Y-%m-%d')
             self.hash['Statement'] = []
             pass
 
-# --- construct and append a statement 
-    def statement_append(self, perm, users):
+# --- append statement 
+    def statement_add(self, statement):
+        self.hash['Statement'].append(statement)
 
-#        print("bucket=%s, perm=%s, users=%r" % (self.bucket, perm, users))
-
-# expect multiple users to be comma separated
-        list_users = users.split(',')
-
-# OLD way - only good for users (not projects)
-        principal = [ 'arn:aws:iam:::user/%s' % user.strip() for user in list_users]
-# TODO - testing ... this method allows for project IDs as well as users to be added, but is different from the documented method ...
-#        principal = [ 'arn:aws:iam::%s' % user.strip() for user in list_users]
-
-
-# TODO - removing arbitrary principle entries from a policy is a fair bit of work to do properly 
-# HOWEVER - can just a append a DENY (eg -r) policy and it will override as DENY > ALLOW
-        if perm == '-':
-            raise Exception("Not supported")
-
-# init with timestamped sid
+# --- construct new statement 
+    def statement_new(self, resources=None, perm=None, users=None, projects=None):
         statement = {}
-        sid = datetime.datetime.now().strftime('%Y%b%d_%X')
+# generate unique sid via timestamp
+# NB: AWS says Sid has to be unique within a policy, but Ceph seems to allow same Sid
+# NB: colons are special characters - avoid including a time value with colons
+        sid = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
         statement['Sid'] = sid
 
-# +r,-r +w,-w -> translations
-        if '-' in perm:
-            statement['Effect'] = 'Deny'
-        elif '+' in perm:
-            statement['Effect'] = 'Allow'
-# NB: ONLY for allow policies, also grant bucket owner the same permissions
-            principal.append(self.iam_owner)
-        else:
-            raise Exception("Unknown permission string=%s" % perm)
-
-        statement['Principal'] = {'AWS': principal}
-
+# permissions
+        if perm is not None:
+            if '-' in perm:
+                statement['Effect'] = 'Deny'
+            elif '+' in perm:
+                statement['Effect'] = 'Allow'
+            else:
+                raise Exception("Unknown permission string=%s" % perm)
 # NB: adding s3:* or s3:ListAllMyBuckets currently does NOT allow the user to list buckets ... although they can see the objects in the bucket
-        if 'r' in perm:
-            statement['Action'] = ["s3:ListBucket", "s3:GetObject"]
-        if 'w' in perm:
-            statement['Action'] = ["s3:PutObject", "s3:DeleteObject"]
+            if 'r' in perm:
+                statement['Action'] = ["s3:ListBucket", "s3:GetObject"]
+            if 'w' in perm:
+                statement['Action'] = ["s3:PutObject", "s3:DeleteObject"]
 
-# TODO - not sure if we should include this...
-#        if '*' in perm:
-#            statement['Action'] = ["s3:*"]
+# users
+        if users is not None:
+            list_users = users.split(',')
+            principal = [ 'arn:aws:iam:::user/%s' % user.strip() for user in list_users]
+# ensure owner has access
+            principal.append(self.iam_owner)
 
-        statement['Resource'] = [ 'arn:aws:s3:::%s' % self.bucket, 'arn:aws:s3:::%s/*' % self.bucket ]
+            statement['Principal'] = {'AWS': principal}
 
-        self.hash['Statement'].append(statement)
+# projects - TODO
+
+# resources
+        if resources is not None:
+            statement['Resource'] = resources
+
+        return statement
+
+# deprecated ...
+# --- construct and append a statement 
+    def statement_append(self, perm, users):
+        statement = self.statement_new(perm=perm, users=users)
+        self.statement_add(statement)
+        return
 
 # --- return in suitable form for setting
     def get_json(self, indent=0):
@@ -590,25 +592,42 @@ class s3_client():
 
 #------------------------------------------------------------
     def publish(self, pattern):
-        results = self.get_iter(pattern)
-        count = int(next(results))
-        size = int(next(results))
-        print("Publishing %d files..." % count)
-        for filepath in results:
-            self.logging.debug("s3 publish: %s" % filepath)
-            bucket,prefix,key = self.path_convert(filepath)
-            fullkey = posixpath.join(prefix, key)
+        bucket,prefix,key = self.path_convert(pattern)
 
-# try different expiry times ... no limit? ... or 7 days max?
-#            url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': key}, ExpiresIn=3600)
-            url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': fullkey}, ExpiresIn=3600000)
-            print("public url = %s" % url)
+        if len(key) == 0:
+# generate policy for bucket and all objects in it
+            p = s3_policy(bucket, self.s3)
+            statement = p.statement_new(perm="+r")
+            statement['Sid'] = "pshell-public-" + statement['Sid']
+            statement['Principal'] = "*"
+            statement['Resource'] = [ 'arn:aws:s3:::%s' % bucket, 'arn:aws:s3:::%s/*' % bucket ]
+            p.statement_add(statement)
+            self.s3.put_bucket_policy(Bucket=bucket, Policy=p.get_json())
+        else:
+            raise Exception("publish: only supported for buckets.")
 
-        return(count)
+        return(1)
 
 #------------------------------------------------------------
     def unpublish(self, pattern):
-        raise Exception("Not implemented")
+        bucket,prefix,key = self.path_convert(pattern)
+
+        if len(key) == 0:
+# get the current policy
+            payload = self.s3.get_bucket_policy(Bucket=bucket)
+            policy = json.loads(payload['Policy'])
+# strip any public- statements
+            new_statement = [s for s in policy['Statement'] if s['Sid'].startswith("pshell-public-") is False]
+# push the new policy or remove entirely if no statements
+            if len(new_statement) == 0:
+                self.s3.delete_bucket_policy(Bucket=bucket)
+            else:
+                policy['Statement'] = new_statement
+                self.s3.put_bucket_policy(Bucket=bucket, Policy=json.dumps(policy))
+        else:
+            raise Exception("unpublish: only supported for buckets.")
+
+        return(1)
 
 #------------------------------------------------------------
     def bucket_size(self, bucket):
@@ -698,6 +717,8 @@ class s3_client():
                 yield "%20s : %s" % (item, response['ResponseMetadata']['HTTPHeaders'][item])
 
 #------------------------------------------------------------
+# ref - not sure if Ceph is the same, but, root can't lock itself from a bucket (by default) even with deny policies
+#https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/get_bucket_policy.html
     def policy_bucket_set(self, text):
 # process args
         args = text.split(" ", 3)
@@ -720,8 +741,12 @@ class s3_client():
         else:
 # append required policy statement to existing policy (if any) and apply
             print("Setting bucket=%s, perm=%s, for user(s)=%r" % (bucket, perm, users))
+
             p = s3_policy(bucket, self.s3)
-            p.statement_append(perm, users)
+
+# TODO - check if the root iam users really does need to be added ...
+            statement = p.statement_new(resources=['arn:aws:s3:::%s' % bucket, 'arn:aws:s3:::%s/*' % bucket], perm=perm, users=users)
+            p.statement_add(statement)
 
 #            print(p.get_json())
 

@@ -942,7 +942,7 @@ class parser(cmd.Cmd):
         fullpath = self.abspath(line)
         remote = self.remote_active()
         count = remote.publish(fullpath)
-        print("Published %d files" % count)
+        print("Published %d item(s)" % count)
 
 #------------------------------------------------------------
     def help_unpublish(self):
@@ -954,8 +954,7 @@ class parser(cmd.Cmd):
         fullpath = self.abspath(line)
         remote = self.remote_active()
         count = remote.unpublish(fullpath)
-        print("Unpublished %d files" % count)
-
+        print("Unpublished %d item(s)" % count)
 
 #------------------------------------------------------------
     def help_whoami(self):
