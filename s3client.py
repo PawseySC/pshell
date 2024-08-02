@@ -603,10 +603,26 @@ class s3_client():
             statement['Resource'] = [ 'arn:aws:s3:::%s' % bucket, 'arn:aws:s3:::%s/*' % bucket ]
             p.statement_add(statement)
             self.s3.put_bucket_policy(Bucket=bucket, Policy=p.get_json())
+            count = 1
         else:
-            raise Exception("publish: only supported for buckets.")
+#            raise Exception("publish: only supported for buckets.")
+            results = self.get_iter(pattern)
+            count = int(next(results))
+            size = int(next(results))
+# FIXME - a sensible value for this... ?
+            if count > 100:
+                raise Exception("Error: too many files, please restructure your data and publish the bucket.")
+            print("Publishing %d files..." % count)
+            for filepath in results:
+                self.logging.debug("s3 publish: %s" % filepath)
+                bucket,prefix,key = self.path_convert(filepath)
+                fullkey = posixpath.join(prefix, key)
+# try different expiry times ... no limit? ... or 7 days max?
+#                url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': key}, ExpiresIn=3600)
+                url = self.s3.generate_presigned_url(ClientMethod='get_object', Params={'Bucket': bucket, 'Key': fullkey}, ExpiresIn=3600000)
+                print("short-lived public url = %s" % url)
 
-        return(1)
+        return(count)
 
 #------------------------------------------------------------
     def unpublish(self, pattern):
@@ -726,7 +742,6 @@ class s3_client():
 
 # TODO - this should be a bucket + (optional) object reference ...
         bucket = args[1]
-
         perm = args[2]
         try:
             users=args[3]
@@ -741,13 +756,10 @@ class s3_client():
         else:
 # append required policy statement to existing policy (if any) and apply
             print("Setting bucket=%s, perm=%s, for user(s)=%r" % (bucket, perm, users))
-
             p = s3_policy(bucket, self.s3)
-
 # TODO - check if the root iam users really does need to be added ...
             statement = p.statement_new(resources=['arn:aws:s3:::%s' % bucket, 'arn:aws:s3:::%s/*' % bucket], perm=perm, users=users)
             p.statement_add(statement)
-
 #            print(p.get_json())
 
             self.s3.put_bucket_policy(Bucket=bucket, Policy=p.get_json())
