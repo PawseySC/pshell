@@ -177,7 +177,7 @@ def main():
     if args.script:
         input_list = itertools.chain(input_list, open(args.script))
         my_parser.interactive = False
-# FIXME - stricly, need regex to avoid split on quote protected &&
+# FIXME - strictly, need regex to avoid split on quote protected &&
     if len(args.command) != 0:
         input_list = itertools.chain(input_list, args.command.split("&&"))
         my_parser.interactive = False

@@ -78,7 +78,12 @@ class parser(cmd.Cmd):
         try:
             remote.command(line)
         except Exception as e:
-            print(str(e))
+# allow pshell to pass the exit code test, and also not crash on certain malformed commands
+            raise Exception("Syntax error")
+# this will cause pshell to crash on certain mailformed commands
+# eg: asset.query :namespace "/projects/Data Team" :where "name='*.NEF''" :action count
+#            raise Exception(str(e))
+
 
 # TODO - implement completion for local commands?
 # ---
