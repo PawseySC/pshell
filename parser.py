@@ -75,9 +75,12 @@ class parser(cmd.Cmd):
 # ---
     def default(self, line):
         remote = self.remote_active()
-        remote.command(line)
+        try:
+            remote.command(line)
+        except Exception as e:
+            print(str(e))
 
-# TODO - complete for local commands?
+# TODO - implement completion for local commands?
 # ---
     def complete_get(self, text, line, start_index, end_index):
         return self.remote_complete(line[4:end_index], start_index-4)

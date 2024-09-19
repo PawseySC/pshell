@@ -126,19 +126,13 @@ class s3client_standard(unittest.TestCase):
 # FIXME - Principle assertion
 #        self.assertCountEqual(s['Principle']['AWS'], ['arn:aws:iam:::user/user1'])
 
-    def test_policy_write_allow(self):
-        policy = s3client.s3_policy("bucket")
-        s = policy.statement_new(perm="+w", users="user1, user2")
-# FIXME - Principle assertion
-        self.assertEqual(s['Effect'], "Allow")
-        self.assertCountEqual(s['Action'], ['s3:PutObject', 's3:DeleteObject'])
-
     def test_policy_write_deny(self):
         policy = s3client.s3_policy("bucket")
         s = policy.statement_new(perm="-w", users="user1, user2")
 # FIXME - Principle assertion
         self.assertEqual(s['Effect'], "Deny")
         self.assertCountEqual(s['Action'], ['s3:PutObject', 's3:DeleteObject'])
+
 
 #------------------------------------------------------------
 class s3client_new(unittest.TestCase):

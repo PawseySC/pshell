@@ -65,7 +65,6 @@ class s3_policy():
 # NB: colons are special characters - avoid including a time value with colons
         sid = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
         statement['Sid'] = sid
-
 # permissions
         if perm is not None:
             if '-' in perm:
@@ -79,18 +78,17 @@ class s3_policy():
                 statement['Action'] = ["s3:ListBucket", "s3:GetObject"]
             if 'w' in perm:
                 statement['Action'] = ["s3:PutObject", "s3:DeleteObject"]
-
+# TODO - maybe - add options for more nuanced permissions? (eg allow PutObject, but not DeleteObject)
 # users
         if users is not None:
             list_users = users.split(',')
             principal = [ 'arn:aws:iam:::user/%s' % user.strip() for user in list_users]
+
+#NEW - not required ... as owners always have the option to remove policies
 # ensure owner has access
-            principal.append(self.iam_owner)
-
+#            principal.append(self.iam_owner)
             statement['Principal'] = {'AWS': principal}
-
 # projects - TODO
-
 # resources
         if resources is not None:
             statement['Resource'] = resources
@@ -743,10 +741,15 @@ class s3_client():
 # TODO - this should be a bucket + (optional) object reference ...
         bucket = args[1]
         perm = args[2]
+
+# if nothing -> implied everyone 
         try:
             users=args[3]
+# special case for "everyone" 
+            if users == '*':
+                users = None
         except:
-            users='*'
+            users=None
             pass
 
 # remove all policies if - and no users specified
@@ -759,7 +762,12 @@ class s3_client():
             p = s3_policy(bucket, self.s3)
 # TODO - check if the root iam users really does need to be added ...
             statement = p.statement_new(resources=['arn:aws:s3:::%s' % bucket, 'arn:aws:s3:::%s/*' % bucket], perm=perm, users=users)
+# CURRENT - special case when specifying everyone
+            if users is None:
+                statement['Principal'] = '*'
+
             p.statement_add(statement)
+
 #            print(p.get_json())
 
             self.s3.put_bucket_policy(Bucket=bucket, Policy=p.get_json())
