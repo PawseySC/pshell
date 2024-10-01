@@ -395,7 +395,6 @@ class s3_client():
                             if fnmatch.fnmatch(item['Prefix'], key) is False:
                                 continue
                         yield "[Folder] %s" % item['Prefix'][prefix_len:]
-
                 if 'Contents' in page:
                     for item in page.get('Contents'):
                         if do_match:
@@ -689,14 +688,40 @@ class s3_client():
                     count, size = self.bucket_size(bucket)
                     yield "%20s : %s" % ('objects', count)
                     yield "%20s : %s" % ('size', self.human_size(size))
+# show incomplete multi-part uploads (if any)
+                    try:
+                        response = self.s3.list_multipart_uploads(Bucket=bucket)
+                        n = len(response['Uploads'])
+                        yield "%20s : %s" % ('incomplete uploads', n)
+                    except Exception as e:
+                        self.logging.debug(str(e))
+                        yield "%20s : 0" % 'incomplete uploads'
+# show versioning (if any)
+# NB: default response vs enabled vs subsequent disable seems different ... for AWS/Ceph reasons I guess
+# ie by default it doesn't have any metadata (enable or disable) for versioning - only after explicit versioning calls will it appear and remain
+                    reply = self.s3.get_bucket_versioning(Bucket=bucket)
+                    try:
+                        value = json.dumps(reply['Status'])
+                        yield "%20s : %s" % ('versioning', value)
+                    except Exception as e:
+                        yield "%20s : None" % 'versioning'
+# show lifecycle (if any)
+                    try:
+                        yield " === Lifecycle === "
+                        response = self.s3.get_bucket_lifecycle_configuration(Bucket=bucket)
+                        yield json.dumps(response['Rules'], indent=4)
+                    except Exception as e:
+                        self.logging.debug(str(e))
+                        yield "None"
 # show policy (if any)
                     try:
-                        response = self.s3.get_bucket_policy(Bucket=bucket)
                         yield " === Policy === "
+                        response = self.s3.get_bucket_policy(Bucket=bucket)
                         hash_policy = json.loads(response['Policy'])
                         yield json.dumps(hash_policy, indent=4)
                     except Exception as e:
-                        yield "No policy on bucket"
+                        self.logging.debug(str(e))
+                        yield "None"
                 else:
 # nothing specified - project summary
                     yield "%20s : %s" % ('type', 'project')
@@ -772,14 +797,101 @@ class s3_client():
 
             self.s3.put_bucket_policy(Bucket=bucket, Policy=p.get_json())
 
+
+
+#------------------------------------------------------------
+# TODO - tests around this 
+    def json_template_helper(self, hash_input):
+        json_tmp1 = '{ "ID": "%s", "Status": "%s", "Filter": { "Prefix": "" }, "%s": { "%s": %d } }'
+        list_rules = []
+        hash_rules = {}
+
+# cleanup multiparts
+        if 'DaysAfterInitiation' in hash_input.keys():
+            days = hash_input['DaysAfterInitiation'] 
+            status = hash_input['Status']
+            list_rules.append(json.loads(json_tmp1 % ("cleanup_multipart", status, "AbortIncompleteMultipartUpload", "DaysAfterInitiation", days)))
+
+# cleanup versions
+        if 'NoncurrentDays' in hash_input.keys():
+            days = hash_input['NoncurrentDays'] 
+            status = hash_input['Status']
+            list_rules.append(json.loads(json_tmp1 % ("cleanup_versions", status, "NoncurrentVersionExpiration", "NoncurrentDays", days)))
+
+        hash_rules['Rules'] = list_rules
+
+        return hash_rules
+
+#------------------------------------------------------------
+# simple toggle with default limits 
+
+    def bucket_lifecycle(self, text):
+# use: lifecycle bucket +/-/m/v
+# m -> multipart cleanup, v -> versioning
+
+        hash_action = {}
+        hash_toggle = {}
+
+        try:
+            args = text.split(" ", 2)
+            bucket = args[1]
+            action = args[2]
+
+            if action.startswith('+'):
+                hash_action['Status'] = 'Enabled'
+                hash_toggle['Status'] = 'Enabled'
+            elif action.startswith('-'):
+                hash_action['Status'] = 'Disabled'
+# really AWS, not 'Disabled' like everything else???
+                hash_toggle['Status'] = 'Suspended'
+            else:
+                raise Exception("Bad command")
+
+
+# versioning lifecycle 
+            if 'v' in action:
+                response = self.s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration=hash_toggle)
+                hash_action['NoncurrentDays'] = 7
+
+# multipart lifecycle
+            if 'm' in action:
+                hash_action['DaysAfterInitiation'] = 7
+
+
+            hash_payload = self.json_template_helper(hash_action)
+            reply = self.s3.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=hash_payload)
+
+
+        except Exception as e:
+            print(str(e))
+            print("Usage: lifecycle bucket (+,-)(m,v)")
+
+
+
 #------------------------------------------------------------
     def command(self, text):
         """
         Default passthrough method
         """
 
+# bucket policies 
         if text.startswith("policy"):
             self.policy_bucket_set(text)
             return
+
+# bucket lifecycle rules
+# TODO - combine into single command - lifecycle?
+        if text.startswith("lifecycle"):
+            self.bucket_lifecycle(text)
+            return
+
+#        if text.startswith("rule"):
+#            self.rule_bucket_set(text)
+#            return
+#        if text.startswith("version"):
+#            self.bucket_versioning(text)
+#            return
+
+
 
         raise Exception("Bad or unsupported S3 command: %s" % text)

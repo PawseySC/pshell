@@ -133,6 +133,19 @@ class s3client_standard(unittest.TestCase):
         self.assertEqual(s['Effect'], "Deny")
         self.assertCountEqual(s['Action'], ['s3:PutObject', 's3:DeleteObject'])
 
+# NEW - bucket version, lifecycle json templating helper
+    def test_json_helper(self):
+
+        hash_input = {"DaysAfterInitiation": 7, "Status": "Enabled"}
+        hash_output = self.s3_client.json_template_helper(hash_input)
+
+        hash_input = {"NoncurrentDays": 7, "Status": "Enabled"}
+        hash_output = self.s3_client.json_template_helper(hash_input)
+        
+
+
+
+
 
 #------------------------------------------------------------
 class s3client_new(unittest.TestCase):
