@@ -797,10 +797,7 @@ class s3_client():
 
             self.s3.put_bucket_policy(Bucket=bucket, Policy=p.get_json())
 
-
-
 #------------------------------------------------------------
-# TODO - tests around this 
     def json_template_helper(self, hash_input):
         json_tmp1 = '{ "ID": "%s", "Status": "%s", "Filter": { "Prefix": "" }, "%s": { "%s": %d } }'
         list_rules = []
@@ -823,15 +820,11 @@ class s3_client():
         return hash_rules
 
 #------------------------------------------------------------
-# simple toggle with default limits 
-
     def bucket_lifecycle(self, text):
 # use: lifecycle bucket +/-/m/v
 # m -> multipart cleanup, v -> versioning
-
         hash_action = {}
         hash_toggle = {}
-
         try:
             args = text.split(" ", 2)
             bucket = args[1]
@@ -847,7 +840,6 @@ class s3_client():
             else:
                 raise Exception("Bad command")
 
-
 # versioning lifecycle 
             if 'v' in action:
                 response = self.s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration=hash_toggle)
@@ -857,16 +849,12 @@ class s3_client():
             if 'm' in action:
                 hash_action['DaysAfterInitiation'] = 7
 
-
             hash_payload = self.json_template_helper(hash_action)
             reply = self.s3.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=hash_payload)
-
 
         except Exception as e:
             print(str(e))
             print("Usage: lifecycle bucket (+,-)(m,v)")
-
-
 
 #------------------------------------------------------------
     def command(self, text):
@@ -874,24 +862,13 @@ class s3_client():
         Default passthrough method
         """
 
-# bucket policies 
+# policies 
         if text.startswith("policy"):
             self.policy_bucket_set(text)
             return
-
-# bucket lifecycle rules
-# TODO - combine into single command - lifecycle?
+# lifecycle 
         if text.startswith("lifecycle"):
             self.bucket_lifecycle(text)
             return
-
-#        if text.startswith("rule"):
-#            self.rule_bucket_set(text)
-#            return
-#        if text.startswith("version"):
-#            self.bucket_versioning(text)
-#            return
-
-
 
         raise Exception("Bad or unsupported S3 command: %s" % text)

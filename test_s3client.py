@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import json
+import hashlib
 import logging
 import s3client
 import unittest
@@ -133,18 +135,28 @@ class s3client_standard(unittest.TestCase):
         self.assertEqual(s['Effect'], "Deny")
         self.assertCountEqual(s['Action'], ['s3:PutObject', 's3:DeleteObject'])
 
-# NEW - bucket version, lifecycle json templating helper
-    def test_json_helper(self):
-
+# bucket versioning and multipart cleanup lifecycle 
+    def test_lifecycle_json_plusm(self):
         hash_input = {"DaysAfterInitiation": 7, "Status": "Enabled"}
         hash_output = self.s3_client.json_template_helper(hash_input)
-
+        chksum = hashlib.md5(json.dumps(hash_output).encode('utf-8')).hexdigest()
+        self.assertEqual(chksum, '33161c6d9139ccf817f1fcf2ecafc80f')
+    def test_lifecycle_json_minusm(self):
+        hash_input = {"DaysAfterInitiation": 7, "Status": "Disabled"}
+        hash_output = self.s3_client.json_template_helper(hash_input)
+        chksum = hashlib.md5(json.dumps(hash_output).encode('utf-8')).hexdigest()
+        self.assertEqual(chksum, '50e2ae75231524cb234d1bbb27db1fef')
+    def test_lifecycle_json_plusv(self):
         hash_input = {"NoncurrentDays": 7, "Status": "Enabled"}
         hash_output = self.s3_client.json_template_helper(hash_input)
-        
-
-
-
+        chksum = hashlib.md5(json.dumps(hash_output).encode('utf-8')).hexdigest()
+        self.assertEqual(chksum, 'b8d57a2e376e85061622c6c014743d39')
+    def test_lifecycle_json_minusv(self):
+        hash_input = {"NoncurrentDays": 7, "Status": "Disabled"}
+        hash_output = self.s3_client.json_template_helper(hash_input)
+        chksum = hashlib.md5(json.dumps(hash_output).encode('utf-8')).hexdigest()
+#        print("%r" % chksum)
+        self.assertEqual(chksum, '40bb98daa68424f5c6ab2cc3b9b0daad')
 
 
 #------------------------------------------------------------
