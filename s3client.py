@@ -821,14 +821,19 @@ class s3_client():
 
 #------------------------------------------------------------
     def bucket_lifecycle(self, text):
-# use: lifecycle bucket +/-/m/v
+# use: lifecycle bucket +/-/m/v <days>
 # m -> multipart cleanup, v -> versioning
         hash_action = {}
         hash_toggle = {}
         try:
-            args = text.split(" ", 2)
+            args = text.split(" ", -1)
             bucket = args[1]
             action = args[2]
+# get optional days
+            if len(args) > 3:
+                days = int(args[3])
+            else:
+                days = 30
 
             if action.startswith('+'):
                 hash_action['Status'] = 'Enabled'
@@ -838,23 +843,28 @@ class s3_client():
 # really AWS, not 'Disabled' like everything else???
                 hash_toggle['Status'] = 'Suspended'
             else:
-                raise Exception("Bad command")
+                raise Exception("Invalid status, must be one of + or -")
 
 # versioning lifecycle 
+            flag_action = False
             if 'v' in action:
                 response = self.s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration=hash_toggle)
-                hash_action['NoncurrentDays'] = 7
-
+                hash_action['NoncurrentDays'] = days
+                flag_action = True
 # multipart lifecycle
             if 'm' in action:
-                hash_action['DaysAfterInitiation'] = 7
+                hash_action['DaysAfterInitiation'] = days
+                flag_action = True
+            if not flag_action:
+                raise Exception("Invalid action, must be one of m or v")
 
+# most common errors here will be no such bucket or no permission on bucket
             hash_payload = self.json_template_helper(hash_action)
             reply = self.s3.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=hash_payload)
 
         except Exception as e:
-            print(str(e))
-            print("Usage: lifecycle bucket (+,-)(m,v)")
+            self.logging.debug(str(e))
+            print("Usage: lifecycle bucket (+,-)(m,v) <days>")
 
 #------------------------------------------------------------
     def command(self, text):
