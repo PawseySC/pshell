@@ -6,6 +6,7 @@ Author: Sean Fleming
 """
 
 import os
+import re
 import json
 import math
 import string
@@ -755,6 +756,12 @@ class s3_client():
             for item in response['ResponseMetadata']['HTTPHeaders']:
                 yield "%20s : %s" % (item, response['ResponseMetadata']['HTTPHeaders'][item])
 
+
+# TODO (maybe) if find 'x-amz-version-id' in the metadata -> run a list_object_versions ... display the IDs
+# https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/list_object_versions.html
+
+
+
 #------------------------------------------------------------
 # ref - not sure if Ceph is the same, but, root can't lock itself from a bucket (by default) even with deny policies
 #https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/get_bucket_policy.html
@@ -821,42 +828,37 @@ class s3_client():
 
 #------------------------------------------------------------
     def bucket_lifecycle(self, text):
-# use: lifecycle bucket +/-/m/v <days>
-# m -> multipart cleanup, v -> versioning
+
         hash_action = {}
         hash_toggle = {}
+
         try:
-            args = text.split(" ", -1)
+            args = text.split(" ", 2)
             bucket = args[1]
-            action = args[2]
-# get optional days
-            if len(args) > 3:
-                days = int(args[3])
-            else:
-                days = 30
 
-            if action.startswith('+'):
-                hash_action['Status'] = 'Enabled'
-                hash_toggle['Status'] = 'Enabled'
-            elif action.startswith('-'):
-                hash_action['Status'] = 'Disabled'
+            action_list = re.findall("[+-][mv][^+-]*", args[2])
+            for action in action_list:
+# find the (optional) days
+                match_days = re.search("\d+", action)
+                if match_days:
+                    days = int(match_days.group(0))
+                else:
+                    days = 30
+# turn on/off 
+                if action.startswith('+'):
+                    hash_action['Status'] = 'Enabled'
+                    hash_toggle['Status'] = 'Enabled'
+                elif action.startswith('-'):
+                    hash_action['Status'] = 'Disabled'
 # really AWS, not 'Disabled' like everything else???
-                hash_toggle['Status'] = 'Suspended'
-            else:
-                raise Exception("Invalid status, must be one of + or -")
-
+                    hash_toggle['Status'] = 'Suspended'
 # versioning lifecycle 
-            flag_action = False
-            if 'v' in action:
-                response = self.s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration=hash_toggle)
-                hash_action['NoncurrentDays'] = days
-                flag_action = True
+                if 'v' in action:
+                    response = self.s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration=hash_toggle)
+                    hash_action['NoncurrentDays'] = days
 # multipart lifecycle
-            if 'm' in action:
-                hash_action['DaysAfterInitiation'] = days
-                flag_action = True
-            if not flag_action:
-                raise Exception("Invalid action, must be one of m or v")
+                if 'm' in action:
+                    hash_action['DaysAfterInitiation'] = days
 
 # most common errors here will be no such bucket or no permission on bucket
             hash_payload = self.json_template_helper(hash_action)
@@ -864,7 +866,7 @@ class s3_client():
 
         except Exception as e:
             self.logging.debug(str(e))
-            print("Usage: lifecycle bucket (+,-)(m,v) <days>")
+            print("Usage: lifecycle bucket (+-)(mv) <days>")
 
 #------------------------------------------------------------
     def command(self, text):
