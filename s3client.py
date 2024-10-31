@@ -332,7 +332,8 @@ class s3_client():
         prefix = ""
         key = ""
         if count > 1:
-            bucket = mypath.parts[1]
+#            bucket = mypath.parts[1]
+            bucket = mypath.parts[1].strip()
             if path.endswith('/') or count==2:
                 # path contains no key
                 prefix_last = count
@@ -378,6 +379,7 @@ class s3_client():
         raise Exception("Could not find remote path: [%s]" % fullpath)
 
 #------------------------------------------------------------
+# implementation using list_objects_v2
     def ls_iter(self, path):
         bucket,prefix,key = self.path_convert(path)
 # NEW - trim the input prefix from all returned results (will look more like a normal filesystem)
@@ -751,16 +753,18 @@ class s3_client():
         else:
 # exact key request
             fullkey = posixpath.join(prefix, key)
-            response = self.s3.head_object(Bucket=bucket, Key=fullkey)
-            yield "%20s : %s" % ('object', pattern)
-            for item in response['ResponseMetadata']['HTTPHeaders']:
-                yield "%20s : %s" % (item, response['ResponseMetadata']['HTTPHeaders'][item])
 
+# NEW - deletion markers will generate an exception (object doesn't exist)
+            try:
+                response = self.s3.head_object(Bucket=bucket, Key=fullkey)
+                yield "%20s : %s" % ('object', pattern)
+                for item in response['ResponseMetadata']['HTTPHeaders']:
+                    yield "%20s : %s" % (item, response['ResponseMetadata']['HTTPHeaders'][item])
+            except Exception as e:
+                self.logging.debug(str(e))
 
 # TODO (maybe) if find 'x-amz-version-id' in the metadata -> run a list_object_versions ... display the IDs
 # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/list_object_versions.html
-
-
 
 #------------------------------------------------------------
 # ref - not sure if Ceph is the same, but, root can't lock itself from a bucket (by default) even with deny policies
@@ -805,6 +809,40 @@ class s3_client():
             self.s3.put_bucket_policy(Bucket=bucket, Policy=p.get_json())
 
 #------------------------------------------------------------
+    def ls_deleted(self, bucket, key=''):
+        """
+        Show deletion markers in a bucket
+        """
+        print("ls_deleted(): %s, %s" % (bucket, key))
+
+# support for key matching not implemented at this time
+        paginator = self.s3.get_paginator('list_object_versions')
+        page_list = paginator.paginate(Bucket=bucket, Prefix=key)
+        for page in page_list:
+            if 'DeleteMarkers' in page:
+                for item in page.get('DeleteMarkers'):
+                    print(" * %s" % item['Key'])
+# TODO - show sizes?
+
+#------------------------------------------------------------
+    def restore_deleted(self, bucket, key, test=True):
+
+        count = 0
+        paginator = self.s3.get_paginator('list_object_versions')
+        page_list = paginator.paginate(Bucket=bucket, Prefix=key)
+        for page in page_list:
+            if 'DeleteMarkers' in page:
+                for item in page.get('DeleteMarkers'):
+                    count += 1
+                    fullkey = item['Key']
+                    version = item['VersionId']
+                    self.logging.info("deletion marker: [%s] [%s]" % (fullkey, version))
+                    print("restoring: %s" % fullkey)
+                    self.s3.delete_object(Bucket=bucket, Key=fullkey, VersionId=version)
+
+        print("restored object count: %d" % count)
+
+#------------------------------------------------------------
     def json_template_helper(self, hash_input):
         json_tmp1 = '{ "ID": "%s", "Status": "%s", "Filter": { "Prefix": "" }, "%s": { "%s": %d } }'
         list_rules = []
@@ -828,44 +866,71 @@ class s3_client():
 
 #------------------------------------------------------------
     def bucket_lifecycle(self, text):
-
+# NEW
+# lifecycle bucket/prefix -d   ==> display deletion markers
+# lifecycle bucket/prefix -u   ==> undelete all marked objects
         hash_action = {}
         hash_toggle = {}
-
         try:
             args = text.split(" ", 2)
-            bucket = args[1]
 
+# NEW - args[1] accept either bucket or fullkey, in order to act on specific objects
+# NB - can't specify fullkeys in the args[2] section -> they may have '-' in the names which will mess up the arg parsing
+            bucket,prefix,key = self.path_convert(args[1])
+            fullkey = posixpath.join(prefix, key)
+            print("bucket=%s, prefix=%s, key=%s" % (bucket,prefix, key))
+
+# TODO - strip this bit out and implement parsing tests
             action_list = re.findall("[+-][mv][^+-]*", args[2])
-            for action in action_list:
+            if len(action_list) > 0:
+                for action in action_list:
 # find the (optional) days
-                match_days = re.search("\d+", action)
-                if match_days:
-                    days = int(match_days.group(0))
-                else:
-                    days = 30
+                    match_days = re.search("\d+", action)
+                    if match_days:
+                        days = int(match_days.group(0))
+                    else:
+                        days = 30
 # turn on/off 
-                if action.startswith('+'):
-                    hash_action['Status'] = 'Enabled'
-                    hash_toggle['Status'] = 'Enabled'
-                elif action.startswith('-'):
-                    hash_action['Status'] = 'Disabled'
+                    if action.startswith('+'):
+                        hash_action['Status'] = 'Enabled'
+                        hash_toggle['Status'] = 'Enabled'
+                    elif action.startswith('-'):
+                        hash_action['Status'] = 'Disabled'
 # really AWS, not 'Disabled' like everything else???
-                    hash_toggle['Status'] = 'Suspended'
+                        hash_toggle['Status'] = 'Suspended'
 # versioning lifecycle 
-                if 'v' in action:
-                    response = self.s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration=hash_toggle)
-                    hash_action['NoncurrentDays'] = days
+                    if 'v' in action:
+                        response = self.s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration=hash_toggle)
+                        hash_action['NoncurrentDays'] = days
 # multipart lifecycle
-                if 'm' in action:
-                    hash_action['DaysAfterInitiation'] = days
+                    if 'm' in action:
+                        hash_action['DaysAfterInitiation'] = days
 
 # most common errors here will be no such bucket or no permission on bucket
-            hash_payload = self.json_template_helper(hash_action)
-            reply = self.s3.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=hash_payload)
+                hash_payload = self.json_template_helper(hash_action)
+                reply = self.s3.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=hash_payload)
+
+# TODO - review/restore section
+#            action_list = re.findall("[--]{2}[^\s]*", args[2])
+#            if len(action_list) > 0:
+#                print("TODO - review")
+# TODO 
+# maybe even go back to the --review .... ---restore approach ...
+
+# d -> show all deletion markers
+# u -> undelete all
+            review_list = re.findall("[-][lu]", args[2])
+            if len(review_list) > 0:
+                for review in review_list:
+
+                    if 'l' in review:
+                        self.ls_deleted(bucket, fullkey)
+
+                    if 'u' in review:
+                        self.restore_deleted(bucket, fullkey)
 
         except Exception as e:
-            self.logging.debug(str(e))
+            self.logging.info(str(e))
             print("Usage: lifecycle bucket (+-)(mv) <days>")
 
 #------------------------------------------------------------
