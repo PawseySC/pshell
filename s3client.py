@@ -809,27 +809,29 @@ class s3_client():
             self.s3.put_bucket_policy(Bucket=bucket, Policy=p.get_json())
 
 #------------------------------------------------------------
-    def ls_deleted(self, bucket, key=''):
+    def ls_deleted(self, bucket, prefix):
         """
-        Show deletion markers in a bucket
+        Show deletion markers
         """
-        print("ls_deleted(): %s, %s" % (bucket, key))
-
+        print("Reviewing deletions: bucket=%s, prefix=%s" % (bucket, prefix))
 # support for key matching not implemented at this time
         paginator = self.s3.get_paginator('list_object_versions')
-        page_list = paginator.paginate(Bucket=bucket, Prefix=key)
+        page_list = paginator.paginate(Bucket=bucket, Prefix=prefix)
         for page in page_list:
             if 'DeleteMarkers' in page:
                 for item in page.get('DeleteMarkers'):
                     print(" * %s" % item['Key'])
-# TODO - show sizes?
+# TODO - show sizes? ... NB: no size in delete marker itself, have to query the latest actual object version
 
 #------------------------------------------------------------
-    def restore_deleted(self, bucket, key, test=True):
-
+    def restore_deleted(self, bucket, prefix, test=True):
+        """
+        Remove deletion markers
+        """
+        print("Restoring deletions: bucket=%s, prefix=%s" % (bucket, prefix))
         count = 0
         paginator = self.s3.get_paginator('list_object_versions')
-        page_list = paginator.paginate(Bucket=bucket, Prefix=key)
+        page_list = paginator.paginate(Bucket=bucket, Prefix=prefix)
         for page in page_list:
             if 'DeleteMarkers' in page:
                 for item in page.get('DeleteMarkers'):
@@ -839,8 +841,7 @@ class s3_client():
                     self.logging.info("deletion marker: [%s] [%s]" % (fullkey, version))
                     print("restoring: %s" % fullkey)
                     self.s3.delete_object(Bucket=bucket, Key=fullkey, VersionId=version)
-
-        print("restored object count: %d" % count)
+        print("Restored object count: %d" % count)
 
 #------------------------------------------------------------
     def json_template_helper(self, hash_input):
@@ -878,8 +879,6 @@ class s3_client():
 # NB - can't specify fullkeys in the args[2] section -> they may have '-' in the names which will mess up the arg parsing
             bucket,prefix,key = self.path_convert(args[1])
             fullkey = posixpath.join(prefix, key)
-            print("bucket=%s, prefix=%s, key=%s" % (bucket,prefix, key))
-
 # TODO - strip this bit out and implement parsing tests
             action_list = re.findall("[+-][mv][^+-]*", args[2])
             if len(action_list) > 0:
@@ -911,22 +910,17 @@ class s3_client():
                 reply = self.s3.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=hash_payload)
 
 # TODO - review/restore section
-#            action_list = re.findall("[--]{2}[^\s]*", args[2])
-#            if len(action_list) > 0:
-#                print("TODO - review")
-# TODO 
 # maybe even go back to the --review .... ---restore approach ...
-
-# d -> show all deletion markers
-# u -> undelete all
-            review_list = re.findall("[-][lu]", args[2])
+# alt approach
+# -d -> display deletion markers
+# -u -> undelete/restore
+#            review_list = re.findall("[-][lu]", args[2])
+            review_list = re.findall("[--]{2}[^\s]*", args[2])
             if len(review_list) > 0:
                 for review in review_list:
-
-                    if 'l' in review:
+                    if 'review' in review:
                         self.ls_deleted(bucket, fullkey)
-
-                    if 'u' in review:
+                    if 'restore' in review:
                         self.restore_deleted(bucket, fullkey)
 
         except Exception as e:
