@@ -925,7 +925,7 @@ class s3_client():
 
         except Exception as e:
             self.logging.info(str(e))
-            print("Usage: lifecycle bucket (+-)(mv) <days>")
+            print("Usage: lifecycle bucket (+-)(mv) <days> (--review)(--restore)")
 
 #------------------------------------------------------------
     def command(self, text):
