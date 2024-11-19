@@ -127,7 +127,7 @@ class mfclient_main(unittest.TestCase):
         password = 'a?|:;(){}[  ]#@$%&* b.,c~123!> </\\\\'
         line = "system.logon :domain ivec :user sean :password %s" % password
         reply = self.mf_client.aterm_run(line, post=False).decode()
-#        print reply
+#        print(reply)
         self.assertEqual(reply, '<request><service name="system.logon"><args><domain>ivec</domain><user>sean</user><password>%s</password></args></service></request>' % self.mf_client._xml_sanitise(password))
 
 # by default lexer silently drops any text starting with # (comment character)

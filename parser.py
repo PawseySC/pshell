@@ -452,31 +452,19 @@ class parser(cmd.Cmd):
 #------------------------------------------------------------
 # immediately return any key pressed as a character
     def wait_key(self):
-#        import select
-
         result = None
         if self.interactive is False:
             return result
-
-# TODO - can we use something like this to replace the ugly platform specific stuff ???
-#        while True:
-#            if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
-#                line = raw_input()
-#                print "got [%s]" % line
-#                return line
-
         if os.name == 'nt':
             import msvcrt
             result = msvcrt.getch()
         else:
             import termios
             fd = sys.stdin.fileno()
-
             oldterm = termios.tcgetattr(fd)
             newattr = termios.tcgetattr(fd)
             newattr[3] = newattr[3] & ~termios.ICANON & ~termios.ECHO
             termios.tcsetattr(fd, termios.TCSANOW, newattr)
-
             try:
                 result = sys.stdin.read(1)
             except IOError:
@@ -497,7 +485,7 @@ class parser(cmd.Cmd):
                 result = ""
                 while True:
                     key = self.wait_key()
-#                    print "got [%r]" % key
+#                    print("got [%r]" % key)
                     sys.stdout.write(key)
 # end pagination immediately on q press
                     if key == 'q':
@@ -524,9 +512,6 @@ class parser(cmd.Cmd):
 # concat everything else onto the final result
                     else:
                         result += key
-#            else:
-                # TODO - sleep?
-#                print(prompt)
 
         return result
 
