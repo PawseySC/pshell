@@ -123,12 +123,15 @@ class mfclient_main(unittest.TestCase):
         self.assertEqual(reply, '<request><service name="service.execute" session=""><args><service name="asset.create"><namespace>folder</namespace><name>file</name></service><input-ticket>1</input-ticket></args></service></request>')
 
 # regression test for special characters in password
-    def test_sanitise_login_password(self):
-        password = 'a?|:;(){}[  ]#@$%&* b.,c~123!> </\\\\'
-        line = "system.logon :domain ivec :user sean :password %s" % password
+    def test_sanitise_password(self):
+# main special chars that cause trouble are <>&'"
+# this tests special chars as first character in string, as well as elsewhere
+        password = '<>"\'1:a[3]b(2)c{4}d*5&A'
+        expect = '&lt;&gt;"\'1:a[3]b(2)c{4}d*5&amp;A'
+        line = "system.logon :domain system :user test :password %s" % password
         reply = self.mf_client.aterm_run(line, post=False).decode()
-#        print(reply)
-        self.assertEqual(reply, '<request><service name="system.logon"><args><domain>ivec</domain><user>sean</user><password>%s</password></args></service></request>' % self.mf_client._xml_sanitise(password))
+# NB: can't use _xml_sanitise as it changes " to &quot; ... which is NOT correct
+        self.assertEqual(reply, '<request><service name="system.logon"><args><domain>system</domain><user>test</user><password>%s</password></args></service></request>' % expect)
 
 # by default lexer silently drops any text starting with # (comment character)
     def test_parsing_comments(self):
@@ -171,12 +174,15 @@ class mfclient_bugs(unittest.TestCase):
         global mf_client
         self.mf_client = mf_client
 
-# by default lexer silently drops any text starting with # (comment)
-    def test_lexer_comment_handling(self):
-        line = r"asset.set :id 123 :name #filename#"
-        reply = self.mf_client.aterm_run(line, post=False)
-        self.assertEqual(reply, '<request><service name="service.execute" session=""><args><service name="asset.set"><id>123</id><name>#filename#</name></service></args></service></request>')
-
+    def test_xml_fail(self):
+# main special chars that cause trouble are <>&'"
+# this tests special chars as first character in string, as well as elsewhere
+        password = '<>"\'1:a[3]b(2)c{4}d*5&A'
+        expect = '&lt;&gt;"\'1:a[3]b(2)c{4}d*5&amp;A'
+        line = "system.logon :domain system :user test :password %s" % password
+        reply = self.mf_client.aterm_run(line, post=False).decode()
+# NB: can't use _xml_sanitise as it changes " to &quot; ... which is NOT correct
+        self.assertEqual(reply, '<request><service name="system.logon"><args><domain>system</domain><user>test</user><password>%s</password></args></service></request>' % expect)
 
 
 # new features

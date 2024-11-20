@@ -178,24 +178,13 @@ class mf_client():
 
 # convert session into a connection description
         try:
-            reply = self.aterm_run("system.session.self.describe")
-            elem = reply.find(".//secure-token")
+# NEW - better baseline check in terms of permissions
+#NB: don't use actor[name] as this might be an internal mediaflux ID
+            reply = self.aterm_run("actor.self.describe")
+            elem = reply.find(".//actor")
             if elem is not None:
-                elem = reply.find(".//user")
-                if elem is not None:
-                    identity = "delegate for %s" % elem.text
-                else:
-                    identity = "?"
-            else:
-# normal session - get user identity
-                elem = reply.find(".//actor")
-                if elem is not None:
-                    identity = "%s=%s" % (elem.attrib['type'], elem.text)
-                else:
-                    identity = "?"
-
-            self.status = "authenticated to: %s as %s" % (url, identity)
-            return True
+                self.status = "authenticated to: %s" % url
+                return True
 
         except Exception as e:
             message = str(e)
@@ -554,6 +543,7 @@ class mf_client():
         stack = []
         data_out_min = 0
         data_out_name = None
+        flag_password = False
 
 # first token is the service call, the rest are child arguments
         service_call = lexer.get_token()
@@ -563,6 +553,7 @@ class mf_client():
         xml_unwanted = None
         try:
             while token is not None:
+#                print("token=[%s], child=[%r], flag_pwd=%r" % (token, child, flag_password))
                 if token[0] == ':':
                     child = ET.SubElement(xml_node, '%s' % token[1:])
 # if element contains : (eg csiro:seismic) then we need to inject the xmlns stuff
@@ -570,6 +561,11 @@ class mf_client():
                         item_list = token[1:].split(":")
                         self.logging.debug("XML associate namespace [%s] with element [%s]" % (item_list[0], token[1:]))
                         child.set("xmlns:%s" % item_list[0], item_list[0])
+# NEW - flag that we expect the next token to be password data
+                    if token == ':password':
+                        flag_password = True
+
+# these are special XML attribute/nesting characters
                 elif token[0] == '<':
                     stack.append(xml_node)
                     xml_node = child
@@ -592,7 +588,7 @@ class mf_client():
 # someone put in something silly, I think...
                             raise Exception ("Malformed input command")
                 else:
-
+# if not a new element, or a special characters, should be text for the child element
                     if child is not None:
 # FIXME - some issues here with data strings with multiple spaces (ie we are doing a whitespace split & only adding one back)
                         if child.text is not None:
@@ -603,14 +599,6 @@ class mf_client():
                             else:
                                 child.text = token
 
-# NEW - cope with special characters that may bork parsing
-# use everything (to EOL) after :password as the password
-                        if child.tag.lower() == "password":
-# FIXME - ugly & assumes :password is the LAST element in the service call
-                            index = input_line.find(" :password")
-                            if index > 10:
-                                child.text = input_line[index+11:]
-
 # special case - out element - needs to be removed (replaced with outputs-via and an outputs-expected attribute)
                         if child.tag.lower() == "out":
                             data_out_name = child.text
@@ -618,14 +606,16 @@ class mf_client():
 # schedule for deletion but don't delete yet due to potentially multiple passthroughs 
                             xml_unwanted = child
 
-# don't treat quotes as special characters in password string
-                if "password" in token:
-                    save_lexer_quotes = lexer.quotes
-                    lexer.quotes = iter('') 
-                    token = lexer.get_token()
-                    lexer.quotes = save_lexer_quotes
-                else:
-                    token = lexer.get_token()
+# NEW - special case handling for password element text 
+                if flag_password is True:
+# HACK - in order to bypass lexer tokenisation (which destroys any multiple white spaces) and avoid special characters - assume :password is last entry
+                    n = input_line.find(':password ')
+                    child.text = input_line[n+10:]
+# since we're assuming the password was the very last element - we're done
+                    break
+
+# next token
+                token = lexer.get_token()
 
         except Exception as e:
             self.logging.error(str(e))
