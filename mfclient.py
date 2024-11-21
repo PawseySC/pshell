@@ -106,9 +106,6 @@ class mf_client():
         """
         if 'url' in endpoint:
             url = urllib.parse.urlparse(endpoint['url'])
-#            p = '(?:http.*://)?(?P<host>[^:/ ]+).?(?P<port>[0-9]*).*'
-#            m = re.search(p,endpoint['url'])
-#            endpoint['port'] = m.group('port')
             endpoint['port'] = url.port
             endpoint['server'] = url.hostname
             endpoint['protocol'] = url.scheme
@@ -149,7 +146,7 @@ class mf_client():
         Acquire connection status via session or token
         """
 # NEW - added /aterm path to connection test 
-# without this it will be attempting to connect to the web server which may not be configured but doesn't need to be for API access
+# without this it will be attempting to connect to the web server - which may not be configured and doesn't need to be for API access
         url = "%s://%s:%d/aterm" % (self.protocol, self.server, self.port)
         self.logging.info("url=[%s]" % url)
 
@@ -520,6 +517,7 @@ class mf_client():
             A STRING containing the server reply (if post is TRUE, if false - just the XML for test comparisons)
         """
 
+# TODO - I suspect parser should do this (if appropriate) and pass background=True to the module implementations
 # intercept (before lexer!) and remove ampersand at end of line -> background job
         if input_line[-1:] == '&':
             background = True
@@ -715,7 +713,7 @@ class mf_client():
                             xml_poll = self.aterm_run("service.background.describe :id %s" % job)
 
 #                            self.xml_print(xml_poll)
-# try and build a consistent user report using either wildly different mediaflux reports
+# try and build a consistent user report using wildly different mediaflux reports
                             text = "task id=%s, " % job
 
                             elem = xml_poll.find(".//task/description")
@@ -1057,7 +1055,10 @@ class mf_client():
         if prompt is not None:
             if prompt("Delete folder %s (y/n): " % namespace) is False:
                 return False
-        self.aterm_run('asset.namespace.destroy :namespace "%s"' % namespace.replace('"', '\\\"'))
+# run in background, with (limited) progress report
+        self.aterm_run('asset.namespace.destroy :namespace "%s"' % namespace.replace('"', '\\\"'), background=True, show_progress=True)
+# leave the progress report and skip to newline
+        print("")
         return True
 
 #------------------------------------------------------------
@@ -1082,6 +1083,7 @@ class mf_client():
         if 'and name' not in query:
             raise Exception("Use rmdir for folders")
 
+# TODO - check if we can run this in the background
         reply = self.aterm_run('asset.query %s :action count' % query)
         elem = reply.find(".//value")
         count = int(elem.text)
@@ -1092,6 +1094,7 @@ class mf_client():
             if prompt("Delete %d files (y/n): " % count) is False:
                 return False
         self.logging.info("Destroy confirmed.")
+# TODO - run this in background
         self.aterm_run('asset.query %s :action pipe :service -name asset.destroy' % query)
         return True
 
