@@ -1051,13 +1051,12 @@ class mf_client():
         """
         remove a namespace
         """
-        # TODO - compute count and size of assets for prompt
+# TODO - compute count and size of assets for prompt
         if prompt is not None:
             if prompt("Delete folder %s (y/n): " % namespace) is False:
                 return False
-# run in background, with (limited) progress report
+# run the removal
         self.aterm_run('asset.namespace.destroy :namespace "%s"' % namespace.replace('"', '\\\"'), background=True, show_progress=True)
-# leave the progress report and skip to newline
         print("")
         return True
 
@@ -1072,7 +1071,7 @@ class mf_client():
     def cd(self, namespace):
         if self.namespace_exists(namespace):
             return namespace
-        raise Exception("So such folder")
+        raise Exception("No such folder")
 
 #------------------------------------------------------------
     def rm(self, fullpath, prompt=None):
@@ -1083,19 +1082,19 @@ class mf_client():
         if 'and name' not in query:
             raise Exception("Use rmdir for folders")
 
-# TODO - check if we can run this in the background
-        reply = self.aterm_run('asset.query %s :action count' % query)
+# get the number of items to delete 
+        reply = self.aterm_run('asset.query %s :action count' % query, background=True)
         elem = reply.find(".//value")
         count = int(elem.text)
         if count == 0:
             raise Exception("Nothing to delete")
-
+# query to confirm removal
         if prompt is not None:
             if prompt("Delete %d files (y/n): " % count) is False:
                 return False
         self.logging.info("Destroy confirmed.")
-# TODO - run this in background
-        self.aterm_run('asset.query %s :action pipe :service -name asset.destroy' % query)
+        self.aterm_run('asset.query %s :action pipe :service -name asset.destroy' % query, background=True, show_progress=True)
+        print("")
         return True
 
 #------------------------------------------------------------
