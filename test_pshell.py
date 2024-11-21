@@ -27,32 +27,6 @@ class pshell_standard(unittest.TestCase):
         self.assertNotEqual(code, 0)
 
 # ---
-    def test_remote_add_mflux(self):
-        flag=False
-        line = "mfclient mflux http://0.0.0.0:80"
-        p = Popen([self.python, self.script, "-v", self.verbosity, "remote add %s && remote" % line], stdout=PIPE, stderr=STDOUT)
-        for line in p.stdout:
-            text = line.decode()
-            if "mfclient" in text:
-                if "mflux" in text:
-                    if "0.0.0.0" in text:
-                        flag=True
-        self.assertTrue(flag)
-
-# ---
-    def test_remote_add_s3(self):
-        flag=False
-        line = "s3client s3 http://0.0.0.0"
-        p = Popen([self.python, self.script, "-v", self.verbosity, "remote add %s && remote" % line], stdout=PIPE, stderr=STDOUT)
-        for line in p.stdout:
-            text = line.decode()
-            if "s3client" in text:
-                if "s3" in text:
-                    if "0.0.0.0" in text:
-                        flag=True
-        self.assertTrue(flag)
-
-# ---
     def test_default_portal_config(self):
         flag=False
         p = Popen([self.python, self.script, "-v", self.verbosity, "remote"], stdout=PIPE, stderr=STDOUT)
@@ -69,6 +43,16 @@ class pshell_standard(unittest.TestCase):
         for line in p.stdout:
             text = line.decode()
             if "public" in text:
+                flag=True
+        self.assertTrue(flag)
+
+# ---
+    def test_default_private_config(self):
+        flag=False
+        p = Popen([self.python, self.script, "-v", self.verbosity, "remote"], stdout=PIPE, stderr=STDOUT)
+        for line in p.stdout:
+            text = line.decode()
+            if "private" in text:
                 flag=True
         self.assertTrue(flag)
 

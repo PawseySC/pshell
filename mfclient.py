@@ -58,7 +58,6 @@ class mf_client():
         self.port = int(port)
         self.domain = domain
         self.timeout = 120
-# connection info - not connected -> not authenticated -> ""
         self.status = "not connected"
 
 # NB: there can be some subtle bugs in python library handling if these are "" vs None
@@ -117,7 +116,7 @@ class mf_client():
 
         client = cls(protocol=endpoint['protocol'], server=endpoint['server'], port=endpoint['port'], encrypted_data=encrypt)
 
-        client.status = "not connected to: %s://%s:%d" % (endpoint['protocol'], endpoint['server'], endpoint['port'])
+        client.status = "not connected"
 
         if 'domain' in endpoint:
             client.domain = endpoint['domain']
@@ -155,8 +154,10 @@ class mf_client():
             code = urllib.request.urlopen(url, timeout=5).getcode()
             self.logging.info("connection code=%r" % code)
         except Exception as e:
-            self.status = "not connected to %s: %s" % (url, str(e))
-            self.logging.error(str(e))
+# TODO - more precise messaging, eg using str(e) content
+# TODO - eg timeout status
+            self.status = "not connected" 
+            self.logging.info(str(e))
             return False
 
 # fast data channel check
@@ -180,18 +181,22 @@ class mf_client():
             reply = self.aterm_run("actor.self.describe")
             elem = reply.find(".//actor")
             if elem is not None:
-                self.status = "authenticated to: %s" % url
+#                self.status = "authenticated to: %s" % url
+# NEW - check for expired/destroyed token
+                if 'destroyed' in elem.attrib:
+                    if elem.attrib['destroyed'] == 'true':
+                        raise Exception("Delegate destroyed")
+                self.status = "connected"
                 return True
 
         except Exception as e:
             message = str(e)
-            self.logging.debug(message)
+            self.logging.info(message)
             if "maintenance mode" in message:
-                print(message)
-                self.status = "not authenticated to: %s, system is in maintenance mode" % url
+                self.status = "maintenance"
                 return False
 
-        self.status = "not authenticated to: %s" % url
+        self.status = "login required"
         return False
 
 #------------------------------------------------------------
@@ -262,7 +267,7 @@ class mf_client():
         """
         self.aterm_run("system.logoff")
         self.session = ""
-        self.status = "Not authenticated to: %s" % self.server
+        self.status = "login required"
 
 #------------------------------------------------------------
     def delegate(self, line):
@@ -301,12 +306,10 @@ class mf_client():
             result = self.aterm_run('secure.identity.token.create :to "%s" :role -type user "%s" :role -type domain "%s" :min-token-length 16 :wallet true' % (expiry, actor, domain))
             elem = result.find(".//token")
             self.token = elem.text
-#            print("Delegate valid until: " + expiry)
             return True
 
         except Exception as e:
             self.logging.error(str(e))
-#            print("Delegate creation failed")
 
         return False
 
@@ -832,8 +835,15 @@ class mf_client():
         Default passthrough method
         """
         self.logging.debug(text)
-        reply = self.aterm_run(text)
-        self.xml_print(reply)
+
+# special commands
+        if text.startswith("delegate "):
+            args = text[8:].strip()
+            self.delegate(args)
+        else:
+# assumed mflux service calls
+            reply = self.aterm_run(text)
+            self.xml_print(reply)
 
 #------------------------------------------------------------
     def _xml_recurse(self, elem, text=""):

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
-import sys
 import os
+import re
 import cmd
+import sys
 import glob
 import math
 import time
@@ -35,6 +36,10 @@ class parser(cmd.Cmd):
     script_output = None
     thread_executor = None
     thread_max = 3
+
+# documentation headers
+    doc_header = "Standard commands"
+    misc_header = "Specialised commands"
 
 # NEW - unified (get/put/cp) progress reporter
     progress_start_time = 0
@@ -235,7 +240,7 @@ class parser(cmd.Cmd):
             self.remotes_config_save()
         except Exception as e:
             self.logging.debug(str(e))
-            self.logging.error("Could not delete remote [%s]" % name)
+            self.logging.error("No such remote [%s]" % name)
 
 #------------------------------------------------------------
     def remote_set(self, name, home='/'):
@@ -249,7 +254,78 @@ class parser(cmd.Cmd):
             with open(self.config_filepath, 'w') as f:
                 self.config.write(f)
         except Exception as e:
-            self.logging.error("Could not connect to remote [%s]" % name)
+            self.logging.debug(str(e))
+            self.logging.error("No such remote [%s]" % name)
+
+#------------------------------------------------------------
+    def remote_info(self, name):
+        try:
+            list_info = ['type', 'protocol', 'server', 'port', 'domain', 'url', 'access']
+            client = self.remotes[name]
+            hash_info = client.endpoint()
+            print("name = %s" % name)
+            for item in list_info:
+                if item in hash_info:
+                    print("%s = %s" % (item, hash_info[item]))
+        except Exception as e:
+            self.logging.debug(str(e))
+            self.logging.error("No such remote [%s]" % name)
+
+#------------------------------------------------------------
+    def help_remote(self):
+        print("\nSelect, add, or delete remote storage locations\n")
+        print("Usage: remote <name><type><url> <--remove><--info>\n")
+        print("Examples:")
+        print("    remote portal --info")
+        print("    remote myaws s3 ap-southeast-2")
+        print("    remote mystuff mflux https://somewhere.org:8080")
+        print("    remote mystuff")
+
+# --- 
+    def do_remote(self, line):
+
+# check for flags
+        mode = 0
+        if "--remove" in line:
+            line = line.replace("--remove", "")
+            mode=1
+        elif "--info" in line:
+            line = line.replace("--info", "")
+            mode=2
+# get args
+        args = line.split()
+        nargs = len(args)
+
+# list, set, add modes
+        if mode == 0:
+            if nargs == 0:
+                for name, client in self.remotes.items():
+                    text = "%-20s [ %-15s ]" % (name, client.status)
+                    if name == self.remotes_current:
+                        text += " *"
+                    print(text)
+                return
+            elif nargs == 1:
+                self.remote_set(args[0])
+                return
+            elif nargs == 3:
+                self.remote_add(args[0], {'type':args[1], 'url':args[2]})
+                return
+# remove mode
+        elif mode == 1:
+            if nargs == 1:
+                self.remote_del(args[0])
+                return
+# info mode
+        elif mode == 2:
+            if nargs == 0:
+                self.remote_info(self.remotes_current)
+                return
+            elif nargs == 1:
+                self.remote_info(args[0])
+                return
+
+        raise Exception("Bad command, help available by typing: help remote")
 
 #------------------------------------------------------------
     def abspath(self, line):
@@ -399,55 +475,16 @@ class parser(cmd.Cmd):
             time.sleep(wait)
             self.progress_display()
 
-
 #------------------------------------------------------------
     def help_info(self):
         print("\nReturn information for a remote file or folder\n")
         print("Usage: info <filename/folder>\n")
-
+# --- 
     def do_info(self, line):
         remote = self.remote_active()
         fullpath = self.abspath(line)
         for item in remote.info_iter(fullpath):
             print(item)
-
-#------------------------------------------------------------
-    def help_remote(self):
-        print("\nSelect, add, or delete remote storage locations\n")
-        print("Usages:")
-        print("    remote <name>")
-        print("    remote <add name type LOCATION>")
-        print("    remote <del name>\negs:")
-        print("    remote add mystuff s3 https://somewhere.org:8080")
-        print("    remote add myaws s3 ap-southeast-2")
-        print("    remote mystuff")
-        print("    remote del mystuff\n")
-
-# --- 
-    def do_remote(self, line):
-
-        args = line.split()
-        nargs = len(args)
-
-        if nargs == 1:
-            self.logging.debug("SET remote [%s]" % line)
-            self.remote_set(line)
-        elif nargs == 4:
-            mount = args[1]
-            remote_type = args[2]
-            remote_url = args[3]
-            if 'add' in args[0]:
-                self.logging.debug("ADD remote [%s] server of type [%s] with URL [%s]" % (mount, remote_type, remote_url))
-                self.remote_add(mount, {'type':remote_type, 'url':remote_url})
-        elif nargs == 2:
-            mount = args[1]
-            if 'del' in args[0]:
-                self.logging.debug("DEL remote [%s]" % mount)
-                self.remote_del(mount)
-        else:
-            # show all remotes
-            for name, client in self.remotes.items():
-                print("%-20s %s" % (name, client.status))
 
 #------------------------------------------------------------
 # immediately return any key pressed as a character
@@ -914,18 +951,6 @@ class parser(cmd.Cmd):
         self.remotes_config_save()
 
 #------------------------------------------------------------
-    def help_delegate(self):
-        print("\nCreate a credential, stored in your local home folder, for automatic authentication to the remote server.")
-        print("An optional argument can be supplied to set the lifetime, or off to destroy all your delegated credentials.\n")
-        print("Usage: delegate <days/off>\n")
-
-# ---
-    def do_delegate(self, line):
-        remote = self.remote_active()
-        if remote.delegate(line) is True:
-            self.remotes_config_save()
-
-#------------------------------------------------------------
     def help_publish(self):
         print("\nCreate public URLs for specified file(s)\nRequires public sharing to be enabled by the project administrator\n")
         print("Usage: publish <file(s) or folder>\n")
@@ -964,13 +989,38 @@ class parser(cmd.Cmd):
     def help_quit(self):
         print("\nExit without terminating the session\n")
     def do_quit(self, line):
+        self.remotes_config_save()
         sys.exit(0)
 
 # --
     def help_exit(self):
         print("\nExit without terminating the session\n")
     def do_exit(self, line):
+        self.remotes_config_save()
         sys.exit(0)
+
+#------------------------------------------------------------
+# MISC section - mfclient specific commands
+    def help_delegate(self):
+        print("NOTE: This command is only available for Mediaflux remotes.\n")
+        print("Create a credential, stored in your local home folder, for automatic authentication to the Mediaflux server.")
+        print("An optional argument can be supplied to set the lifetime, or off to destroy all your delegated credentials.\n")
+        print("Usage: delegate <days><off>\n")
+# ---
+#    def do_delegate(self, line):
+#        remote = self.remote_active()
+#        if remote.delegate(line) is True:
+#            self.remotes_config_save()
+
+#------------------------------------------------------------
+# MISC section - s3client specific commands
+    def help_lifecycle(self):
+        print("NOTE: This command is only available for S3 remotes.\n")
+        print("Usage: lifecycle bucket (+-)(mv) <days> (--review)(--restore)")
+# ---
+    def help_policy(self):
+        print("NOTE: This command is only available for S3 remotes.\n")
+        print("Usage: policy bucket (+-)(rw)(comma-separated user list)\n")
 
 #------------------------------------------------------------
     def loop_interactively(self):

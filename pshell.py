@@ -184,7 +184,8 @@ def main():
 
 # interactive or input iterator (scripted)
     if my_parser.interactive:
-        print(" === pshell: type 'help' for a list of commands ===")
+        print("Welcome to pshell: type 'help' for a list of commands")
+        print("=====================================================")
         my_parser.loop_interactively()
     else:
         for item in input_list:

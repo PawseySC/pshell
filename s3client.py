@@ -134,7 +134,6 @@ class s3_client():
         client = cls()
         if 'url' in endpoint:
             client.url = endpoint['url']
-            client.status = "not connected to: %s" % client.url
         if 'access' in endpoint:
             client.access = endpoint['access']
         if 'secret' in endpoint:
@@ -159,18 +158,19 @@ class s3_client():
                 self.s3 = boto3.client('s3', region_name=self.url, aws_access_key_id=self.access, aws_secret_access_key=self.secret, config=s3config)
 # authenticated user check - test the client
             self.s3.list_buckets()
-            self.status = "authenticated to: %s as access=%s" % (self.url, self.access)
+            self.status = "authenticated"
             self.logging.info('success')
             return True
 
         except Exception as e:
             emsg = str(e)
             self.logging.error(emsg)
+# TODO - a little bit better error handling on first time remote add ... ?
             if "InvalidAccessKeyId" in emsg:
                 emsg = "access=%s and secret were invalid" % self.access
             if "Unable to locate credentials" in emsg:
                 emsg = "no access/secret" 
-            self.status = "not connected to %s: %s" % (self.url, emsg)
+            self.status = "not connected"
 # failed to establish a verified connection
         return False
 
