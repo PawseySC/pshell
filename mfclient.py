@@ -177,7 +177,7 @@ class mf_client():
 # convert session into a connection description
         try:
 # NEW - better baseline check in terms of permissions
-#NB: don't use actor[name] as this might be an internal mediaflux ID
+# NB: don't use actor[name] as this might be an internal mediaflux ID
             reply = self.aterm_run("actor.self.describe")
             elem = reply.find(".//actor")
             if elem is not None:
@@ -186,7 +186,7 @@ class mf_client():
                 if 'destroyed' in elem.attrib:
                     if elem.attrib['destroyed'] == 'true':
                         raise Exception("Delegate destroyed")
-                self.status = "connected"
+                self.status = "authenticated"
                 return True
 
         except Exception as e:
@@ -1650,9 +1650,6 @@ class mf_client():
             self.aterm_run(xml_command)
 # re-analyze the content - stricly only needs to be done if type/ctype/lctype was changed
 # NEW - don't do this by default - it will generate stacktrace in mediaflux for DMF (offline) files
-#            self.mf_client.aterm_run("asset.reanalyze :id %r" % asset_id)
-
         except Exception as e:
-            self.logging.warning("Metadata population failed: %s" % str(e))
-
+            self.logging.error("Metadata population failed: %s" % str(e))
 

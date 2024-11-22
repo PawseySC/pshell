@@ -164,14 +164,11 @@ class s3_client():
 
         except Exception as e:
             emsg = str(e)
-            self.logging.error(emsg)
-# TODO - a little bit better error handling on first time remote add ... ?
+            self.logging.info(emsg)
             if "InvalidAccessKeyId" in emsg:
-                emsg = "access=%s and secret were invalid" % self.access
+                self.status = "bad credentials"
             if "Unable to locate credentials" in emsg:
-                emsg = "no access/secret" 
-            self.status = "not connected"
-# failed to establish a verified connection
+                self.status = "login required" 
         return False
 
 #------------------------------------------------------------
