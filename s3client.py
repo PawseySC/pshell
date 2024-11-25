@@ -906,12 +906,7 @@ class s3_client():
                 hash_payload = self.json_template_helper(hash_action)
                 reply = self.s3.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=hash_payload)
 
-# TODO - review/restore section
-# maybe even go back to the --review .... ---restore approach ...
-# alt approach
-# -d -> display deletion markers
-# -u -> undelete/restore
-#            review_list = re.findall("[-][lu]", args[2])
+# review/restore section
             review_list = re.findall("[--]{2}[^\s]*", args[2])
             if len(review_list) > 0:
                 for review in review_list:
@@ -921,7 +916,7 @@ class s3_client():
                         self.restore_deleted(bucket, fullkey)
 
         except Exception as e:
-            self.logging.info(str(e))
+            self.logging.error(str(e))
             print("Usage: lifecycle bucket (+-)(mv) <days> (--review)(--restore)")
 
 #------------------------------------------------------------
