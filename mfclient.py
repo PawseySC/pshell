@@ -70,10 +70,7 @@ class mf_client():
         self.put_buffer = 8192
 # XML pretty print hack
         self.indent = 0
-
-# NEW
         self.enable_polling = True
-
 # POST URL
         self.post_url = "%s://%s/__mflux_svc__" % (protocol, server)
 
@@ -1303,20 +1300,96 @@ class mf_client():
             yield total_count
             yield total_bytes
         except Exception as e:
-            self.logging.debug(str(e))
-            yield 0
-            yield 0
-            return
+            raise FileNotFoundError()
 
 # get the file list as an iterator
-        result = self.aterm_run('asset.query %s :as iterator :action get-path' % query)
-        elem = result.find(".//iterator")
-        iterator = elem.text
-# effectively the recall batch size
-        iterate_size = 100
-        iterate = True
-        count = 0
+        try:
+            result = self.aterm_run('asset.query %s :as iterator :action get-path' % query)
+            elem = result.find(".//iterator")
+            iterator = elem.text
+        except Exception as e:
+            self.logging.error(str(e))
+            return
 
+# effectively the recall batch size
+#        iterate_size = 100
+        iterate_size = 10
+        iterate = True
+
+        try:
+            while iterate:
+                xml_batch = self.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
+# setup recall and polling for current batch
+                hash_path = {}
+                hash_done = {}
+                polling_ids = ""
+                count = 0
+                for elem in xml_batch.findall(".//path"):
+                    elem_id = elem.attrib['id']
+                    hash_path[elem_id] = elem.text
+                    hash_done[elem_id] = False
+                    polling_ids += " :id %d" % int(elem_id)
+                    count += 1
+# flag termination if this batch is marked as the last 
+                elem = xml_batch.find(".//iterated")
+                if elem is not None:
+                    if 'true' in elem.attrib['complete']:
+                        iterate = False
+# technically, shouldn't happen
+                if count == 0:
+                    self.logging.warning("Nothing to recall")
+                    return
+
+# issue the recall command for current batch
+                self.logging.info("Recall batch count: %d" % count)
+                self.aterm_run('asset.content.migrate :destination online %s' % polling_ids)
+
+# technically, could check for status first ... but simpler logic to recall all
+# poll this batch
+                polling = True
+                while polling:
+                    self.logging.info("Polling %s" % polling_ids)
+                    xml_poll = self.aterm_run("asset.content.status %s" % polling_ids)
+                    for item in xml_poll.findall(".//asset"):
+                        elem_id = item.attrib['id']
+                        state = item.find(".//state")
+
+# known states: online, online+offline, offline, reachable, unreachable, invalid
+# the last 2 are for externally referenced content (not managed by mflux)
+                        if state is not None:
+# if available - yield for downloading
+                            if 'online' in state.text or 'reachable' in state.text:
+                                self.logging.info("Content ready, id=%s" % elem_id)
+                                hash_done[elem_id] = True
+                                yield hash_path[elem_id]
+# skip bad content - usually externally managed file that is no longer available
+# FIXME - technically errors (should flag a non-zero return code) but we just skip so the other downloads can continue
+                            if 'unreachable' in state.text:
+                                hash_done[elem_id] = True
+                                self.logging.error("Unreachable content, id=%s" % elem_id)
+                            if 'invalid' in state.text:
+                                hash_done[elem_id] = True
+                                self.logging.error("Invalid content, id=%s" % elem_id)
+
+# rebuild polling list and flag exit if nothing left
+                    polling_ids = ""
+                    polling = False
+                    for key in hash_done.keys():
+                        if hash_done[key] == False:
+                            polling_ids += " :id %s" % key
+                            polling = True
+
+                    if polling is True:
+                        time.sleep(30)
+
+# recall + polling loop 
+        except Exception as e:
+            self.logging.error(str(e))
+            return
+
+        return
+
+# OLD LOGIC
         while iterate:
 # get file list for this sub-set
             result = self.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
@@ -1331,23 +1404,22 @@ class mf_client():
 
 #------------------------------------------------------------
     def _wait_until_online(self, remote_filepath):
-        xml_reply = self.aterm_run('asset.content.migrate :destination online :id "path=%s"' % remote_filepath, background=True)
-
+        recall = True
+# FIXME - technically, should do one loop to check content status first
+# mostly should be ok as get_iter() called before this should be returning already online files
         while self.enable_polling:
             try:
                 xml_reply = self.aterm_run('asset.content.status :id "path=%s"' % remote_filepath, background=True)
                 elem = xml_reply.find(".//asset/state")
-
                 if elem is None:
                     self.logging.error("No content found for asset")
                     return False
-
                 if "online" in elem.text:
                     return True
 
-# external (Versity) S3 workaround - we can't see the state or make a recall (S3 proto) all we can do is proceed and let it trigger a recall
+# limited visibility on externally managed content - do a small test
                 if "reachable" in elem.text:
-# try grabbing some bytes in the background ... when it returns it should be ready 
+                    self.logging.info("Verifying external content: %s" % remote_filepath)
                     xml_reply = self.aterm_run('asset.content.hexdump :id "path=%s" :length 1' % remote_filepath, background=True)
                     return True
 
@@ -1355,7 +1427,12 @@ class mf_client():
                 self.logging.error(str(e))
                 return False
 
-            time.sleep(5)
+# issue recall command
+            if recall is True:
+                self.logging.info("Issuing recall for: %s" % remote_filepath)
+                self.aterm_run('asset.content.migrate :destination online :id "path=%s"' % remote_filepath, background=True)
+                recall = False
+            time.sleep(30)
 
         return False
 
@@ -1379,13 +1456,15 @@ class mf_client():
 
         if local_filepath is None:
             local_filepath = os.path.join(os.getcwd(), posixpath.basename(remote_filepath))
-        self.logging.info("Downloading remote [%s] to local [%s]" % (remote_filepath, local_filepath))
 
         if os.path.isfile(local_filepath) and not overwrite:
-            self.logging.debug("Local file of that name already exists, skipping.")
+            self.logging.info("Already exists, skipping: %s" % local_filepath)
             cb_progress(os.path.getsize(local_filepath))
             return(-1)
         else:
+            self.logging.info("Downloading remote file: %s" % remote_filepath)
+            remote_filename = os.path.basename(remote_filepath)
+
 # Windows path names and the posix lexer in aterm_run() are not good friends
             if "Windows" in platform.system():
                 local_filepath = local_filepath.replace("\\", "\\\\")
@@ -1393,28 +1472,40 @@ class mf_client():
 # make any intermediate folders required ...
             local_parent = os.path.dirname(local_filepath)
             if os.path.exists(local_parent) is False:
-                self.logging.debug("Creating required local folder(s): [%s]" % local_parent)
+                self.logging.info("Creating required local folder(s): [%s]" % local_parent)
                 os.makedirs(local_parent, exist_ok=True)
 
 # download only when file is online 
             if self._wait_until_online(remote_filepath) is True:
-                self.logging.debug("Downloading [%s] ... " % remote_filepath)
-#                self.aterm_run('asset.get :id "path=%s" :out %s' % (remote_filepath, local_filepath))
                 xml_reply = self.aterm_run('asset.get :id "path=%s"' % remote_filepath)
                 elem = xml_reply.find(".//asset")
                 asset_id = elem.attrib['id']
-#                print("asset id = %r" % asset_id)
 
-# NEW - progress enabled ...
-                url = self.data_get + "?_skey={0}&id={1}".format(self.session, asset_id)
-                request = urllib.request.Request(url)
-                response = urllib.request.urlopen(request)
+# try to open the content URL
+                try:
+                    url = self.data_get + "?_skey={0}&id={1}".format(self.session, asset_id)
+                    request = urllib.request.Request(url)
+                    response = urllib.request.urlopen(request)
+                except Exception as e:
+                    self.logging.debug(str(e))
+                    print("")
+                    self.logging.error("Bad content URL: %s" % remote_filename)
+#                    raise Exception("Download failed")
+                    raise IOError()
 
 # buffered write to open file
                 with open(local_filepath, 'wb') as output:
-# NEW
                     while self.enable_polling:
-                        data = response.read(self.get_buffer)
+
+# handle interruption to data stream
+                        try:
+                            data = response.read(self.get_buffer)
+                        except Exception as e:
+                            self.logging.debug(str(e))
+                            self.logging.error("Content read interrupted: %s" % remote_filename)
+                            raise IOError()
+#                            raise Exception("Download failed")
+
                         if data:
                             output.write(data)
                             if cb_progress is not None:
@@ -1422,10 +1513,10 @@ class mf_client():
                         else:
                             return(0)
             else:
-                raise Exception("Online recall failed for: %s" % remote_filepath)
+                raise Exception("Online recall failed for: %s" % remote_filename)
 
-# NEW - should only occur if polling was turned off
-        raise Exception("Download failed for: %s" % remote_filepath)
+# should only occur if polling was turned off (eg ctrl-c)
+        raise Exception("Download failed: %s" % remote_filename)
 
 #------------------------------------------------------------
     def put(self, namespace, filepath, cb_progress=None, metadata=False, overwrite=True):

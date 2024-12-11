@@ -430,7 +430,8 @@ class parser(cmd.Cmd):
             if code < 0:
                 skip = 1
         except Exception as e:
-            self.logging.error(str(e))
+# NB: can get some really strange stack traces here
+            self.logging.debug(str(e))
             error = 1
 # update
         with threading.Lock():
@@ -471,6 +472,7 @@ class parser(cmd.Cmd):
 #---
 # size = 0 -> drain running to 0, else drain while running > size
     def progress_throttle(self, size=0, wait=5):
+        self.progress_display()
         while self.progress_running > size:
             time.sleep(wait)
             self.progress_display()
@@ -611,13 +613,14 @@ class parser(cmd.Cmd):
             try:
 # define batch limit
                 batch_size = self.thread_max * 2 - 1
+# TODO - redo as a queue instead of iter? 
+# TODO - should allow better progress reporting as we're not stuck in mfclient waiting for a recall
                 for remote_fullpath in results:
 # TODO - this needs a tweak so we don't get the intermediate directories ...
                     remote_relpath = posixpath.relpath(path=remote_fullpath, start=self.cwd)
                     local_filepath = os.path.join(os.getcwd(), remote_relpath)
                     future = self.thread_executor.submit(remote.get, remote_fullpath, local_filepath, self.progress_byte_chunk)
                     self.progress_item_add(future)
-
 # NEW - don't submit any more than the batch size - this allows for faster cleanup of threads
                     self.progress_throttle(batch_size)
 
@@ -1042,8 +1045,11 @@ class parser(cmd.Cmd):
                 print("done ")
 
 # NB: here's where all command failures are caught
+            except FileNotFoundError:
+                print("File not found.")
+
             except SyntaxError:
-                print(" Syntax error: for more information on commands type 'help'")
+                print("Syntax error.")
 
             except Exception as e:
 # exit on the EOF case ie where stdin/file is force fed via command line redirect
