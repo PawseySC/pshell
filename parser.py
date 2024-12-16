@@ -1044,7 +1044,7 @@ class parser(cmd.Cmd):
                 remote.polling(True)
                 print("done ")
 
-# NB: here's where all command failures are caught
+# NB: here's where command failures are caught
             except FileNotFoundError:
                 print("File not found.")
 

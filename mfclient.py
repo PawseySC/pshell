@@ -372,9 +372,7 @@ class mf_client():
 # NB: timeout exception if server is unreachable
         elem=None
         try:
-#            request = urllib.request.Request(self.post_url, data=xml_bytes, headers={'Content-Type': 'text/xml'})
             request = urllib.request.Request(self.post_url, data=xml_bytes, headers={'Content-Type': 'text/xml', 'charset': 'utf-8'})
-
             response = urllib.request.urlopen(request, timeout=self.timeout)
             xml = response.read()
             tree = ET.fromstring(xml.decode())
@@ -401,7 +399,6 @@ class mf_client():
 # mediaflux seems to have random periods of unresponsiveness - particularly around final ACK of transfer
 # retries don't seem to work at all, but increasing the timeout seems to help cover the problem 
         upload_timeout = 1800
-
 # setup
         pid = os.getpid()
         boundary = ''.join(random.choice(string.digits + string.ascii_letters) for i in range(30))
@@ -817,7 +814,7 @@ class mf_client():
                     xml_text = re.sub('session=[^>]*', 'session="%s"' % self.session, xml_text.decode()).encode()
 
                 except Exception as e:
-# no point continuing with to retry - couldn't regenerate a valid session
+# no point continuing to retry - couldn't regenerate a valid session
                     message = str(e)
                     self.logging.error(message)
                     self.session = ""
