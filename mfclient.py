@@ -1310,7 +1310,7 @@ class mf_client():
 
 # effectively the recall batch size
 #        iterate_size = 100
-        iterate_size = 10
+        iterate_size = 50
         iterate = True
 
         try:
