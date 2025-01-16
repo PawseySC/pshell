@@ -53,41 +53,40 @@ class parser(cmd.Cmd):
 
     logging = logging.getLogger('parser')
 
-# --- initial setup 
+# --- command parsing hooks
     def preloop(self):
+# set the initial prompt
         self.prompt = "%s:%s>" % (self.remotes_current, self.cwd)
-
-# --- prompt run before
+# ---
     def precmd(self, line):
-# filter out commands that require authentication, if not authenticated/connected
+# if command requires authentication, and not yet authenticated, print remote status and don't execute
         if self.requires_auth(line):
             remote = self.remote_active()
-            if "not" in remote.status:
+            if remote.status != "authenticated":
                 print(remote.status)
                 return ""
-
+# normal command execution
         return cmd.Cmd.precmd(self, line)
-
-# --- prompt run after 
+# ---
     def postcmd(self, stop, line):
+# set prompt again - in case the remote/cwd changed
         self.prompt = "%s:%s>" % (self.remotes_current, self.cwd)
         return cmd.Cmd.postcmd(self, stop, line)
-
 # ---
     def emptyline(self):
         return
-
 # ---
     def default(self, line):
         remote = self.remote_active()
         try:
+# unknown command - passthrough to remote client custom handler
             remote.command(line)
         except Exception as e:
-# allow pshell to pass the exit code test, and also not crash on certain malformed commands
-            raise Exception("Syntax error")
-# this will cause pshell to crash on certain mailformed commands
+            self.logging.debug(str(e))
+# ensure pshell passes exit code on error test when bombing out on malformed commands
+            raise SyntaxError
+# FIXME - running this will cause pshell to bomb when processing the mflux error response
 # eg: asset.query :namespace "/projects/Data Team" :where "name='*.NEF''" :action count
-#            raise Exception(str(e))
 
 
 # TODO - implement completion for local commands?

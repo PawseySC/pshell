@@ -816,7 +816,7 @@ class mf_client():
                 except Exception as e:
 # no point continuing to retry - couldn't regenerate a valid session
                     message = str(e)
-                    self.logging.error(message)
+                    self.logging.debug(message)
                     self.session = ""
                     post_retry = False
 
