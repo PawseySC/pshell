@@ -1534,24 +1534,28 @@ class mf_client():
             An error message if unsuccessful
         """
 
-# construct destination argument
+# construct destination arguments
         filename = os.path.basename(filepath)
         filename = self._xml_sanitise(filename)
         namespace = self._xml_sanitise(namespace)
         remotepath = posixpath.join(namespace, filename)
-
-# find asset ID if exists, else create (will have empty content)
+        asset_id = None
+# find remote asset ID, if exists 
         result = self.aterm_run('asset.get :id -only-if-exists true "path=%s" :xpath -ename id id :xpath -ename crc32 content/csum :xpath -ename size content/size' % remotepath)
         xml_id = result.find(".//id")
         if xml_id is None:
-            self.logging.debug("No remote file found: [%s]" % remotepath)
-# NB: must create intermediate directories if they don't exist (mediaflux won't do it by default)
-            reply = self.aterm_run('asset.create :namespace -create "true" %s :name %s' % (namespace, filename))
-            xml_id = reply.find(".//id")
-# didn't exist - so enforce writing
-            overwrite=True
+# not found, create as new
+            self.logging.debug("Creating new file: %s" % remotepath)
+            xml_string = '<request><service name="service.execute" session="%s"><args><service name="asset.create">' % self.session
+            xml_string += '<namespace create="true">%s</namespace><name>%s</name></service></args></service></request>' % (namespace, filename)
+            asset_id = self._post_multipart_buffered(xml_string, filepath, cb_progress=cb_progress)
         else:
-# NB: assets with no content can have either the root element or the text set to None
+# found, overwrite?
+            if overwrite is False:
+                self.logging.debug("Skip existing file: %s" % remotepath)
+                return(-1)
+# if overwriting, check size first
+            asset_id = int(xml_id.text)
             remote_size = 0
             xml_size = result.find(".//size")
             if xml_size is not None:
@@ -1560,21 +1564,17 @@ class mf_client():
 # if sizes match (checksum compare is excrutiatingly slow) don't overwrite
             local_size = int(os.path.getsize(filepath))
             if remote_size == local_size:
-                self.logging.debug("Match; skipping [%s] -> [%s]" % (filepath, remotepath))
+                self.logging.debug("Skip matching file: %s" % remotepath)
                 return(-1)
             else:
-                self.logging.debug("Mismatch; local=%r -> remote=%r" % (local_size, remote_size))
+                self.logging.debug("Uploading new content for asset=%d: [%s] -> [%s]" % (asset_id, filepath, remotepath))
+                xml_string = '<request><service name="service.execute" session="%s"><args><service name="asset.set">' % self.session
+                xml_string += '<id>%d</id></service></args></service></request>' % asset_id
+                asset_id = self._post_multipart_buffered(xml_string, filepath, cb_progress=cb_progress)
 
-# if overwrite - do the upload
-        asset_id = int(xml_id.text)
-        if overwrite is True:
-            self.logging.debug("Uploading asset=%d: [%s] -> [%s]" % (asset_id, filepath, remotepath))
-# NB: create=true to generate intermediate directories (if needed)
-            xml_string = '<request><service name="service.execute" session="%s"><args><service name="asset.set">' % self.session
-            xml_string += '<id>path=%s</id><create>true</create></service></args></service></request>' % remotepath
-            asset_id = self._post_multipart_buffered(xml_string, filepath, cb_progress=cb_progress)
-            if metadata is True:
-                self.import_metadata(asset_id, filepath + ".meta")
+# if required, search for associated metadata file to import
+        if metadata is True and asset_id is not None:
+            self.import_metadata(asset_id, filepath + ".meta")
 
         return(0)
 
@@ -1740,4 +1740,8 @@ class mf_client():
 # NEW - don't do this by default - it will generate stacktrace in mediaflux for DMF (offline) files
         except Exception as e:
             self.logging.error("Metadata population failed: %s" % str(e))
+
+            # NEW - test this ... 
+            # If metadata import fails ... flag the upload as failed
+            raise IOError()
 
