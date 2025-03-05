@@ -1,7 +1,8 @@
 # README #
 
-mfclient.py is a basic Mediaflux client module for Python 3.x
-s3client.py is a basic S3 client module for Python 3.x
+pshell is a command line file transfer tool for:
+- Mediaflux
+- S3
 
 owner: Sean Fleming (sean.fleming@pawsey.org.au)
 
@@ -21,10 +22,7 @@ Run test_all
 
 pshell.py - command line client for mediaflux that uses mfclient and/or s3client for server communication.
 
-It features:
-
-* SFTP-like syntax
-* Tab completion
-* Basic support for passthru commands
-
-
+Features:
+- SFTP-like syntax
+- Tab completion
+- Basic support for passthru commands
