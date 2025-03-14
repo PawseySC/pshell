@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# THIS MODULE IS NO LONGER USED
 
 """
 This module is a Python 3.x (standard lib only) implementation of a simple keystone client

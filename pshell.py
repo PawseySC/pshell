@@ -10,17 +10,13 @@ VERSION_MIN = (3, 6)
 if sys.version_info < VERSION_MIN:
     sys.exit("ERROR: Python >= %d.%d is required, your version = %d.%d\n" % (VERSION_MIN[0], VERSION_MIN[1], sys.version_info[0], sys.version_info[1]))
 import os
-import re
 import json
-import urllib
 import logging
 import argparse
 import platform
 import itertools
 import configparser
 import concurrent.futures
-import mfclient
-import s3client
 import parser
 # no readline on windows
 try:

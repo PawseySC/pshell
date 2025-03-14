@@ -19,7 +19,6 @@ import getpass
 import logging
 import datetime
 import platform
-import mimetypes
 import posixpath
 import threading
 import http.client
@@ -158,7 +157,7 @@ class mf_client():
             return False
 
 # fast data channel check
-        if self.protocol == 'https' and self.encrypted_data == True:
+        if self.protocol == 'https' and self.encrypted_data is True:
             try:
 # updated connection path test
                 response = urllib.request.urlopen("http://%s:80/aterm" % self.server, timeout=5)
@@ -1372,7 +1371,7 @@ class mf_client():
                     polling_ids = ""
                     polling = False
                     for key in hash_done.keys():
-                        if hash_done[key] == False:
+                        if hash_done[key] is False:
                             polling_ids += " :id %s" % key
                             polling = True
 

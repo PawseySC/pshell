@@ -10,7 +10,6 @@ import re
 import json
 import math
 import string
-import urllib
 import fnmatch
 import getpass
 import logging
@@ -83,11 +82,9 @@ class s3_policy():
 # users
         if users is not None:
             list_users = users.split(',')
-            principal = [ 'arn:aws:iam:::user/%s' % user.strip() for user in list_users]
+            principal = ['arn:aws:iam:::user/%s' % user.strip() for user in list_users]
 
-#NEW - not required ... as owners always have the option to remove policies
 # ensure owner has access
-#            principal.append(self.iam_owner)
             statement['Principal'] = {'AWS': principal}
 # projects - TODO
 # resources
@@ -106,7 +103,6 @@ class s3_policy():
 # --- return in suitable form for setting
     def get_json(self, indent=0):
         return(json.dumps(self.hash, indent=indent))
-
 
 #------------------------------------------------------------
 class s3_client():
@@ -213,7 +209,7 @@ class s3_client():
 #------------------------------------------------------------
     def bucket_exists(self, bucket):
         try:
-            response = self.s3.head_bucket(Bucket=bucket)
+            self.s3.head_bucket(Bucket=bucket)
             return True
         except:
             pass
@@ -231,7 +227,6 @@ class s3_client():
             return candidate
 
 # greedy search for an intersecting match of candidate with partial
-        clen=len(candidate)
         for i in range(0, plen):
             self.logging.debug("compare [%s] <==> [%s]" % (candidate, partial[i:]))
             if candidate.startswith(partial[i:]):
@@ -253,7 +248,7 @@ class s3_client():
 
 #------------------------------------------------------------
     def complete_path(self, cwd, partial, start, match_prefix=True, match_object=True):
-        # return list of completed candidates that substitute at partial[start:] 
+# return list of completed candidates that substitute at partial[start:] 
         self.logging.debug("cwd=[%s] partial=[%s] start=[%d]" % (cwd, partial, start))
         try:
             fullpath = posixpath.join(cwd, partial)
@@ -277,7 +272,6 @@ class s3_client():
             else:
 # get results for non-bucket searches
                 response = self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
-                prefix_len = len(prefix)
 # process folder (prefix) matches
                 if match_prefix is True:
                     if 'CommonPrefixes' in response:
@@ -367,7 +361,7 @@ class s3_client():
         else:
             try:
 # if a list_objects generates no exception - return as valid path
-                response = self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
+                self.s3.list_objects_v2(Bucket=bucket, Delimiter='/', Prefix=prefix) 
                 return fullpath
 
             except Exception as e:
@@ -704,6 +698,7 @@ class s3_client():
                         value = json.dumps(reply['Status'])
                         yield "%20s : %s" % ('versioning', value)
                     except Exception as e:
+                        self.logging.debug(str(e))
                         yield "%20s : None" % 'versioning'
 # show lifecycle (if any)
                     try:
@@ -769,12 +764,9 @@ class s3_client():
     def policy_bucket_set(self, text):
 # process args
         args = text.split(" ", 3)
-        nargs = len(args)
-
 # TODO - this should be a bucket + (optional) object reference ...
         bucket = args[1]
         perm = args[2]
-
 # if nothing -> implied everyone 
         try:
             users=args[3]
@@ -795,14 +787,11 @@ class s3_client():
             p = s3_policy(bucket, self.s3)
 # TODO - check if the root iam users really does need to be added ...
             statement = p.statement_new(resources=['arn:aws:s3:::%s' % bucket, 'arn:aws:s3:::%s/*' % bucket], perm=perm, users=users)
-# CURRENT - special case when specifying everyone
+# special case when specifying everyone
             if users is None:
                 statement['Principal'] = '*'
 
             p.statement_add(statement)
-
-#            print(p.get_json())
-
             self.s3.put_bucket_policy(Bucket=bucket, Policy=p.get_json())
 
 #------------------------------------------------------------
@@ -896,7 +885,7 @@ class s3_client():
                         hash_toggle['Status'] = 'Suspended'
 # versioning lifecycle 
                     if 'v' in action:
-                        response = self.s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration=hash_toggle)
+                        self.s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration=hash_toggle)
                         hash_action['NoncurrentDays'] = days
 # multipart lifecycle
                     if 'm' in action:
@@ -904,7 +893,7 @@ class s3_client():
 
 # most common errors here will be no such bucket or no permission on bucket
                 hash_payload = self.json_template_helper(hash_action)
-                reply = self.s3.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=hash_payload)
+                self.s3.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=hash_payload)
 
 # review/restore section
             review_list = re.findall("[--]{2}[^\s]*", args[2])
