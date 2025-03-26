@@ -217,22 +217,31 @@ class s3_client():
 
 #------------------------------------------------------------
 # given a candidate determine if it matches the cwd/partial and return the [start] based section of the match if so, else none
-# TODO - can we adapt this to match objects and buckets in complete_path() -> probably have to use cwd somehow...
     def completion_match(self, cwd, partial, start, candidate):
         self.logging.debug("cwd=%s, partial=%s, start=%d, candidate=%s" % (cwd, partial, start, candidate))
 
 # no partial pattern, just return the candidate
-        plen=len(partial)
+        plen = len(partial)
         if plen == 0:
             return candidate
 
-# greedy search for an intersecting match of candidate with partial
+# seek j, the cwd tail intersection with candidate start - which is the part of the candidate to ignore 
+        j = 0
+        cwdlen = len(cwd)
+        try:
+            for i in range(1,cwdlen):
+                if cwd[-i:] == candidate[0:i]:
+                    j=i
+        except:
+            pass
+
+# search for an intersecting match of candidate with partial
         for i in range(0, plen):
-            self.logging.debug("compare [%s] <==> [%s]" % (candidate, partial[i:]))
-            if candidate.startswith(partial[i:]):
+            self.logging.debug("compare [%s] <==> [%s]" % (candidate[j:], partial[i:]))
+            if candidate[j:].startswith(partial[i:]):
                 greedy_match=i
-                match = partial[:i] + candidate
-                self.logging.debug("greedy match=%s, i=%d" % (match, greedy_match))
+                match = partial[:i] + candidate[j:]
+                self.logging.debug("match=%s, i=%d" % (match, greedy_match))
 # if match occurred part way through the string, previous char should be a / for a valid (complete) match
                 if i>0:
                     if partial[:i].endswith('/') is False:
@@ -241,7 +250,7 @@ class s3_client():
 
 # non-greedy concatenation return if partial is itself a complete prefix
         if partial.endswith('/'):
-            return partial[start:] + candidate
+            return partial[start:] + candidate[j:]
 
 # no valid match
         return None

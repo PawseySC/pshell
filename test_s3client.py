@@ -68,6 +68,9 @@ class s3client_standard(unittest.TestCase):
     def test_completion_match_nongreedy(self):
         reply = self.s3_client.completion_match("/", "bucket/child1/", 0, "child1/child2/")
         self.assertEqual(reply, "bucket/child1/child2/")
+    def test_completion_match_greedy(self):
+        reply = self.s3_client.completion_match("/bucket/child1/", "ch", 0, "child1/child2/")
+        self.assertEqual(reply, "child2/")
     def test_completion_match_empty_partial_prefix(self):
         reply = self.s3_client.completion_match("/bucket/child1/", "", 0, "child2/")
         self.assertEqual(reply, "child2/")
