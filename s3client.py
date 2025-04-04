@@ -752,17 +752,16 @@ class s3_client():
                 yield "%20s : %d" % ('objects', count)
                 yield "%20s : %s" % ('size', self.human_size(size))
         else:
-# exact key request
+# attempt to get object HEAD of the exact key
             fullkey = posixpath.join(prefix, key)
-
-# NEW - deletion markers will generate an exception (object doesn't exist)
             try:
                 response = self.s3.head_object(Bucket=bucket, Key=fullkey)
                 yield "%20s : %s" % ('object', pattern)
                 for item in response['ResponseMetadata']['HTTPHeaders']:
                     yield "%20s : %s" % (item, response['ResponseMetadata']['HTTPHeaders'][item])
             except Exception as e:
-                self.logging.debug(str(e))
+# report the first line if there was an error
+                yield str(e).split("\n")[0]
 
 # TODO (maybe) if find 'x-amz-version-id' in the metadata -> run a list_object_versions ... display the IDs
 # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/list_object_versions.html
