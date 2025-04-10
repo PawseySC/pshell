@@ -1349,8 +1349,7 @@ class mf_client():
                     for item in xml_poll.findall(".//asset"):
                         elem_id = item.attrib['id']
                         state = item.find(".//state")
-
-# known states: online, online+offline, offline, reachable, unreachable, invalid
+# known states: online, online+offline, offline, invalid, reachable, unreachable
 # the last 2 are for externally referenced content (not managed by mflux)
                         if state is not None:
 # if available - yield for downloading
@@ -1358,14 +1357,10 @@ class mf_client():
                                 self.logging.info("Content ready, id=%s" % elem_id)
                                 hash_done[elem_id] = True
                                 yield hash_path[elem_id]
-# skip bad content - usually externally managed file that is no longer available
-# FIXME - technically errors (should flag a non-zero return code) but we just skip so the other downloads can continue
-                            if 'unreachable' in state.text:
+# skip non-recoverable content - eg unreachable url, unmounted asset store, etc
+                            if 'unreachable' in state.text or 'invalid' in state.text:
+                                self.logging.error("Skipping id=%s, state=%s" % (elem_id, state.text))
                                 hash_done[elem_id] = True
-                                self.logging.error("Unreachable content, id=%s" % elem_id)
-                            if 'invalid' in state.text:
-                                hash_done[elem_id] = True
-                                self.logging.error("Invalid content, id=%s" % elem_id)
 
 # rebuild polling list and flag exit if nothing left
                     polling_ids = ""
@@ -1383,26 +1378,10 @@ class mf_client():
             self.logging.error(str(e))
             return
 
-        return
-
-# OLD LOGIC
-        while iterate:
-# get file list for this sub-set
-            result = self.aterm_run("asset.query.iterate :id %s :size %d" % (iterator, iterate_size))
-            for elem in result.findall(".//path"):
-                count += 1
-                yield elem.text
-# terminate when we get complete=True in the results
-            elem = result.find(".//iterated")
-            if elem is not None:
-                if 'true' in elem.attrib['complete']:
-                    iterate = False
-
 #------------------------------------------------------------
+# get_iter() should have already brought the file online; but testing reachability of external content is possibly still useful
     def _wait_until_online(self, remote_filepath):
         recall = True
-# FIXME - technically, should do one loop to check content status first
-# mostly should be ok as get_iter() called before this should be returning already online files
         while self.enable_polling:
             try:
                 xml_reply = self.aterm_run('asset.content.status :id "path=%s"' % remote_filepath, background=True)
@@ -1412,13 +1391,11 @@ class mf_client():
                     return False
                 if "online" in elem.text:
                     return True
-
 # limited visibility on externally managed content - do a small test
                 if "reachable" in elem.text:
                     self.logging.info("Verifying external content: %s" % remote_filepath)
                     xml_reply = self.aterm_run('asset.content.hexdump :id "path=%s" :length 1' % remote_filepath, background=True)
                     return True
-
             except Exception as e:
                 self.logging.error(str(e))
                 return False
