@@ -1,0 +1,28 @@
+#!/bin/bash
+echo "Build a zip bundle for testing - use build_release for artifact publishing"
+
+# setup build dir
+mkdir -p tester
+cp pshell.py tester/__main__.py
+cp parser.py tester/parser.py
+cp mfclient.py tester/mfclient.py
+cp s3client.py tester/s3client.py
+cd tester
+
+# build
+zip pshell.zip __main__.py parser.py mfclient.py s3client.py
+echo "#!/usr/bin/env python3" > pshell
+cat pshell.zip >> pshell
+chmod u+x pshell
+cp pshell ..
+
+# cleanup
+rm pshell.zip
+rm __main__.py
+rm parser.py
+rm mfclient.py
+rm s3client.py
+rm -rf *.pytmp
+cd ..
+rm -rf tester
+
