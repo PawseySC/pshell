@@ -384,7 +384,6 @@ class s3_client():
         bucket,prefix,key = self.path_convert(path)
 # NEW - trim the input prefix from all returned results (will look more like a normal filesystem)
         prefix_len = len(prefix)
-
         if bucket is not None:
             paginator = self.s3.get_paginator('list_objects_v2')
             do_match = True
@@ -397,13 +396,27 @@ class s3_client():
                         if do_match: 
                             if fnmatch.fnmatch(item['Prefix'], key) is False:
                                 continue
-                        yield "[Folder] %s" % item['Prefix'][prefix_len:]
+# FIXME - can display these 'broken' keys, but can't currently do anything else with them as dirsep=/ is assumed 
+# special case - key that starts with a / -> messes with the implicit use of / as a directory separator
+# most 'normal' keys should be ~ folder1/filename ... maps to -> bucket/folder1/filename ... ie auto / separator assumed
+                        if item['Prefix'] == '/':
+                            self.logging.warning("Found keys(s) that start with a directory separator")
+                            reply = self.s3.list_objects_v2(Bucket=bucket, Prefix='/')
+                            for subitem in reply.get('Contents'):
+                                yield "[Folder] %s" % subitem['Key']
+                        else:
+                            # normal folder
+                            yield "[Folder] %s" % item['Prefix'][prefix_len:]
+
+# display object keys as normal files
                 if 'Contents' in page:
                     for item in page.get('Contents'):
                         if do_match:
                             if fnmatch.fnmatch(item['Key'], key) is False:
                                 continue
-                        yield "%s | %s" % (self.human_size(item['Size']), item['Key'][prefix_len:])
+# if object key ends with a dirsep - ignore, as it's just the 0 length placeholder to 'create' the directory
+                        if item['Key'][-1] != '/':
+                            yield "%s | %s" % (self.human_size(item['Size']), item['Key'][prefix_len:])
         else:
             response = self.s3.list_buckets()
             for item in response['Buckets']:
