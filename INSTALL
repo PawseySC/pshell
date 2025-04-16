@@ -12,3 +12,8 @@ This should then work:
 python3 pshell
 
 
+### Docker
+
+docker build -t pshell .
+docker run -it --rm pshell
+

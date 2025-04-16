@@ -887,11 +887,11 @@ class s3_client():
             bucket,prefix,key = self.path_convert(args[1])
             fullkey = posixpath.join(prefix, key)
 # TODO - strip this bit out and implement parsing tests
-            action_list = re.findall("[+-][mv][^+-]*", args[2])
+            action_list = re.findall(r"[+-][mv][^+-]*", args[2])
             if len(action_list) > 0:
                 for action in action_list:
 # find the (optional) days
-                    match_days = re.search("\d+", action)
+                    match_days = re.search(r"\d+", action)
                     if match_days:
                         days = int(match_days.group(0))
                     else:
@@ -917,7 +917,7 @@ class s3_client():
                 self.s3.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=hash_payload)
 
 # review/restore section
-            review_list = re.findall("[--]{2}[^\s]*", args[2])
+            review_list = re.findall(r"[--]{2}[^\s]*", args[2])
             if len(review_list) > 0:
                 for review in review_list:
                     if 'review' in review:
