@@ -16,8 +16,13 @@ COPY pshell.py /
 COPY parser.py /
 COPY mfclient.py /
 COPY s3client.py /
+COPY test_* /
 
 # only way I could get this file (which usually sits in ~ into the container)
 COPY .pshell_config /root/.pshell_config
 
-CMD ["python", "./pshell.py", "-v", "1"]
+# pshell
+#CMD ["python", "./pshell.py", "-v", "1"]
+
+# tests
+CMD ["bash", "./test_all"]
