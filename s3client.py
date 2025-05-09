@@ -662,12 +662,15 @@ class s3_client():
     def bucket_size(self, bucket):
         count = 0
         size = 0
-        paginator = self.s3.get_paginator('list_objects_v2')
-        for page in paginator.paginate(Bucket=bucket):
-            if 'Contents' in page:
-                count += page['KeyCount']
-                for item in page.get('Contents'):
-                    size += item['Size']
+        try:
+            paginator = self.s3.get_paginator('list_objects_v2')
+            for page in paginator.paginate(Bucket=bucket):
+                if 'Contents' in page:
+                    count += page['KeyCount']
+                    for item in page.get('Contents'):
+                        size += item['Size']
+        except Exception as e:
+            self.logging.error(str(e))
         return count, size
 
 #------------------------------------------------------------
@@ -677,6 +680,7 @@ class s3_client():
             reply = self.s3.get_bucket_acl(Bucket=bucket)
             owner = reply['Owner']['DisplayName']
         except Exception as e:
+# this can happen if the owner locks themself out with ACLs and it seem even bucket_owner_controls() will be denied
             self.logging.error(str(e))
             owner = 'unknown'
         return owner
@@ -715,8 +719,8 @@ class s3_client():
 # show versioning (if any)
 # NB: default response vs enabled vs subsequent disable seems different ... for AWS/Ceph reasons I guess
 # ie by default it doesn't have any metadata (enable or disable) for versioning - only after explicit versioning calls will it appear and remain
-                    reply = self.s3.get_bucket_versioning(Bucket=bucket)
                     try:
+                        reply = self.s3.get_bucket_versioning(Bucket=bucket)
                         value = json.dumps(reply['Status'])
                         yield "%20s : %s" % ('versioning', value)
                     except Exception as e:
