@@ -74,10 +74,11 @@ class s3_policy():
             else:
                 raise Exception("Unknown permission string=%s" % perm)
 # NB: adding s3:* or s3:ListAllMyBuckets currently does NOT allow the user to list buckets ... although they can see the objects in the bucket
+            statement['Action'] = []
             if 'r' in perm:
-                statement['Action'] = ["s3:ListBucket", "s3:GetObject"]
+                statement['Action'] += ["s3:ListBucket", "s3:GetObject"]
             if 'w' in perm:
-                statement['Action'] = ["s3:PutObject", "s3:DeleteObject"]
+                statement['Action'] += ["s3:PutObject", "s3:DeleteObject"]
 # TODO - maybe - add options for more nuanced permissions? (eg allow PutObject, but not DeleteObject)
 # users
         if users is not None:
