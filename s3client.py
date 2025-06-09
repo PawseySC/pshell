@@ -117,9 +117,12 @@ class s3_client():
         self.status = "not connected"
         self.enable_polling = True
         self.logging = logging.getLogger('s3client')
-# NEW - test invoke - standalone
+# test invoke - standalone
         if log_level is not None:
             logging.basicConfig(format='%(levelname)9s %(asctime)-15s >>> %(module)s.%(funcName)s(): %(message)s', level=log_level)
+# Fix for changes to boto3 > 1.36.0 (ref: https://github.com/boto/boto3/issues/4398)
+        os.environ["AWS_REQUEST_CHECKSUM_CALCULATION"] = "when_required"
+        os.environ["AWS_RESPONSE_CHECKSUM_VALIDATION"] = "when_required"
         self.logging.debug("BOTO3=%r" % ok)
 
 # --- NEW - main (pshell) invoke
