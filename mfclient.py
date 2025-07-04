@@ -368,25 +368,44 @@ class mf_client():
         """
         Primitive for sending an XML message to the Mediaflux server
         """
-# NB: timeout exception if server is unreachable
+
+# NB: timeout exception here if server is unreachable
+        for i in range(3):
+            response=None
+            try:
+                request = urllib.request.Request(self.post_url, data=xml_bytes, headers={'Content-Type': 'text/xml', 'charset': 'utf-8'})
+                response = urllib.request.urlopen(request, timeout=self.timeout)
+                self.logging.info("Success, try=%d" % i)
+                break
+# NEW - retry on temporary failures (eg hostname resolution)
+            except Exception as e:
+                msg = str(e)
+                self.logging.warning("Failed, try=%d, message=%s" % (i, msg))
+                if "Temporary failure" in msg:
+                    time.sleep(5)
+                    continue
+                raise Exception(msg)
+        if response is None:
+            raise Exception("Failed to get a response from the server")
+
+# check for server response / error
         elem=None
         try:
-            request = urllib.request.Request(self.post_url, data=xml_bytes, headers={'Content-Type': 'text/xml', 'charset': 'utf-8'})
-            response = urllib.request.urlopen(request, timeout=self.timeout)
             xml = response.read()
             tree = ET.fromstring(xml.decode())
             elem = tree.find(".//reply/error")
-# process connection error
         except Exception as e:
             self.logging.debug(str(e))
             raise Exception(str(e))
-# process server response error
+
+# convert any errors to exceptions
         if elem is not None:
             elem = tree.find(".//message")
             error_message = self._xml_succint_error(elem.text)
             self.logging.debug("raise: [%s]" % error_message)
             raise Exception(error_message)
 
+# success
         return tree
 
 #------------------------------------------------------------
@@ -1384,7 +1403,7 @@ class mf_client():
         recall = True
         while self.enable_polling:
             try:
-                xml_reply = self.aterm_run('asset.content.status :id "path=%s"' % remote_filepath, background=True)
+                xml_reply = self.aterm_run('asset.content.status :id "path=%s"' % remote_filepath)
                 elem = xml_reply.find(".//asset/state")
                 if elem is None:
                     self.logging.error("No content found for asset")
@@ -1394,7 +1413,7 @@ class mf_client():
 # limited visibility on externally managed content - do a small test
                 if "reachable" in elem.text:
                     self.logging.info("Verifying external content: %s" % remote_filepath)
-                    xml_reply = self.aterm_run('asset.content.hexdump :id "path=%s" :length 1' % remote_filepath, background=True)
+                    xml_reply = self.aterm_run('asset.content.hexdump :id "path=%s" :length 1' % remote_filepath)
                     return True
             except Exception as e:
                 self.logging.error(str(e))
@@ -1403,7 +1422,7 @@ class mf_client():
 # issue recall command
             if recall is True:
                 self.logging.info("Issuing recall for: %s" % remote_filepath)
-                self.aterm_run('asset.content.migrate :destination online :id "path=%s"' % remote_filepath, background=True)
+                self.aterm_run('asset.content.migrate :destination online :id "path=%s"' % remote_filepath)
                 recall = False
             time.sleep(30)
 
@@ -1455,30 +1474,37 @@ class mf_client():
                 asset_id = elem.attrib['id']
 
 # try to open the content URL
-                try:
-                    url = self.data_get + "?_skey={0}&id={1}".format(self.session, asset_id)
-                    request = urllib.request.Request(url)
-                    response = urllib.request.urlopen(request)
-                except Exception as e:
-                    self.logging.debug(str(e))
-                    print("")
-                    self.logging.error("Bad content URL: %s" % remote_filename)
-#                    raise Exception("Download failed")
-                    raise IOError()
+# NEW - retry a couple of times (with delay) to see if it addresses the "Temporary failure in name resolution" issue
+                url = self.data_get + "?_skey={0}&id={1}".format(self.session, asset_id)
+                for i in range(3):
+                    response=None
+                    try:
+                        request = urllib.request.Request(url)
+                        response = urllib.request.urlopen(request)
+                        self.logging.info("Success, try=%d, URL=%s" % (i, url))
+                        break
+# NEW - retry on temporary failures (eg hostname resolution)
+                    except Exception as e:
+                        msg = str(e)
+                        self.logging.warning("Failed, try=%d, URL=%s, message=%s" % (i, url, msg))
+                        if "Temporary failure" in msg:
+                            time.sleep(5)
+                            continue
+                        raise Exception(msg)
+                if response is None:
+                    raise Exception("Failed to get a response from the server");
 
 # buffered write to open file
                 with open(local_filepath, 'wb') as output:
                     while self.enable_polling:
-
 # handle interruption to data stream
                         try:
                             data = response.read(self.get_buffer)
                         except Exception as e:
-                            self.logging.debug(str(e))
+# extra reporting around intermittent error
                             self.logging.error("Content read interrupted: %s" % remote_filename)
+                            self.logging.error("Raw error: %s" % str(e))
                             raise IOError()
-#                            raise Exception("Download failed")
-
                         if data:
                             output.write(data)
                             if cb_progress is not None:
