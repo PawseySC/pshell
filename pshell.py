@@ -28,12 +28,26 @@ except:
 build="repository"
 
 #------------------------------------------------------------
-def _normalize_pawsey_portal_config(config_filepath):
+def _normalize_endpoint_(endpoint):
     """
-    If ~/.pshell_config (or cwd fallback) exists and contains [pawsey] with an mflux
-    "portal" endpoint, ensure portal.protocol is "https" and portal.encrypt is True.
-    Writes the file back only when a change is needed. Runs before config.read() so
-    the in-memory config matches disk.
+    For a single endpoint dict, if type is mflux, ensure protocol is https and
+    encrypt is True. Returns True if endpoint was modified.
+    """
+    if not isinstance(endpoint, dict) or endpoint.get('type') != 'mflux':
+        return False
+    changed = False
+    if endpoint.get('protocol') != 'https':
+        endpoint['protocol'] = 'https'
+        changed = True
+    if endpoint.get('encrypt') is not True:
+        endpoint['encrypt'] = True
+        changed = True
+    return changed
+
+
+def _normalize_config_file_(config_filepath):
+    """
+    Make sure the mediaflux endpoints in the config file use 'https' and 'encrypt' is True.
     """
     if not os.path.isfile(config_filepath):
         return
@@ -50,7 +64,6 @@ def _normalize_pawsey_portal_config(config_filepath):
     except (configparser.Error, OSError):
         return
     if not cfg.has_section('pawsey') or not cfg.has_option('pawsey', 'endpoints'):
-        print("No pawsey section or endpoints option")
         return
     try:
         endpoints = json.loads(cfg.get('pawsey', 'endpoints'))
@@ -58,16 +71,11 @@ def _normalize_pawsey_portal_config(config_filepath):
         return
     if not isinstance(endpoints, dict):
         return
-    portal = endpoints.get('portal')
-    if not isinstance(portal, dict) or portal.get('type') != 'mflux':
-        return
     changed = False
-    if portal.get('protocol') != 'https':
-        portal['protocol'] = 'https'
-        changed = True
-    if portal.get('encrypt') is not True:
-        portal['encrypt'] = True
-        changed = True
+    for endpoint_name in ('portal', 'public'):
+        endpoint = endpoints.get(endpoint_name)
+        if _normalize_endpoint_(endpoint):
+            changed = True
     if not changed:
         return
     cfg.set('pawsey', 'endpoints', json.dumps(endpoints))
@@ -82,7 +90,7 @@ def _normalize_pawsey_portal_config(config_filepath):
                 os.unlink(tmp_path)
         except OSError:
             pass
-        logging.warning("Could not normalize pawsey portal in [%s]: %s" % (config_filepath, e))
+        logging.warning("Could not normalize pawsey endpoints in [%s]: %s" % (config_filepath, e))
 
 #------------------------------------------------------------
 def main():
@@ -123,7 +131,7 @@ def main():
     except:
         config_filepath = os.path.join(os.getcwd(), ".pshell_config")
 
-    _normalize_pawsey_portal_config(config_filepath)
+    _normalize_config_file_(config_filepath)
 
     config = configparser.ConfigParser()
     logging.debug("Reading config file: [%s]" % config_filepath)
