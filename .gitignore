@@ -1,0 +1,35 @@
+## Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+## Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+## Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+
+## Test / tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+## OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+## Local runtime/config files
+.pshell_config
+
+## Generated release bundle outputs
+release/
