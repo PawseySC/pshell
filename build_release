@@ -7,6 +7,7 @@ cp pshell.py release/__main__.py
 cp parser.py release/parser.py
 cp mfclient.py release/mfclient.py
 cp s3client.py release/s3client.py
+cp util.py release/util.py
 cd release
 
 # stamp this release
@@ -14,7 +15,7 @@ d=$(date +%Y%m%d%H%M%S)
 sed -i tmp -e 's/^build.*$/build="'$d'"/' __main__.py
 
 # build
-zip pshell.zip __main__.py parser.py mfclient.py s3client.py
+zip pshell.zip __main__.py parser.py mfclient.py s3client.py util.py
 echo "#!/usr/bin/env python3" > pshell
 cat pshell.zip >> pshell
 chmod u+x pshell
@@ -25,5 +26,6 @@ rm __main__.py
 rm parser.py
 rm mfclient.py
 rm s3client.py
+rm util.py
 rm *.pytmp
 
