@@ -28,6 +28,63 @@ except:
 build="repository"
 
 #------------------------------------------------------------
+def _normalize_pawsey_portal_config(config_filepath):
+    """
+    If ~/.pshell_config (or cwd fallback) exists and contains [pawsey] with an mflux
+    "portal" endpoint, ensure portal.protocol is "https" and portal.encrypt is True.
+    Writes the file back only when a change is needed. Runs before config.read() so
+    the in-memory config matches disk.
+    """
+    if not os.path.isfile(config_filepath):
+        return
+    try:
+        if os.path.getsize(config_filepath) == 0:
+            return
+    except OSError:
+        return
+    cfg = configparser.ConfigParser(interpolation=None)
+    try:
+        read_ok = cfg.read(config_filepath)
+        if not read_ok:
+            return
+    except (configparser.Error, OSError):
+        return
+    if not cfg.has_section('pawsey') or not cfg.has_option('pawsey', 'endpoints'):
+        print("No pawsey section or endpoints option")
+        return
+    try:
+        endpoints = json.loads(cfg.get('pawsey', 'endpoints'))
+    except (json.JSONDecodeError, TypeError):
+        return
+    if not isinstance(endpoints, dict):
+        return
+    portal = endpoints.get('portal')
+    if not isinstance(portal, dict) or portal.get('type') != 'mflux':
+        return
+    changed = False
+    if portal.get('protocol') != 'https':
+        portal['protocol'] = 'https'
+        changed = True
+    if portal.get('encrypt') is not True:
+        portal['encrypt'] = True
+        changed = True
+    if not changed:
+        return
+    cfg.set('pawsey', 'endpoints', json.dumps(endpoints))
+    tmp_path = config_filepath + '.tmp'
+    try:
+        with open(tmp_path, 'w') as f:
+            cfg.write(f)
+        os.replace(tmp_path, config_filepath)
+    except OSError as e:
+        try:
+            if os.path.isfile(tmp_path):
+                os.unlink(tmp_path)
+        except OSError:
+            pass
+        logging.warning("Could not normalize pawsey portal in [%s]: %s" % (config_filepath, e))
+
+#------------------------------------------------------------
 def main():
     global build
 
@@ -65,6 +122,8 @@ def main():
         open(config_filepath, 'a').close()
     except:
         config_filepath = os.path.join(os.getcwd(), ".pshell_config")
+
+    _normalize_pawsey_portal_config(config_filepath)
 
     config = configparser.ConfigParser()
     logging.debug("Reading config file: [%s]" % config_filepath)
