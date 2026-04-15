@@ -27,10 +27,12 @@ except:
 
 # auto
 build="repository"
+version='development'
 
 #------------------------------------------------------------
 def main():
     global build
+    global version
 
 # server config (section heading) to use
     p = argparse.ArgumentParser(description="pshell help")
@@ -40,8 +42,14 @@ def main():
     p.add_argument("-v", dest='verbose', default=None, help="set verbosity level (0,1,2)")
     p.add_argument("-u", dest='url', default=None, help="Remote endpoint URL")
     p.add_argument("-t", dest='type', default=None, help="Remote endpoint type (eg mflux, s3)")
+    p.add_argument("-V","--version", action="store_true", help="Show version")
     p.add_argument("command", nargs="?", default="", help="a single command to execute")
     args = p.parse_args()
+
+    if args.version is True:
+        print(f"pshell version {version}")
+        print(f"Build {build}")
+        sys.exit(0)
 
 # configure logging
     logging_level = logging.ERROR
@@ -54,7 +62,7 @@ def main():
     logging.basicConfig(format='%(levelname)9s %(asctime)-15s >>> %(module)s.%(funcName)s(): %(message)s', level=logging_level)
 
 # basic info
-    logging.info("PSHELL=%s" % build)
+    logging.info("Build=%s" % build)
     logging.info("PLATFORM=%s" % platform.system())
     version = sys.version
     i = version.find("\n")
