@@ -62,6 +62,7 @@ def main():
     logging.basicConfig(format='%(levelname)9s %(asctime)-15s >>> %(module)s.%(funcName)s(): %(message)s', level=logging_level)
 
 # basic info
+    logging.info("Version=%s" % version)
     logging.info("Build=%s" % build)
     logging.info("PLATFORM=%s" % platform.system())
     version = sys.version
