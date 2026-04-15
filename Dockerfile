@@ -16,6 +16,7 @@ COPY pshell.py /
 COPY parser.py /
 COPY mfclient.py /
 COPY s3client.py /
+COPY util.py /
 COPY test_* /
 
 # only way I could get this file (which usually sits in ~ into the container)
