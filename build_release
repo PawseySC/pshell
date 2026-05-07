@@ -13,8 +13,6 @@ cd release
 
 # stamp this release
 d=$(date +%Y%m%d%H%M%S)
-version=$(git describe --tags --abbrev=0)
-sed -i tmp -e 's/^version.*$/version="'$version'"/' __main__.py
 sed -i tmp -e 's/^build.*$/build="'$d'"/' __main__.py
 
 # build
