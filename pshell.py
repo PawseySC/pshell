@@ -27,7 +27,7 @@ except:
 
 # auto
 build="repository"
-version='development'
+version="v1.2.0"
 
 #------------------------------------------------------------
 def main():
