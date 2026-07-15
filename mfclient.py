@@ -1112,7 +1112,7 @@ class mf_client():
             raise Exception("Nothing to delete")
 # query to confirm removal
         if prompt is not None:
-            if prompt("Delete %d files (y/n): " % count) is False:
+            if prompt("Delete %d files. Proceed? (y/n): " % count) is False:
                 return False
         self.logging.info("Destroy confirmed.")
         self.aterm_run('asset.query %s :action pipe :service -name asset.destroy' % query, background=True, show_progress=True)
