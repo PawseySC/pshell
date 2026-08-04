@@ -809,6 +809,8 @@ class parser(cmd.Cmd):
 
 # TODO - rework as _iter() implementation ... although that will be inefficient for MFLUX
     def do_rm(self, line):
+        if self.remotes_current == "public":
+            raise Exception("ERROR: Removing files are not allowed for public projects")
         abspath = self.abspath(line)
         remote = self.remote_active()
         if remote.rm(abspath, prompt=self.ask) is False:
