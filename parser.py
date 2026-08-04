@@ -342,7 +342,10 @@ class parser(cmd.Cmd):
             cyan = "\033[96m"
             red = "\033[91m"
             reset = "\033[0m"
-            warning = "WARNING: Permanently deletes files on server"
+            if self.remotes_current in ("portal", "public"):
+                warning = "WARNING: Permanently delete file(s) on Banksia"
+            else:
+                warning = "WARNING: Permanently delete file(s) on Acacia"
             width = len(warning) + 2
             border = "+" + ("-" * width) + "+"
             padded = " " + warning + " "
