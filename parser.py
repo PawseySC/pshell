@@ -822,6 +822,8 @@ class parser(cmd.Cmd):
         print("Usage: rmdir <folder>\n")
 
     def do_rmdir(self, line):
+        if self.remotes_current == "public":
+            raise Exception("ERROR: Removing folders are not allowed for public projects")
         ns_target = self.abspath(line)
         remote = self.remote_active()
         if remote.rmdir(ns_target, prompt=self.ask) is False:
