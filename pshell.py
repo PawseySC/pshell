@@ -27,7 +27,7 @@ except:
 
 # auto
 build="repository"
-version="v1.2.1"
+version="v1.2.2"
 
 #------------------------------------------------------------
 def main():
@@ -101,8 +101,7 @@ def main():
                 if args.current == 'pawsey':
                     endpoints['portal'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'ivec'}
                     endpoints['public'] = {'type':'mflux', 'url':'https://data.pawsey.org.au:443', 'domain':'public'}
-# projects.pawsey.org.au did not work as an endpoint on setonix, but acacia.pawsey.org.au worked fine
-                    endpoints['private'] = {'type':'s3', 'url':'https://acacia.pawsey.org.au'}
+                    endpoints['private'] = {'type':'s3', 'url':'https://projects.pawsey.org.au'}
                     remotes_home = '/projects'
                     remotes_current = 'portal'
 # store endpoints in config

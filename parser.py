@@ -337,6 +337,21 @@ class parser(cmd.Cmd):
 # if script, assumes you know what you're doing
         if self.interactive is False:
             return True
+        if sys.stdout.isatty():
+# bright red warning inside a bright cyan ASCII rectangle
+            cyan = "\033[96m"
+            red = "\033[91m"
+            reset = "\033[0m"
+            if self.remotes_current in ("portal", "public"):
+                warning = "WARNING: Permanently delete file(s) on Banksia"
+            else:
+                warning = "WARNING: Permanently delete file(s) on Acacia"
+            width = len(warning) + 2
+            border = "+" + ("-" * width) + "+"
+            padded = " " + warning + " "
+            print("%s%s%s" % (cyan, border, reset))
+            print("%s|%s%s%s%s|%s" % (cyan, reset, red, padded, cyan, reset))
+            print("%s%s%s" % (cyan, border, reset))
         response = input(text)
         if response == 'y' or response == 'Y':
             return True
@@ -794,6 +809,8 @@ class parser(cmd.Cmd):
 
 # TODO - rework as _iter() implementation ... although that will be inefficient for MFLUX
     def do_rm(self, line):
+        if self.remotes_current == "public":
+            raise Exception("ERROR: Removing files are not allowed for public projects")
         abspath = self.abspath(line)
         remote = self.remote_active()
         if remote.rm(abspath, prompt=self.ask) is False:
@@ -805,6 +822,8 @@ class parser(cmd.Cmd):
         print("Usage: rmdir <folder>\n")
 
     def do_rmdir(self, line):
+        if self.remotes_current == "public":
+            raise Exception("ERROR: Removing folders are not allowed for public projects")
         ns_target = self.abspath(line)
         remote = self.remote_active()
         if remote.rmdir(ns_target, prompt=self.ask) is False:
