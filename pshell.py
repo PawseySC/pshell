@@ -5,10 +5,10 @@ Author: Sean Fleming
 """
 
 import sys
-# magnus python 3.4 seems broken, module python/3.6.3 works fine
-VERSION_MIN = (3, 6)
+# python 3.6 and 3.7 are end-of-life and unsupported by current boto3 releases
+VERSION_MIN = (3, 8)
 if sys.version_info < VERSION_MIN:
-    sys.exit("ERROR: Python >= %d.%d is required, your version = %d.%d\n" % (VERSION_MIN[0], VERSION_MIN[1], sys.version_info[0], sys.version_info[1]))
+    sys.exit("ERROR: Python >= %d.%d is required, your version = %d.%d (%s)\n" % (VERSION_MIN[0], VERSION_MIN[1], sys.version_info[0], sys.version_info[1], sys.executable))
 import os
 import json
 import logging
