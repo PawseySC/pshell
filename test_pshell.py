@@ -93,7 +93,7 @@ if __name__ == '__main__':
     print("Running tests for: pshell")
     print("----------------------------------------------------------------------\n")
 
-    python = "python3"
+    python = sys.executable
     config = "test"
     script = "pshell.py"
     verbosity = "0"

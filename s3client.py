@@ -6,6 +6,7 @@ Author: Sean Fleming
 """
 
 import os
+import sys
 import re
 import json
 import math
@@ -144,6 +145,12 @@ class s3_client():
 #------------------------------------------------------------
     def connect(self):
         self.logging.info('endpoint=%s using acess=%s' % (self.url, self.access))
+
+# without boto3 every s3 call fails, so say so rather than silently staying "not connected"
+        if not ok:
+            self.status = "boto3 not found"
+            self.logging.error("S3 support requires boto3, which is not installed for %s (Python %d.%d)" % (sys.executable, sys.version_info[0], sys.version_info[1]))
+            return False
 
 # connection check
         emsg = "unknown error"

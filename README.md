@@ -8,7 +8,7 @@ owner: Sean Fleming (sean.fleming@pawsey.org.au)
 
 ### How do I get set up? ###
 
-Install python >= 3.6 on the platform of your choice.
+Install python >= 3.8 on the platform of your choice.
 
 Invoke pshell.py or the prepackaged binary distribution.
 

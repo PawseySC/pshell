@@ -1,7 +1,7 @@
 
 ### Current
 
-Just use build_release -> zip source bundle and require users to install >= python 3.6 on whatever platform they're on
+Just use build_release -> zip source bundle and require users to install >= python 3.8 on whatever platform they're on
 
 Users will separately have to install boto3 if they want the S3 functionality.
 
