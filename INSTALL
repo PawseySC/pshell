@@ -1,15 +1,17 @@
 
 ### Current
 
-Just use build_release -> zip source bundle and require users to install >= python 3.6 on whatever platform they're on
+Run `./build_release` to create the single-file `release/pshell` executable.
+It bundles boto3 and its dependencies; users do not need to install them.
+It requires Python 3 and extracts its contents to a private temporary directory
+while running, which is removed on normal exit.
 
-Users will separately have to install boto3 if they want the S3 functionality.
+The build includes separate dependency sets for Python 3.6-3.12 and Python
+3.13 or later. Build on a platform compatible with the target system and its
+Python runtime.
 
-Can't bundle boto3 in a python zip: https://github.com/boto/boto3/issues/1770
-
-This should then work:
-
-python3 pshell
+Run it with `./release/pshell`.
+After building, run `python3 test_release.py` to check the packaged executable.
 
 
 ### Docker

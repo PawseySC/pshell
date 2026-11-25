@@ -1,32 +1,37 @@
 #!/bin/bash
+set -e
+
 echo "Building a zip bundle with version timestamp for release"
 
-# setup build dir
+# stage the application and its dependencies outside the release directory
 mkdir -p release
-rm release/*
-cp pshell.py release/__main__.py
-cp parser.py release/parser.py
-cp mfclient.py release/mfclient.py
-cp s3client.py release/s3client.py
-cp util.py release/util.py
-cd release
+build_dir=$(mktemp -d)
+trap 'rm -rf "$build_dir"' EXIT
+
+cp release_main.py "$build_dir/__main__.py"
+cp pshell.py "$build_dir/pshell.py"
+cp parser.py mfclient.py s3client.py util.py "$build_dir/"
 
 # stamp this release
 d=$(date +%Y%m%d%H%M%S)
-sed -i tmp -e 's/^build.*$/build="'$d'"/' __main__.py
+sed 's/^build.*$/build="'$d'"/' "$build_dir/pshell.py" > "$build_dir/pshell.stamped.py"
+mv "$build_dir/pshell.stamped.py" "$build_dir/pshell.py"
+
+# Include compatible dependency sets for Python 3.6-3.12 and Python 3.13+.
+python3 -m pip install --disable-pip-version-check --no-compile \
+    --python-version 3.6 --only-binary=:all: \
+    --requirement requirements.txt --target "$build_dir/vendor/legacy"
+python3 -m pip install --disable-pip-version-check --no-compile \
+    --python-version 3.13 --only-binary=:all: \
+    --requirement requirements.txt --target "$build_dir/vendor/modern"
 
 # build
-zip pshell.zip __main__.py parser.py mfclient.py s3client.py util.py
-echo "#!/usr/bin/env python3" > pshell
-cat pshell.zip >> pshell
-chmod u+x pshell
-
-# cleanup
-rm pshell.zip
-rm __main__.py
-rm parser.py
-rm mfclient.py
-rm s3client.py
-rm util.py
-rm *.pytmp
+bundle=$(pwd)/release/pshell.zip
+(cd "$build_dir" && zip -qr "$bundle" .)
+{
+    echo "#!/usr/bin/env python3"
+    cat "$bundle"
+} > release/pshell
+chmod u+x release/pshell
+rm "$bundle"
 

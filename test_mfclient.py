@@ -9,6 +9,8 @@ import logging
 import urllib.request, urllib.error, urllib.parse
 import binascii
 import unittest
+from unittest import mock
+import xml.etree.ElementTree as ET
 import mfclient
 import posixpath
 import configparser
@@ -24,6 +26,16 @@ class mfclient_main(unittest.TestCase):
     def setUp(self):
         global mf_client
         self.mf_client = mf_client
+
+    def test_login_does_not_log_session(self):
+        response = ET.fromstring("<response><session>dummy-session</session></response>")
+        with mock.patch.object(self.mf_client, "aterm_run", return_value=response):
+            with mock.patch.object(self.mf_client, "connect"):
+                with self.assertLogs("mfclient", level="INFO") as logs:
+                    self.mf_client.login(user="dummy", password="dummy", domain="dummy")
+        self.assertEqual(self.mf_client.session, "dummy-session")
+        self.assertNotIn("dummy-session", "\n".join(logs.output))
+        self.mf_client.session = ""
 
 
 # --- helper: remove common XML wrapper
