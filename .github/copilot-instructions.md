@@ -5,12 +5,12 @@ SFTP-like command line client for Mediaflux and S3 (Pawsey). Python >= 3.6, stan
 ## Build, test, run
 
 - Run: `python3 pshell.py [-c config] [-v 0|1|2] [-i script] [-o failed_script] [-u url -t mflux|s3] ["cmd1 && cmd2"]`
-- All tests: `./test_all` (runs the four `test_*.py` files with `python3`)
+- All tests: `./test_all` (runs the four main test modules and `test_runner.py` with `python3`; release bundle tests are separate)
 - Single module: `python3 test_parser.py` (also `test_mfclient.py`, `test_s3client.py`, `test_pshell.py`)
-- Tests are plain `unittest` with a custom `__main__` that builds the suite from a `test_class_list`. Single method: `python3 -m unittest test_s3client.s3client_standard.test_convert` — except `test_s3client.py`/`test_mfclient.py`, whose `setUp` uses a client global created in `__main__` (and `test_pshell.py`, which uses `config`, `python`, `script`, `verbosity` globals); for those, edit `test_class_list` and run as a script.
+- The four main test modules use `unittest` with a custom `__main__` that builds the suite from a `test_class_list`. Single method: `python3 -m unittest test_s3client.s3client_standard.test_convert` — except `test_s3client.py`/`test_mfclient.py`, whose `setUp` uses a client global created in `__main__` (and `test_pshell.py`, which uses `config`, `python`, `script`, `verbosity` globals); for those, edit `test_class_list` and run as a script.
 - `test_mfclient.py` / `test_s3client.py` use dummy clients (no server needed); `test_pshell.py` runs `pshell.py` as a subprocess and checks exit codes.
-- No linter configured. CI (`bitbucket-pipelines.yml`) only runs `python test_mfclient.py` on python:3.6.
-- Packaging: `build_test` / `build_release` zip `pshell.py` (as `__main__.py`), `parser.py`, `mfclient.py`, `s3client.py`, `util.py` into an executable zip with a python3 shebang. **Any new module must be added to the file lists in both scripts.** `build_release` rewrites the line starting with `build` in `pshell.py` with a timestamp; keep that line shape. Release builds also bundle `LICENSE`, `NOTICE`, and the dependency metadata from both vendor sets.
+- No linter configured. GitHub Actions runs the full suite and release bundle tests on Python 3.9, 3.12 and 3.6 (in a container). The older Bitbucket pipeline only runs `python test_mfclient.py` on python:3.6.
+- Packaging: `build_test` calls `build_release`, which uses `release_main.py` as `__main__.py` and bundles `pshell.py`, `parser.py`, `mfclient.py`, `s3client.py`, `util.py`, `LICENSE`, `NOTICE`, and both dependency sets into an executable zip. Add new application modules to the file list in `build_release`. The release script stamps the `build` line in its staged copy of `pshell.py`.
 - `v3/` is a legacy/experimental tree (FUSE mount, older mfclient); `keystone.py` is a standalone helper. Main code is at the repo root.
 
 ## Architecture

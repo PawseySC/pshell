@@ -10,7 +10,7 @@ permissions:
 jobs:
   test:
     name: Python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -39,3 +39,28 @@ jobs:
 
       - name: Test executable bundle
         run: python test_release.py
+
+  test-python-36:
+    name: Python 3.6
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python for building
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build executable bundle
+        run: ./build_test
+
+      - name: Run tests with Python 3.6
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            python:3.6.15-bullseye \
+            bash -ec 'python -m pip install -r requirements.txt && ./test_all && python test_release.py'

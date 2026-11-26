@@ -78,7 +78,14 @@ class mfclient_main(unittest.TestCase):
     def test_service_add(self):
         line = 'system.service.add :name custom.service :replace-if-exists true :access ACCESS :definition < :element -name arg1 -type string :element -name arg2 -type string -min-occurs 0 -default " " :element -name arg3 -type boolean -min-occurs 0 -default false > :execute \"return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]\"'
         reply = self.mf_client.aterm_run(line, post=False)
-        self.assertEqual(self._peel(reply), '<service name="system.service.add"><name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string" /><element name="arg2" type="string" min-occurs="0" default=" " /><element name="arg3" type="boolean" min-occurs="0" default="false" /></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute></service>')
+        expected = '<service name="system.service.add"><name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string" /><element name="arg2" type="string" min-occurs="0" default=" " /><element name="arg3" type="boolean" min-occurs="0" default="false" /></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute></service>'
+
+        def xml_structure(element):
+            return (element.tag, element.attrib, element.text, element.tail,
+                    [xml_structure(child) for child in element])
+
+        self.assertEqual(xml_structure(ET.fromstring(self._peel(reply))),
+                         xml_structure(ET.fromstring(expected)))
 
     def test_semicolon_value(self):
         line = 'actor.grant :name public:public :type user :role -type role read-only'
@@ -239,5 +246,5 @@ if __name__ == '__main__':
     suite = unittest.TestSuite(suite_list)
 
 # run suite
-    unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())
 

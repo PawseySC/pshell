@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import parser
+import sys
 import unittest
 
 # global to avoid setup for every test class
@@ -69,5 +70,5 @@ if __name__ == '__main__':
     suite = unittest.TestSuite(suite_list)
 
 # run suite
-    unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())
 
