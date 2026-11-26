@@ -126,6 +126,15 @@ class ReleaseTest(unittest.TestCase):
         self.assertIn("unrecognized arguments", invalid.stdout)
         self.assertEqual(os.listdir(self.runtime_temp), [])
 
+    def test_bundles_license_and_notice_files(self):
+        with zipfile.ZipFile(RELEASE) as archive:
+            names = set(archive.namelist())
+        self.assertIn("LICENSE", names)
+        self.assertIn("NOTICE", names)
+        vendor_notices = [name for name in names if ".dist-info/" in name
+                          and ("licenses/" in name or name.endswith("/METADATA"))]
+        self.assertTrue(vendor_notices)
+
     def test_rejects_unsafe_archive_entry(self):
         bundle = os.path.join(self.root, "unsafe.zip")
         with zipfile.ZipFile(bundle, "w") as archive:

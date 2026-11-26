@@ -10,7 +10,7 @@ SFTP-like command line client for Mediaflux and S3 (Pawsey). Python >= 3.6, stan
 - Tests are plain `unittest` with a custom `__main__` that builds the suite from a `test_class_list`. Single method: `python3 -m unittest test_s3client.s3client_standard.test_convert` — except `test_s3client.py`/`test_mfclient.py`, whose `setUp` uses a client global created in `__main__` (and `test_pshell.py`, which uses `config`, `python`, `script`, `verbosity` globals); for those, edit `test_class_list` and run as a script.
 - `test_mfclient.py` / `test_s3client.py` use dummy clients (no server needed); `test_pshell.py` runs `pshell.py` as a subprocess and checks exit codes.
 - No linter configured. CI (`bitbucket-pipelines.yml`) only runs `python test_mfclient.py` on python:3.6.
-- Packaging: `build_test` / `build_release` zip `pshell.py` (as `__main__.py`), `parser.py`, `mfclient.py`, `s3client.py`, `util.py` into an executable zip with a python3 shebang. **Any new module must be added to the file lists in both scripts.** `build_release` rewrites the line starting with `build` in `pshell.py` with a timestamp; keep that line shape.
+- Packaging: `build_test` / `build_release` zip `pshell.py` (as `__main__.py`), `parser.py`, `mfclient.py`, `s3client.py`, `util.py` into an executable zip with a python3 shebang. **Any new module must be added to the file lists in both scripts.** `build_release` rewrites the line starting with `build` in `pshell.py` with a timestamp; keep that line shape. Release builds also bundle `LICENSE`, `NOTICE`, and the dependency metadata from both vendor sets.
 - `v3/` is a legacy/experimental tree (FUSE mount, older mfclient); `keystone.py` is a standalone helper. Main code is at the repo root.
 
 ## Architecture
@@ -26,5 +26,5 @@ SFTP-like command line client for Mediaflux and S3 (Pawsey). Python >= 3.6, stan
 
 - Procedural style; comments are `# ...` at column 0 above the block they describe, and `# ---` separates methods in `parser.py`.
 - Remote paths are always `/`-separated; for S3, `path_convert()` maps `/bucket/prefix/key`, and a trailing `/` marks a prefix rather than a key.
-- `boto3` is imported in a guarded block in `s3client.py` so Mediaflux-only use works without it; don't add other non-stdlib dependencies.
+- `boto3` is imported in a guarded block in `s3client.py`; release builds bundle it for S3 support, while source runs require it to be installed. don't add other non-stdlib dependencies.
 - Bump `version` in `pshell.py` for releases.

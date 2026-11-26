@@ -12,7 +12,8 @@ Install python >= 3.6 on the platform of your choice.
 
 Invoke pshell.py or the prepackaged binary distribution.
 
-Note that you will need to install (eg via pip3) boto3 if you want to use the S3 capabilities.
+Release builds bundle boto3 and its dependencies for S3 support. Source runs
+require a compatible boto3 installation.
 
 ### How do I run the tests? ###
 
@@ -26,3 +27,7 @@ Features:
 - SFTP-like syntax
 - Tab completion
 - Basic support for passthru commands
+
+## License
+
+pshell is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

@@ -11,6 +11,7 @@ trap 'rm -rf "$build_dir"' EXIT
 cp release_main.py "$build_dir/__main__.py"
 cp pshell.py "$build_dir/pshell.py"
 cp parser.py mfclient.py s3client.py util.py "$build_dir/"
+cp LICENSE NOTICE "$build_dir/"
 
 # stamp this release
 d=$(date +%Y%m%d%H%M%S)
