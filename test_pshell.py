@@ -108,5 +108,5 @@ if __name__ == '__main__':
     suite = unittest.TestSuite(suite_list)
 
 # run suite
-    unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())
 

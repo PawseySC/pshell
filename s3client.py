@@ -23,8 +23,10 @@ try:
     import botocore
     logging.getLogger('boto3').setLevel(logging.WARNING)
     logging.getLogger('botocore').setLevel(logging.WARNING)
+    dependency_error = None
     ok=True
-except:
+except Exception as e:
+    dependency_error = e
     ok=False
 
 #------------------------------------------------------------
@@ -143,7 +145,12 @@ class s3_client():
 
 #------------------------------------------------------------
     def connect(self):
-        self.logging.info('endpoint=%s using acess=%s' % (self.url, self.access))
+        self.logging.info('endpoint=%s' % self.url)
+
+        if not self.ok:
+            self.status = "S3 dependencies unavailable"
+            self.logging.error("S3 dependencies unavailable: %s", dependency_error)
+            return False
 
 # connection check
         emsg = "unknown error"

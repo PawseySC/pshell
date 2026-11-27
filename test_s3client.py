@@ -3,7 +3,9 @@
 import json
 import hashlib
 import logging
+import sys
 import s3client
+from unittest import mock
 import unittest
 
 # global to avoid setup for every test class
@@ -15,6 +17,15 @@ class s3client_standard(unittest.TestCase):
     def setUp(self):
         global s3_client
         self.s3_client = s3_client
+
+    def test_missing_dependency_reports_import_error(self):
+        client = s3client.s3_client(url="https://example.invalid")
+        client.ok = False
+        with mock.patch.object(s3client, "dependency_error", ImportError("incompatible boto3")):
+            with self.assertLogs("s3client", level="ERROR") as logs:
+                self.assertFalse(client.connect())
+        self.assertEqual(client.status, "S3 dependencies unavailable")
+        self.assertIn("incompatible boto3", logs.output[0])
 
 # path to bucket,prefix,key conversion tests
     def test_convert_missing_bucket(self):
@@ -194,5 +205,5 @@ if __name__ == '__main__':
     suite = unittest.TestSuite(suite_list)
 
 # run suite
-    unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())
 

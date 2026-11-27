@@ -240,7 +240,7 @@ class mf_client():
         try:
             elem = reply.find(".//session")
             self.session = elem.text
-            self.logging.info("Established session: %s" % self.session)
+            self.logging.info("Established session")
 # refresh connection info
             self.connect()
         except Exception as e:

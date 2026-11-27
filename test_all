@@ -1,4 +1,9 @@
-python3 test_pshell.py
-python3 test_parser.py
-python3 test_mfclient.py
-python3 test_s3client.py
+#!/bin/sh
+
+status=0
+python3 test_pshell.py || status=1
+python3 test_parser.py || status=1
+python3 test_mfclient.py || status=1
+python3 test_s3client.py || status=1
+python3 test_runner.py || status=1
+exit "$status"

@@ -1,0 +1,16 @@
+pshell
+Copyright 2026 Pawsey Supercomputing Research Centre
+
+The project was originally created and maintained by Sean Fleming.
+
+Third-party components
+----------------------
+
+Release builds of pshell bundle boto3 and its transitive dependencies,
+including botocore, jmespath, s3transfer, python-dateutil, urllib3, and
+certifi. These components are provided under their respective upstream
+licenses. License and package metadata are included in the vendor directories
+inside the pshell executable archive.
+
+"AWS", "Amazon Web Services", "boto3", "botocore", and "S3" are names or
+trademarks of Amazon Web Services or its affiliates.

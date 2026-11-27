@@ -9,6 +9,8 @@ import logging
 import urllib.request, urllib.error, urllib.parse
 import binascii
 import unittest
+from unittest import mock
+import xml.etree.ElementTree as ET
 import mfclient
 import posixpath
 import configparser
@@ -24,6 +26,16 @@ class mfclient_main(unittest.TestCase):
     def setUp(self):
         global mf_client
         self.mf_client = mf_client
+
+    def test_login_does_not_log_session(self):
+        response = ET.fromstring("<response><session>dummy-session</session></response>")
+        with mock.patch.object(self.mf_client, "aterm_run", return_value=response):
+            with mock.patch.object(self.mf_client, "connect"):
+                with self.assertLogs("mfclient", level="INFO") as logs:
+                    self.mf_client.login(user="dummy", password="dummy", domain="dummy")
+        self.assertEqual(self.mf_client.session, "dummy-session")
+        self.assertNotIn("dummy-session", "\n".join(logs.output))
+        self.mf_client.session = ""
 
 
 # --- helper: remove common XML wrapper
@@ -66,7 +78,14 @@ class mfclient_main(unittest.TestCase):
     def test_service_add(self):
         line = 'system.service.add :name custom.service :replace-if-exists true :access ACCESS :definition < :element -name arg1 -type string :element -name arg2 -type string -min-occurs 0 -default " " :element -name arg3 -type boolean -min-occurs 0 -default false > :execute \"return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]\"'
         reply = self.mf_client.aterm_run(line, post=False)
-        self.assertEqual(self._peel(reply), '<service name="system.service.add"><name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string" /><element name="arg2" type="string" min-occurs="0" default=" " /><element name="arg3" type="boolean" min-occurs="0" default="false" /></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute></service>')
+        expected = '<service name="system.service.add"><name>custom.service</name><replace-if-exists>true</replace-if-exists><access>ACCESS</access><definition><element name="arg1" type="string" /><element name="arg2" type="string" min-occurs="0" default=" " /><element name="arg3" type="boolean" min-occurs="0" default="false" /></definition><execute>return [xvalue result [asset.script.execute :id 1 :arg -name namespace [xvalue namespace $args] :arg -name page [xvalue page $args] :arg -name recurse [xvalue recurse $args]]]</execute></service>'
+
+        def xml_structure(element):
+            return (element.tag, element.attrib, element.text, element.tail,
+                    [xml_structure(child) for child in element])
+
+        self.assertEqual(xml_structure(ET.fromstring(self._peel(reply))),
+                         xml_structure(ET.fromstring(expected)))
 
     def test_semicolon_value(self):
         line = 'actor.grant :name public:public :type user :role -type role read-only'
@@ -227,5 +246,5 @@ if __name__ == '__main__':
     suite = unittest.TestSuite(suite_list)
 
 # run suite
-    unittest.TextTestRunner(verbosity=2).run(suite)
+    sys.exit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())
 
